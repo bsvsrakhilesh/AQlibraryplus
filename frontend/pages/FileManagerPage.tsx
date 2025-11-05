@@ -12,7 +12,6 @@ import BulkActionBar from '../components/common/BulkActionBar';
 import ExplorerCommandBar from "../components/filemanager/ExplorerCommandBar";
 import ExplorerBreadcrumbs from "../components/filemanager/ExplorerBreadcrumbs";
 import ExplorerPreviewModal from "../components/filemanager/ExplorerPreviewModal";
-import StatusBar from "../components/common/StatusBar";
 import PropertiesModal from "../components/filemanager/PropertiesModal";
 import FileSidebar from "../components/filemanager/FileSidebar";
 import PageTransition from '../components/motion/PageTransition';
@@ -1264,21 +1263,6 @@ const handleRenameById = async (id: string, nextName: string) => {
           </motion.div>
           </div>
 
-          {/* Status Bar - Enhanced with glassmorphism */}
-          <motion.div
-            className="mt-4 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 dark:border-slate-700/30 p-4"
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 1.1, duration: 0.5 }}
-          >
-            <StatusBar
-              selectedCount={selected.length}
-              totalCount={total}
-              totalSize={totalBytes}
-              filteredCount={allFiles.length}
-              selectedSize={selected.reduce((acc, f) => acc + (((f as any).size) || 0), 0)}
-            />
-          </motion.div>
         </section>
         {/* Right: Inspector */}
         <aside className="col-span-12 lg:col-span-3">
