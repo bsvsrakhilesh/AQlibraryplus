@@ -11,8 +11,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigateHome, isSidebarOpen }) => {
   return (
-    <div className="app-header bg-background/80 backdrop-blur border-b border-border">
-      {/* Use same left gutter as sidebar items for crisp alignment */}
+    <div className="app-header sticky top-0 z-50 supports-[backdrop-filter]:backdrop-blur-md bg-background/75 border-b border-border/70 elev-1">
       <div
         className="h-16 lg:h-[72px] flex items-center justify-between gap-2"
         style={{ paddingLeft: 'var(--gutter-x,16px)', paddingRight: 'var(--gutter-x,16px)' }}
@@ -43,14 +42,40 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigateHome, isSide
 
         {/* Right: actions */}
         <div className="flex items-center gap-1">
-        <motion.button whileHover={{ y: -1 }} whileTap={{ y: 0 }} className="icon-button" title="Notifications"><Bell size={18}/></motion.button>
-        <motion.button whileHover={{ y: -1 }} whileTap={{ y: 0 }} className="icon-button" title="Settings"><Settings size={18}/></motion.button>
-        <motion.button whileHover={{ y: -1 }} whileTap={{ y: 0 }} className="icon-button" title="Account"><User size={18}/></motion.button>
+          <motion.button
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 0 }}
+            className="icon-button hover-lift ring-offset-1 focus-visible:ring-2 focus-visible:ring-brand-primary/40 rounded-lg"
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <Bell size={18} />
+          </motion.button>
+
+          <motion.button
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 0 }}
+            className="icon-button hover-lift ring-offset-1 focus-visible:ring-2 focus-visible:ring-brand-primary/40 rounded-lg"
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings size={18} />
+          </motion.button>
+
+          <motion.button
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 0 }}
+            className="icon-button hover-lift ring-offset-1 focus-visible:ring-2 focus-visible:ring-brand-primary/40 rounded-lg"
+            title="Account"
+            aria-label="Account"
+          >
+            <User size={18} />
+          </motion.button>
         </div>
       </div>
 
       {/* Thin brand accent (optional) */}
-      <div className="h-1 bg-gradient-to-r from-brand-primary to-brand-secondary" />
+      <div className="h-[2px] bg-gradient-to-r from-brand-primary/70 to-brand-secondary/70" />
     </div>
   );
 };

@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { motion, type Transition, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Page } from '../../types';
-
-// Existing icons (unchanged)
 import UrlIcon from '../icons/UrlIcon';
 import BookmarkIcon from '../icons/BookmarkIcon';
 import FolderIcon from '../icons/FolderIcon';
@@ -32,12 +30,12 @@ const SPRING: Transition = { type: 'spring', stiffness: 380, damping: 32, mass: 
 const focusRing =
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-primary/60 focus-visible:border-transparent';
 const railTap =
-  'group size-11 grid place-items-center rounded-xl transition-[background,transform,box-shadow] duration-200 ' +
+  'group size-11 grid place-items-center rounded-xl transition-[background,transform,box-shadow] duration-200 hover-lift ' +
   'hover:bg-foreground/8 dark:hover:bg-white/10 ' +
   focusRing +
   ' relative border-transparent';
 const listTap =
-  'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-[background,transform,box-shadow,color] duration-200 ' +
+  'group relative flex items-center gap-3 rounded-xl px-3 py-2 transition-[background,transform,box-shadow,color] duration-200 hover-lift ' +
   'hover:bg-foreground/6/60 dark:hover:bg-white/6 ' +
   focusRing +
   ' backdrop-blur-xs border-transparent';
@@ -54,11 +52,6 @@ const itemVariants = {
   visible: { opacity: 1, x: 0, transition: { duration: 0.22, ease: 'easeOut' } },
 } as const;
 
-const tooltipVariants = {
-  hidden: { opacity: 0, x: -6 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.14, ease: 'easeOut' } },
-} as const;
-
 /* --------------------------------- COMPONENT ---------------------------------- */
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, currentPage, setCurrentPage, useParentWidth }) => {
   // Fixed widths; sidebar itself animates width (no overlay)
@@ -72,16 +65,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, currentPage, setCurrentPage, 
 
   // small helper classes for active state reused
   const activeRail =
-  'bg-gradient-to-br from-foreground/8 to-foreground/5 dark:from-white/8 dark:to-white/5 shadow-[0_10px_24px_rgba(2,6,23,0.06)] ring-0 border-transparent';
-const activeList =
-  'bg-background/60 dark:bg-background/75 text-foreground font-medium shadow-sm ring-0 border-transparent backdrop-blur-sm';
+  'bg-gradient-to-br from-foreground/8 to-foreground/5 dark:from-white/8 dark:to-white/5 shadow-[0_10px_24px_rgba(2,6,23,0.06)] ring-0 border-transparent elev-1';
+  const activeList =
+  'bg-background/60 dark:bg-background/75 text-foreground font-medium shadow-sm ring-0 border-transparent backdrop-blur-sm elev-1';
 
   return (
-    <aside className="app-sidebar h-dvh sticky top-0 z-40 overflow-x-hidden" aria-label="Primary sidebar">
+    <aside className="app-sidebar h-dvh sticky top-0 z-40 overflow-x-hidden supports-[backdrop-filter]:backdrop-blur-md bg-card/85 border-r border-border/70" aria-label="Primary sidebar">
       <motion.nav
         role="navigation"
         aria-orientation="vertical"
-        className="h-full flex flex-col bg-background/80 dark:bg-background/85 border-r border-border/60 backdrop-blur-sm rounded-none overflow-hidden"
+        className="h-full flex flex-col bg-card/85 border-r border-border/60 supports-[backdrop-filter]:backdrop-blur-md rounded-none overflow-hidden"
         initial={false}
         animate={{ width: isOpen ? EXPANDED : COLLAPSED }}
         transition={reduce ? { duration: 0 } : SPRING}
@@ -117,7 +110,7 @@ const activeList =
                   <motion.li key={key} variants={itemVariants} className="w-full">
                     <motion.button
                       type="button"
-                      /* remove `title` to avoid native tooltip / unexpected focus outline */
+                      title={!isOpen ? label : undefined}
                       aria-label={label}
                       aria-current={active ? 'page' : undefined}
                       className={[railTap, active ? activeRail : ''].join(' ')}
@@ -130,11 +123,9 @@ const activeList =
                       whileTap={reduce ? undefined : { scale: 0.985 }}
                       transition={reduce ? { duration: 0 } : SPRING}
                     >
-                      {/* icon container: remove heavy background/border and use subtle elevated pill */}
                       <span
                         className={[
-
-                          'grid place-items-center size-9 rounded-lg transition-transform',
+                          'grid place-items-center size-9 rounded-lg transition-transform group-hover:translate-y-[-1px]',
                           'bg-transparent',
                           active ? 'scale-105 shadow-sm bg-foreground/7 dark:bg-white/6 rounded-md' : 'group-hover:bg-foreground/6/10 dark:group-hover:bg-white/8',
                         ].join(' ')}
@@ -146,12 +137,11 @@ const activeList =
                       <AnimatePresence>
                         {hoverKey === key && (
                           <motion.span
-                            role="tooltip"
-                            initial={reduce ? { opacity: 1, x: 0 } : 'hidden'}
-                            animate={reduce ? { opacity: 1, x: 0 } : 'visible'}
-                            exit={reduce ? { opacity: 0 } : 'hidden'}
-                            variants={tooltipVariants}
-                            className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 rounded-md bg-background/95 dark:bg-background/90 px-3 py-1 text-xs shadow-lg text-foreground/90 ring-1 ring-border/30"
+                              className="truncate"
+                              initial={reduce ? { opacity: 1, x: 0 } : { opacity: 0, x: -6 }}
+                              animate={reduce ? { opacity: 1, x: 0 } : { opacity: 1, x: 0 }}
+                              exit={reduce ? { opacity: 0 } : { opacity: 0, x: -6 }}
+                              transition={reduce ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }}
                           >
                             {label}
                           </motion.span>
