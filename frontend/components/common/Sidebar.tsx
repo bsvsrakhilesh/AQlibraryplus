@@ -103,7 +103,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, currentPage, setCurrentPage, 
           {!isOpen && (
             <motion.ul
               role="list"
-              className="py-3 flex flex-col items-center gap-2 overflow-visible"
+              className="py-4 flex flex-col items-center gap-3 overflow-visible relative"
               variants={containerVariants}
               initial="visible"
               animate="visible"

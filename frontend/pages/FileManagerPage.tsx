@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Filter, ChevronLeft, ChevronRight, X, Plus, File, Database } from 'lucide-react';
-import SearchFilter, { FilterState } from '../components/filemanager/SearchFilter';
+import { ChevronLeft, ChevronRight, File, Database } from 'lucide-react';
 import FileList from '../components/filemanager/FileList';
 import AdvancedFileUpload from '../components/filemanager/AdvancedFileUpload';
 import { useToast } from '../components/providers/Toast';
@@ -70,35 +69,10 @@ const Modal: React.FC<{ open: boolean; onClose: () => void; title: string; child
 export default function FileManagerPage() {
   const { notify } = useToast();
 
-  // layout / filters / pagination
+  // layout / pagination / minor UI state
   const [layout, setLayout] = useState<Layout>(() => getLS<Layout>('fm:layout', 'icons'));
   useEffect(() => setLS('fm:layout', layout), [layout]);
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(false);
-  const [showFilters, setShowFilters] = useState<boolean>(false);
-  const [filters, setFilters] = useState<FilterState>({
-    query: '',
-    fileTypes: [],
-    tags: [],
-    visibility: 'all',
-    favoritesOnly: false,
-  });
-  const applyQuickFilter = useCallback((tag: string) => {
-    setFilters(f => {
-     switch (tag) {
-         case 'All':        return { ...f, favoritesOnly: false, fileTypes: [], query: '', minSize: undefined, recentDays: undefined };
-         case 'Images':     return { ...f, fileTypes: ['image/'] };
-         case 'Docs':       return { ...f, fileTypes: ['application/pdf','text/plain','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument'] };
-         case 'Videos':     return { ...f, fileTypes: ['video/'] };
-         case 'Archives':   return { ...f, fileTypes: ['application/zip','application/x-7z-compressed','application/x-rar-compressed'] };
-         case 'Favorites':  return { ...f, favoritesOnly: true };
-         case 'Recent':     return { ...f, recentDays: 14 };
-         case '>100MB':     return { ...f, minSize: 100 * 1024 * 1024 };
-         default:           return f;
-       }
-     });
-    setPage(1);
-   }, []);
-
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
 
@@ -112,12 +86,12 @@ export default function FileManagerPage() {
   const [showHotkeys, setShowHotkeys] = useState(false);
 
   useEffect(() => {
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === '?') setShowHotkeys(v => !v);
-    if (e.key === 'Escape') setShowHotkeys(false);
-  };
-  window.addEventListener('keydown', onKey);
-  return () => window.removeEventListener('keydown', onKey);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === '?') setShowHotkeys(v => !v);
+      if (e.key === 'Escape') setShowHotkeys(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // folders / breadcrumb
@@ -133,14 +107,14 @@ export default function FileManagerPage() {
     },
   });
 
-// On first mount, if URL has ?folder=..., adopt it
-useEffect(() => {
-  if (initialFolderId && initialFolderId !== currentFolderId) {
-    setCurrentFolderId(initialFolderId);
-    // optionally trigger your existing loader to rebuild breadcrumb + files
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+  // On first mount, if URL has ?folder=..., adopt it
+  useEffect(() => {
+    if (initialFolderId && initialFolderId !== currentFolderId) {
+      setCurrentFolderId(initialFolderId);
+      // optionally trigger your existing loader to rebuild breadcrumb + files
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [breadcrumb, setBreadcrumb] = useState<{ id?: string; name: string }[]>([{ name: 'Home' }]);
 
@@ -152,17 +126,12 @@ useEffect(() => {
   const [propertiesFile, setPropertiesFile] = useState<FileItem | null>(null);
   const [showProperties, setShowProperties] = useState<boolean>(false);
 
-
   // data
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [totalBytes, setTotalBytes] = useState<number>(0);
-
-  // tags
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
-  const [focusTagsOnOpen, setFocusTagsOnOpen] = useState(false);
 
   // preview + upload modal
   const [selectedPreview, setSelectedPreview] = useState<FileDetail | null>(null);
@@ -193,21 +162,21 @@ useEffect(() => {
 
   // ---- Select-all helper (shim) ----
   const handleSelectAll = () => {
-  if (selected.length === allFiles.length && allFiles.length > 0) {
-    handleSelectionChangeByIds([]);           // clear
-  } else {
-    handleSelectionChangeByIds(allFiles.map(f => f.id)); // select all
-  }
+    if (selected.length === allFiles.length && allFiles.length > 0) {
+      handleSelectionChangeByIds([]);           // clear
+    } else {
+      handleSelectionChangeByIds(allFiles.map(f => f.id)); // select all
+    }
   };
 
   const handleSelectionChangeByIds = (ids?: string[]) => {
-  const set = new Set(ids ?? []);
-  setSelected(allFiles.filter(f => set.has(f.id)));
-};
-const handleRenameById = async (id: string, nextName: string) => {
-  const file = allFiles.find(f => f.id === id);
-  if (file) await handleRename(file, nextName);
-};
+    const set = new Set(ids ?? []);
+    setSelected(allFiles.filter(f => set.has(f.id)));
+  };
+  const handleRenameById = async (id: string, nextName: string) => {
+    const file = allFiles.find(f => f.id === id);
+    if (file) await handleRename(file, nextName);
+  };
 
   // Favorites toggle handler
   const handleToggleFavorite = useCallback(
@@ -351,11 +320,6 @@ const handleRenameById = async (id: string, nextName: string) => {
     setError(null);
 
     const params = new URLSearchParams();
-    if (filters.query) params.set('q', filters.query);
-    if (filters.fileTypes.length) params.set('mimeTypes', filters.fileTypes.join(','));
-    if (filters.tags.length) params.set('tags', filters.tags.join(','));
-    if (filters.visibility && filters.visibility !== 'all') params.set('visibility', String(filters.visibility));
-    if (filters.favoritesOnly) params.set('favoritesOnly', 'true');
     if (currentFolderId) params.set('folderId', String(currentFolderId));
     params.set('page', String(page));
     params.set('pageSize', String(pageSize));
@@ -424,13 +388,7 @@ const handleRenameById = async (id: string, nextName: string) => {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    filters.query,
-    filters.fileTypes.join(','),
-    filters.tags.join(','),
-    filters.visibility,
-    filters.favoritesOnly,
     page,
     pageSize,
     currentFolderId,
@@ -439,32 +397,15 @@ const handleRenameById = async (id: string, nextName: string) => {
     refreshToken,
   ]);
 
-  // load available tags (for filters + editor)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/tags');
-        if (!res.ok) throw new Error('Failed to load tags');
-        const data = await res.json() as { label: string; count: number }[];
-        if (!cancelled) setAvailableTags(data.map(d => d.label));
-      } catch {
-        // ignore
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [refreshToken]);
-
   // ------- Actions -------
   const handleOpenPreview = useCallback((f: FileDetail, opts?: { focusTags?: boolean }) => {
-  setFocusTagsOnOpen(!!opts?.focusTags);
-  setSelectedPreview(f);
-  // reset the flag once modal mounts (prevents sticking true for next open)
-  setTimeout(() => setFocusTagsOnOpen(false), 0);
+    setSelectedPreview(f);
+    // reset the flag once modal mounts (prevents sticking true for next open)
+    setTimeout(() => {}, 0);
   }, []);
 
   const handleEditTagsInPreview = useCallback((file: FileDetail) => {
-  handleOpenPreview(file, { focusTags: true });
+    handleOpenPreview(file, { focusTags: true });
   }, [handleOpenPreview]);
 
   const handleDownload = (f: FileDetail | FileItem) => {
@@ -498,29 +439,14 @@ const handleRenameById = async (id: string, nextName: string) => {
     }
   };
 
-  // Optimistic insert after upload if it matches current filters/folder
+  // After upload, refresh the listing (removes search-filter insertion logic)
   const handleUploaded = useCallback(
     (nf: FileItem) => {
       notify(`Uploaded ${nf.title}`, 'success');
-
-      const matchesFolder = !currentFolderId || (nf as any).folderId === currentFolderId;
-      const matchesVisibility =
-        !filters.visibility || filters.visibility === 'all' || nf.visibility === filters.visibility;
-      const matchesQuery = !filters.query || nf.title.toLowerCase().includes(filters.query.toLowerCase());
-      const matchesType =
-        !filters.fileTypes.length ||
-        filters.fileTypes.some((mt) => nf.mimeType === mt || nf.mimeType.startsWith(mt));
-
-      if (matchesFolder && matchesVisibility && matchesQuery && matchesType) {
-        setAllFiles((prev: FileItem[]) => [nf, ...prev]);
-        setTotal((t) => t + 1);
-        setTotalBytes((b) => b + (typeof (nf as any).size === 'number' ? (nf as any).size : 0));
-      } else {
-        refresh();
-      }
+      refresh();
       setShowUpload(false);
     },
-    [notify, currentFolderId, filters.visibility, filters.query, filters.fileTypes, refresh]
+    [notify, refresh]
   );
 
   const handleRename = async (file: FileItem, newName?: string) => {
@@ -636,8 +562,6 @@ const handleRenameById = async (id: string, nextName: string) => {
     }
   }, [history, historyIndex, buildBreadcrumb]);
 
-  // Up navigation removed; use breadcrumbs / folder tree for moving up
-
   const onCrumbClick = useCallback(async (idx: number) => {
     const target = breadcrumb[idx];
     const bc = await buildBreadcrumb(target.id);
@@ -646,7 +570,7 @@ const handleRenameById = async (id: string, nextName: string) => {
     setPage(1);
   }, [breadcrumb, buildBreadcrumb]);
 
-    const onDeleteSelected = useCallback(async (ids: string[]) => {
+  const onDeleteSelected = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
     if (!confirm(`Delete ${ids.length} selected item(s)?`)) return;
 
@@ -668,50 +592,7 @@ const handleRenameById = async (id: string, nextName: string) => {
     }
   }, [allFiles, notify, refresh]);
 
-   // keyboard shortcut to toggle filters + core actions (safe shims)
-  useEffect(() => {
-  const isTyping = () => {
-    const el = document.activeElement as HTMLElement | null;
-    if (!el) return false;
-    const t = el.tagName.toLowerCase();
-    return t === 'input' || t === 'textarea' || el.getAttribute('contenteditable') === 'true';
-  };
-
-  const onKey = (e: KeyboardEvent) => {
-    // Focus search
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-      e.preventDefault();
-      (document.getElementById('fm-search') as HTMLInputElement | null)?.focus();
-      return;
-    }
-
-    if (isTyping()) return;
-
-    // Delete selected
-    if (e.key === 'Delete') {
-      onDeleteSelected?.(selected.map(s => s.id));
-      return;
-    }
-
-    // Select all
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-      e.preventDefault();
-      handleSelectAll();
-      return;
-    }
-
-    // Backspace navigation (go up) removed to avoid accidental folder changes.
-
-    // Clear selection
-    if (e.key === 'Escape') {
-      handleSelectionChangeByIds([]); // <-- ensure we pass []
-      return;
-    }
-  };
-
-  window.addEventListener('keydown', onKey);
-  return () => window.removeEventListener('keydown', onKey);
-  }, [onDeleteSelected, handleSelectAll, handleSelectionChangeByIds, selected, allFiles]);
+  // Previously there was a ctrl+f search focus handler — removed along with SearchFilter.
 
   // ---------- NEW: Bulk actions ----------
   const byIds = useCallback((ids: string[]) => {
@@ -736,55 +617,55 @@ const handleRenameById = async (id: string, nextName: string) => {
     }
   }, [notify, refresh]);
 
-   // Bulk AI auto-tag selected files
+  // Bulk AI auto-tag selected files
   const onAutoTagSelected = useCallback(async (ids: string[]) => {
-  if (!ids?.length) return;
-  const targets = allFiles.filter(f => ids.includes(f.id));
+    if (!ids?.length) return;
+    const targets = allFiles.filter(f => ids.includes(f.id));
 
-  for (const f of targets) {
-    try {
-      // 1) start job
-      const { jobId } = await startFileTagJob(f.id);
+    for (const f of targets) {
+      try {
+        // 1) start job
+        const { jobId } = await startFileTagJob(f.id);
 
-      // 2) poll job
-      let attempt = 0;
-      while (attempt < 90) { // ~90s
-        const data = await getJob(jobId, 'topk=10&useLLM=true');
+        // 2) poll job
+        let attempt = 0;
+        while (attempt < 90) { // ~90s
+          const data = await getJob(jobId, 'topk=10&useLLM=true');
 
-        if (data?.state === 'SUCCESS') {
-          const ai = Array.from(new Set<string>((data.tags ?? []).map(String)));
+          if (data?.state === 'SUCCESS') {
+            const ai = Array.from(new Set<string>((data.tags ?? []).map(String)));
 
-          // merge in UI
-          const mergedUi = (curr: string[] = []) =>
-            Array.from(new Set([...(curr ?? []), ...ai]));
+            // merge in UI
+            const mergedUi = (curr: string[] = []) =>
+              Array.from(new Set([...(curr ?? []), ...ai]));
 
-          setAllFiles(prev =>
-            prev.map(x => x.id === f.id ? { ...x, tags: mergedUi(x.tags) } : x)
-          );
+            setAllFiles(prev =>
+              prev.map(x => x.id === f.id ? { ...x, tags: mergedUi(x.tags) } : x)
+            );
 
-          // persist to backend (mirror your PATCH style used elsewhere)
-          const current = allFiles.find(x => x.id === f.id)?.tags ?? [];
-          const merged = Array.from(new Set([...current, ...ai]));
-          await fetch(`/api/files/${f.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tags: merged })
-          });
-          break;
+            // persist to backend (mirror your PATCH style used elsewhere)
+            const current = allFiles.find(x => x.id === f.id)?.tags ?? [];
+            const merged = Array.from(new Set([...current, ...ai]));
+            await fetch(`/api/files/${f.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tags: merged })
+            });
+            break;
+          }
+
+          if (data?.state === 'FAILURE') {
+            throw new Error(data?.error || 'AI tagging failed');
+          }
+
+          await new Promise(r => setTimeout(r, 1000));
+          attempt++;
         }
-
-        if (data?.state === 'FAILURE') {
-          throw new Error(data?.error || 'AI tagging failed');
-        }
-
-        await new Promise(r => setTimeout(r, 1000));
-        attempt++;
+      } catch (err) {
+        console.error('Auto-tag file failed', f.id, err);
       }
-    } catch (err) {
-      console.error('Auto-tag file failed', f.id, err);
     }
-  }
-}, [allFiles, setAllFiles]);
+  }, [allFiles, setAllFiles]);
 
 
   const onAddTagSelected = useCallback(async (ids: string[], tag: string) => {
@@ -920,7 +801,7 @@ const handleRenameById = async (id: string, nextName: string) => {
 
         {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-12 gap-6">
-        {/* Left: Quick Access + Folder tree + Filters - Enhanced Creative Sidebar */}
+        {/* Left: Quick Access + Folder tree */}
         <aside className="col-span-12 lg:col-span-3 space-y-6">
           <motion.div
             className="bg-surface/60 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-border/30"
@@ -932,51 +813,6 @@ const handleRenameById = async (id: string, nextName: string) => {
               onFolderSelect={onFolderSelect}
               currentFolderId={currentFolderId}
             />
-          </motion.div>
-
-          <motion.div
-            className="bg-surface/50 backdrop-blur-xl rounded-3xl shadow-xl border border-border/20 overflow-hidden"
-            initial={{ x: -30, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.8, duration: 0.6, ease: "easeOut" }}
-          >
-            <div className="flex items-center justify-between mb-4 px-6 pt-6 bg-gradient-to-r from-success/5 to-info/5">
-              <h3 className="text-lg font-bold text-text flex items-center gap-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-success to-info rounded-xl flex items-center justify-center shadow-lg">
-                  <Filter className="w-4 h-4 text-white" />
-                </div>
-                Filters
-              </h3>
-              <motion.button
-                className="btn-ghost text-sm px-3 py-1.5 rounded-xl hover:bg-white/20 transition-all duration-200 flex items-center gap-1"
-                onClick={() => setShowFilters((s) => !s)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {showFilters ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                {showFilters ? 'Hide' : 'Show'}
-              </motion.button>
-            </div>
-            {showFilters && (
-              <motion.div
-                className="px-6 pb-6"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              >
-                <SearchFilter
-                  initial={filters}
-                  availableFileTypes={[
-                    { mime: 'pdf', label: 'PDF' },
-                    { mime: 'image/', label: 'Images' },
-                    { mime: 'text/csv', label: 'CSV' },
-                    { mime: 'text/plain', label: 'Text' },
-                  ]}
-                  availableTags={availableTags}
-                  onChange={(f) => { setFilters(f); setPage(1); }}
-                />
-              </motion.div>
-            )}
           </motion.div>
         </aside>
 
@@ -1009,11 +845,9 @@ const handleRenameById = async (id: string, nextName: string) => {
                   const bc = await buildBreadcrumb(folderId ?? undefined);
                   setBreadcrumb(bc);
                 }}
-                onSearchSubmit={(q) => { setFilters({ ...filters, query: q }); setPage(1); }}
-                initialSearch={filters.query}
                 getChildren={async (id) => {
-                const rows = await listFolders(id ?? undefined);
-                return rows.map(r => ({ id: r.id, name: r.name }));
+                  const rows = await listFolders(id ?? undefined);
+                  return rows.map(r => ({ id: r.id, name: r.name }));
                  }}
               />
             </div>
@@ -1024,8 +858,8 @@ const handleRenameById = async (id: string, nextName: string) => {
             <ExplorerCommandBar
               layout={layout as any}
               onLayoutChange={(next) => {
-              setLayout(next as Layout);
-              setPage(1);
+                setLayout(next as Layout);
+                setPage(1);
               }}            
               onNew={handleNewFolder}
               onUpload={() => setShowUpload(true)}
@@ -1033,17 +867,12 @@ const handleRenameById = async (id: string, nextName: string) => {
               sortDir={sortDir}
               onSortKeyChange={(k) => { setSortKey(k as SortKey); setPage(1); }}
               onSortDirChange={() => { setSortDir(d => d === "asc" ? "desc" : "asc"); setPage(1); }}
-            
               isAllSelected={selected.length === allFiles.length && allFiles.length > 0}
               onSelectAll={handleSelectAll}
               onToggleInspector={() => setInspectorOpen(v => !v)}
-            
               density={density}
               onDensityChange={(d) => setDensity(d)}
-            
-              onQuickFilter={applyQuickFilter}
             />
-          
           </div>
 
           <div className="space-y-4" data-density={density} data-layout={layout}>
@@ -1187,7 +1016,6 @@ const handleRenameById = async (id: string, nextName: string) => {
                     try {
                       const raw = e.dataTransfer.getData("text/plain");
                       const ids = raw ? JSON.parse(raw) : [];
-                      // currentFolderId is already in scope in your page props
                       void handleDrop(ids, currentFolderId ?? null);
                     } catch (err) {
                       console.error("Drop payload parse error:", err);
@@ -1370,10 +1198,10 @@ const handleRenameById = async (id: string, nextName: string) => {
           onDownload={(f) => handleDownload(f)}
           onToggleFavorite={handleToggleFavorite}
           onTagUpdate={(fileId, tags) => {
-          handleUpdateTags(fileId, tags);
-          setSelectedPreview(prev => prev && prev.id === fileId ? { ...prev, tags } as any : prev);
-         }}
-         autoFocusTags={focusTagsOnOpen}
+            handleUpdateTags(fileId, tags);
+            setSelectedPreview(prev => prev && prev.id === fileId ? { ...prev, tags } as any : prev);
+          }}
+          autoFocusTags={false}
         />
       )}
 
