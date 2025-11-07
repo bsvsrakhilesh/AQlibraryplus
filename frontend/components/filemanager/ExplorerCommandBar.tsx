@@ -102,7 +102,7 @@ export default function ExplorerCommandBar({
 
   return (
     <div
-      className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))]/80 backdrop-blur-md shadow-[var(--shadow-soft)] px-3 py-2 md:px-4 md:py-3"
+      className="glass-card fm-toolbar sticky top-2 z-30 px-3 py-2 md:px-4 md:py-3"
       role="toolbar"
       aria-label="Explorer commands"
     >
