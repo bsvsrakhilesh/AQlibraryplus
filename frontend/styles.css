@@ -1003,6 +1003,19 @@ html, body, #__next, .app-shell {
   box-shadow: 0 0 0 2px var(--fm-bg-elev);
 }
 
+/* Header search */
+.fm-search { @apply relative; }
+.fm-search .icon {
+  @apply absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] pointer-events-none;
+}
+.fm-search input {
+  @apply w-full rounded-2xl border border-[hsl(var(--border))]
+         bg-[hsl(var(--surface-elev))] px-9 py-2 text-sm outline-none
+         focus:ring-2 focus:ring-[hsl(var(--brand-500)/0.35)]
+         placeholder-[hsl(var(--muted-foreground))];
+  box-shadow: var(--fm-shadow);
+}
+
 /* Empty state */
 .fm-empty {
   display: grid;
@@ -1493,6 +1506,13 @@ html, body, #__next, .app-shell {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Star badge (top-right on tiles) */
+.wg-badge-star {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
 }
 
 /* ====== App polish utilities (Pass #1) ====== */

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, File, Database } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File, Database, Search } from 'lucide-react';
 import FileList from '../components/filemanager/FileList';
 import AdvancedFileUpload from '../components/filemanager/AdvancedFileUpload';
 import { useToast } from '../components/providers/Toast';
@@ -82,6 +82,9 @@ export default function FileManagerPage() {
   const [density, setDensity] = useState<'comfortable' | 'compact'>(() => getLS('fm:density', 'comfortable'));
   useEffect(() => setLS('fm:density', density), [density]);
 
+  // quick search query (header input)
+  const [search, setSearch] = useState('');
+
   // ---------- hotkeys overlay ----------
   const [showHotkeys, setShowHotkeys] = useState(false);
 
@@ -154,6 +157,13 @@ export default function FileManagerPage() {
     }
     return () => document.body.classList.remove('dragging');
   }, [isDragging]);
+
+   // derived files based on header search
+  const visibleFiles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allFiles;
+    return allFiles.filter(f => (f.title ?? '').toLowerCase().includes(q));
+  }, [allFiles, search]);
 
   // Selection + clipboard for cut/copy/paste
   const [selected, setSelected] = useState<FileItem[]>([]);
@@ -745,29 +755,43 @@ export default function FileManagerPage() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Header */}
-        <motion.div
-          className="relative bg-gradient-to-br from-surface/80 via-accent/5 to-info/5 backdrop-blur-xl border-b border-border/30 overflow-hidden"
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-accent/10 via-info/5 to-success/10" />
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-accent via-info to-success" />
-          <div className="max-w-7xl mx-auto px-6 py-10 relative z-10">
-            <div className="flex flex-wrap items-start justify-between gap-6">
-              <div className="relative flex-1">
-                 <h1 className="text-5xl font-black text-text tracking-tight mb-2 drop-shadow-lg">File Explorer</h1>
-        <p className="text-lg text-muted-foreground max-w-md leading-relaxed flex items-center gap-2">
-          <span className="inline-flex w-2 h-2 bg-info rounded-full animate-pulse" />
-          Innovate your journey with seamless
-        </p>
-      {/* Left decorative dots - smaller and less prominent */}
+      {/* Header */}
       <motion.div
-        className="flex items-center gap-2 opacity-70 absolute left-6 top-1/2 -translate-y-1/2"
-        initial={{ scale: 0.8, opacity: 0 }}
-      />
-              </div>
+        className="relative bg-gradient-to-br from-surface/80 via-accent/5 to-info/5 backdrop-blur-xl border-b border-border/30 overflow-hidden"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
+      >
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-accent/10 via-info/5 to-success/10" />
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-accent via-info to-success" />
+      <div className="max-w-7xl mx-auto px-6 py-10 relative z-10">
+      <div className="flex flex-wrap items-start justify-between gap-6">
+      <div className="relative flex-1">
+      <h1 className="text-5xl font-black text-text tracking-tight mb-2 drop-shadow-lg">File Explore</h1>
+      <p className="text-lg text-muted-foreground max-w-md leading-relaxed flex items-center gap-2">
+      <span className="inline-flex w-2 h-2 bg-info rounded-full animate-pulse" />
+      Innovate your journey with seamless
+      </p>
+    {/* Left decorative dots - smaller and less prominent */}
+    <motion.div
+      className="flex items-center gap-2 opacity-70 absolute left-6 top-1/2 -translate-y-1/2"
+      initial={{ scale: 0.8, opacity: 0 }}
+    />
+    </div>
+
+    {/* Right: header search */}
+    <div className="w-full md:w-[420px]">
+      <label className="fm-search block">
+        <Search className="icon h-4 w-4" aria-hidden />
+        <input
+          type="search"
+          placeholder="Search this folder"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search this folder"
+        />
+      </label>
+    </div>
 
     {/* Tabs */}
     <motion.div
@@ -929,9 +953,8 @@ export default function FileManagerPage() {
             {error && !isLoading && (
               <div className="m-4 p-3 rounded bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-200">{error}</div>
             )}
-            {!isLoading && !error && allFiles.length === 0 && (
+            {!isLoading && !error && visibleFiles.length === 0 && (
             <div className="fm-empty">
-              {/* subtle illustration card using your surface/border/shadow tokens */}
               <div
                 aria-hidden
                 className="h-24 w-36 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-[var(--shadow-soft)] mb-3"
@@ -985,11 +1008,11 @@ export default function FileManagerPage() {
               onClose={() => setShowProperties(false)}
             />
 
-            {!isLoading && !error && allFiles.length > 0 && (
+            {!isLoading && !error && visibleFiles.length > 0 && (
             <div className="rounded-2xl bg-card/90 dark:bg-card/80 ring-1 ring-border/60 p-2 sm:p-3">
               {layout === 'large' || layout === 'icons' ? (
                 <WindowsGrid
-                  files={allFiles}
+                  files={visibleFiles}
                   variant={layout === 'icons' ? 'icons' : 'large'} 
                   density="cozy" 
                   onOpen={(f) => {
@@ -1034,7 +1057,7 @@ export default function FileManagerPage() {
                 <FileList
                   {...({
                     viewMode: layout === 'details' ? 'details' : 'list',
-                    files: allFiles,
+                    files: visibleFiles,
                     layout,
                     selectable: true,
                     selectedIds: selectedIds,

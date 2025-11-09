@@ -11,6 +11,7 @@ import {
   Music as MusicIcon,
   Book as BookIcon,
   Code as CodeIcon,
+  Star as StarIcon,
 } from "lucide-react";
 import { formatBytes } from "../../utils/fileHelpers";
 import type { FileItem } from "../../types";
@@ -611,6 +612,12 @@ export default function WindowsGrid({
                 }}
                 title={titleAttr}
               >
+              {/* Favorite badge */}
+              {(f as any).isFavorited && (
+                <div className="wg-badge-star" title="Starred">
+                  <StarIcon className="h-3.5 w-3.5" />
+                </div>
+              )}
               {/* Thumbnail / Icon */}
               <div className="flex items-center justify-center pt-4">
                 {getThumb(f) ? (
