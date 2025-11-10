@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, File, Database, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File, Database } from 'lucide-react';
 import FileList from '../components/filemanager/FileList';
 import AdvancedFileUpload from '../components/filemanager/AdvancedFileUpload';
 import { useToast } from '../components/providers/Toast';
@@ -8,8 +8,8 @@ import { FileItem, FileDetail } from '../types';
 import { formatBytes } from '../utils/fileHelpers';
 import { createFolder, getFolder, toggleFileFavorite, toFileItem, type BackendStoredFile, duplicateFile, moveFile, getJob, startFileTagJob, listFolders } from '../lib/api';
 import BulkActionBar from '../components/common/BulkActionBar';
-import ExplorerCommandBar from "../components/filemanager/ExplorerCommandBar";
-import ExplorerBreadcrumbs from "../components/filemanager/ExplorerBreadcrumbs";
+import ExplorerCommandBar from "../components/filemanager/CommandBar";
+import ExplorerBreadcrumbs from "../components/filemanager/Breadcrumbs";
 import ExplorerPreviewModal from "../components/filemanager/ExplorerPreviewModal";
 import PropertiesModal from "../components/filemanager/PropertiesModal";
 import FileSidebar from "../components/filemanager/FileSidebar";
@@ -779,20 +779,6 @@ export default function FileManagerPage() {
     />
     </div>
 
-    {/* Right: header search */}
-    <div className="w-full md:w-[420px]">
-      <label className="fm-search block">
-        <Search className="icon h-4 w-4" aria-hidden />
-        <input
-          type="search"
-          placeholder="Search this folder"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Search this folder"
-        />
-      </label>
-    </div>
-
     {/* Tabs */}
     <motion.div
       className="mt-8 flex gap-2"
@@ -875,6 +861,8 @@ export default function FileManagerPage() {
                   const rows = await listFolders(id ?? undefined);
                   return rows.map(r => ({ id: r.id, name: r.name }));
                  }}
+                onSearchSubmit={(q) => setSearch(q)}
+                initialSearch={search}
               />
             </div>
           </div>

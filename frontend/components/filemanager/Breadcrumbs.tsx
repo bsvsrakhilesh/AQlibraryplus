@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Home } from "lucide-react";
+import { ChevronRight, Home, Search, ChevronLeft  } from "lucide-react";
 import { motion } from "framer-motion";
 
 type Crumb = { id: string; label: string; onClick: () => void };
@@ -9,10 +9,7 @@ type Crumb = { id: string; label: string; onClick: () => void };
 type Props = {
   path: Crumb[];
 
-  /** Current folder id if you want the component to maintain its own history and path text */
   currentFolderId?: string | null;
-
-  /** Optional: provide back/forward from outside (e.g., useExplorerHistory) */
   onBack?: () => void;
   onForward?: () => void;
   backEnabled?: boolean;
@@ -21,13 +18,8 @@ type Props = {
   /** Optional: navigate to a target folder (used by address bar resolution) */
   onNavigate?: (folderId: string | null) => void;
 
-  /**
-   * Resolve free-form text from the address bar to a folderId.
-   * If not provided, fallback tries to match last segment by label within current path.
-   */
   onResolvePathText?: (text: string) => Promise<string | null> | string | null;
 
-  /** Optional: show a search box on the right */
   onSearchSubmit?: (q: string) => void;
   initialSearch?: string;
   getChildren?: (id: string | null) => Promise<Array<{ id: string; name: string }>>;
@@ -262,20 +254,21 @@ export default function ExplorerBreadcrumbs({
           onDoubleClick={() => setEditing(true)}
           title="Double-click to edit path"
         >
-          <button
-            onClick={path[0]?.onClick}
-            className="rounded-lg px-2 py-1 hover:bg-[hsl(var(--surface-elev))]"
-            aria-label="Home"
-            title="Home"
+        <button
+           onClick={path[0]?.onClick}
+           className="rounded-xl px-2.5 py-1.5 hover:bg-[hsl(var(--surface-elev))]"
+           aria-label="Home"
+           title="Home"
           >
-            <Home className="h-4 w-4" />
-          </button>
+          <Home className="h-4 w-4" />
+        </button>
+
           {path.slice(1).map((c) => (
             <div key={c.id} className="flex items-center">
               <ChevronRight className="h-4 w-4 text-[hsl(var(--muted))]" />
               <button
                 onClick={c.onClick}
-                className="rounded-lg px-2 py-1 hover:bg-[hsl(var(--surface-elev))]"
+                className="rounded-xl px-2.5 py-1.5 hover:bg-[hsl(var(--surface-elev))]"
               >
                 {c.label}
               </button>
@@ -301,23 +294,22 @@ export default function ExplorerBreadcrumbs({
   );
 
   const SearchBox = onSearchSubmit ? (
-    <form
-      className="hidden md:flex items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const fd = new FormData(e.currentTarget);
-        onSearchSubmit(String(fd.get("q") || ""));
-      }}
-    >
-      <input
-        name="q"
-        defaultValue={initialSearch}
-        placeholder="Search this folder"
-        className="h-9 w-64 pl-3 pr-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--accent))]"
-        aria-label="Search"
-      />
-    </form>
+    <div className="hidden md:block w-full max-w-xs">
+      <label className="fm-search block">
+        <Search className="icon h-4 w-4" aria-hidden />
+        <input
+          type="search"
+          name="q"
+          value={initialSearch}
+          onChange={(e) => onSearchSubmit?.(e.target.value)}
+          placeholder="Search this folder"
+          className="h-9 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--accent))]"
+          aria-label="Search this folder"
+        />
+      </label>
+    </div>
   ) : null;
+
 
   {menu && createPortal(
     <div
@@ -351,44 +343,46 @@ export default function ExplorerBreadcrumbs({
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="text-sm flex items-center gap-2"
+      className="text-sm w-full flex items-center justify-between gap-3"
     >
-      {/* Back / Forward */}
-      <div className="inline-flex rounded-xl border border-[hsl(var(--border))] overflow-hidden">
-        <button
-          className={`px-3 py-2 ${canBack ? "hover:bg-[hsl(var(--surface-elev))]" : "opacity-40 cursor-not-allowed"}`}
-          onClick={doBack}
-          disabled={!canBack}
-          aria-label="Back"
-          title="Back"
-        >
-          ←
-        </button>
-        <button
+    {/* Back / Forward */}
+    <div className="inline-flex rounded-2xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] overflow-hidden shadow-sm">
+      <button
+        className={`px-3 py-2 ${canBack ? "hover:bg-[hsl(var(--surface-elev))]" : "opacity-40 cursor-not-allowed"}`}
+        onClick={doBack}
+        disabled={!canBack}
+        aria-label="Back"
+        title="Back"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <button
           className={`px-3 py-2 ${canForward ? "hover:bg-[hsl(var(--surface-elev))]" : "opacity-40 cursor-not-allowed"}`}
           onClick={doForward}
           disabled={!canForward}
           aria-label="Forward"
           title="Forward"
         >
-          →
-        </button>
-      </div>
+          <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
 
-      {/* Address / Breadcrumbs */}
-      {AddressOrCrumbs}
+    {/* Address / Breadcrumbs */}
+    <div className="flex-1 rounded-2xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] shadow-sm px-2 py-1">
+    {AddressOrCrumbs}
+    </div>
 
-      {/* Right-side actions */}
-      <div className="flex items-center gap-2">
-        <button
-          className="h-9 px-3 rounded-xl border hover:bg-[hsl(var(--surface-elev))]"
-          onClick={() => setEditing((v) => !v)}
-          title={editing ? "Show breadcrumbs" : "Edit address"}
-        >
-          {editing ? "Breadcrumbs" : "Edit"}
-        </button>
-        {SearchBox}
-      </div>
+    {/* Right-side actions */}
+    <div className="flex items-center gap-2">
+      <button
+        className="h-9 px-3 rounded-xl border hover:bg-[hsl(var(--surface-elev))]"
+        onClick={() => setEditing((v) => !v)}
+        title={editing ? "Show breadcrumbs" : "Edit address"}
+      >
+      {editing ? "Breadcrumbs" : "Edit"}
+      </button>
+      {SearchBox}
+    </div>
     </motion.nav>
   );
 }

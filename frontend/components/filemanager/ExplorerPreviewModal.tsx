@@ -17,7 +17,6 @@ type Props = {
 
 export default function ExplorerPreviewModal(props: Props) {
   const { file, isOpen, onClose, onDownload, onToggleFavorite, onTagUpdate, autoFocusTags = false } = props
-
   const [isLoading, setIsLoading] = useState(true)
   const [hadError, setHadError] = useState<string | null>(null)
   const [textContent, setTextContent] = useState<string>('')
