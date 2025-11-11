@@ -822,10 +822,6 @@ export default function FileManagerPage() {
                   const bc = await buildBreadcrumb(folderId ?? undefined);
                   setBreadcrumb(bc);
                 }}
-                getChildren={async (id) => {
-                  const rows = await listFolders(id ?? undefined);
-                  return rows.map(r => ({ id: r.id, name: r.name }));
-                 }}
                 onSearchSubmit={(q) => setSearch(q)}
                 initialSearch={search}
               />

@@ -1,7 +1,13 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { ChevronRight, Home, Search, ChevronLeft  } from "lucide-react";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ChevronRight, ChevronLeft, Home, Search } from "lucide-react";
 import { motion } from "framer-motion";
 
 type Crumb = { id: string; label: string; onClick: () => void };
@@ -15,17 +21,17 @@ type Props = {
   backEnabled?: boolean;
   forwardEnabled?: boolean;
 
-  /** Optional: navigate to a target folder (used by address bar resolution) */
   onNavigate?: (folderId: string | null) => void;
 
-  onResolvePathText?: (text: string) => Promise<string | null> | string | null;
+  onResolvePathText?: (
+    text: string
+  ) => Promise<string | null> | string | null;
 
   onSearchSubmit?: (q: string) => void;
   initialSearch?: string;
-  getChildren?: (id: string | null) => Promise<Array<{ id: string; name: string }>>;
 };
 
-export default function ExplorerBreadcrumbs({
+export default function Breadcrumbs({
   path,
   currentFolderId = null,
   onBack,
@@ -36,356 +42,338 @@ export default function ExplorerBreadcrumbs({
   onResolvePathText,
   onSearchSubmit,
   initialSearch = "",
-  getChildren
 }: Props) {
-  // ----------- Derived strings -----------
-  const currentPathString = useMemo(
-    () => (path.length ? path.map((p) => p.label).join("/") : "Home"),
-    [path]
-  );
+  // Ensure the breadcrumbs actually include & end at the current folder
+  const displayPath = useMemo(() => {
+    if (!path || path.length === 0) return path;
 
+    // If we know the current folder ID, make sure the chain ends on it
+    if (currentFolderId) {
+      const idx = path.findIndex((c) => c.id === currentFolderId);
+
+      if (idx >= 0) {
+        // Trim any extra crumbs AFTER the current folder
+        return path.slice(0, idx + 1);
+      } else {
+        // No crumb for current folder – append one using last label as fallback
+        const last = path[path.length - 1];
+        return [
+          ...path,
+          {
+            ...last,
+            id: currentFolderId,
+          },
+        ];
+      }
+    }
+
+    // No explicit currentFolderId – just use path as given
+    return path;
+  }, [path, currentFolderId]);
+
+  // --- Derived path string (for address editing) ---
+  const currentPathString = useMemo(() => {
+    if (!displayPath || displayPath.length === 0) return "";
+    return displayPath.map((c) => c.label).join(" / ");
+  }, [displayPath]);
+
+  // --- Address bar editing state ---
   const [editing, setEditing] = useState(false);
   const [pathText, setPathText] = useState(currentPathString);
-  const [addrError, setAddrError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-
   const crumbsRef = useRef<HTMLDivElement | null>(null);
 
- // Quick-jump menu state
-  const [menu, setMenu] = useState<{
-     x: number;
-     y: number;
-     items: Array<{ id: string; name: string }>;
-  } | null>(null);
+  // --- Search state (controlled input mirroring parent) ---
+  const [search, setSearch] = useState(initialSearch);
+
+  useEffect(() => {
+    setSearch(initialSearch ?? "");
+  }, [initialSearch]);
 
   useEffect(() => {
     if (!editing) setPathText(currentPathString);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPathString]);
+  }, [currentPathString, editing]);
 
-  // Auto-scroll right to reveal the most specific crumb
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  // Always scroll crumbs to the end when path changes
   useEffect(() => {
     const el = crumbsRef.current;
     if (!el) return;
-    // Defer till after layout
     requestAnimationFrame(() => {
-       el.scrollLeft = el.scrollWidth;
+      el.scrollLeft = el.scrollWidth;
     });
   }, [path]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const onClick = () => setMenu(null);
-    window.addEventListener("click", onClick);
-    return () => window.removeEventListener("click", onClick);
-  }, [menu]);
-
-  useEffect(() => {
-    if (editing && inputRef.current) inputRef.current.select();
-  }, [editing]);
-
-  // Ctrl+L: toggle into address edit and select the whole path
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
-        e.preventDefault();
-        setEditing(true);
-        requestAnimationFrame(() => inputRef.current?.select());
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  // ----------- Internal history (only used if no external onBack/onForward given) -----------
+  // --- Internal back/forward history when parent doesn't provide handlers ---
   const [backStack, setBackStack] = useState<(string | null)[]>([]);
-  const [fwdStack, setFwdStack] = useState<(string | null)[]>([]);
+  const [forwardStack, setForwardStack] = useState<(string | null)[]>([]);
   const lastIdRef = useRef<string | null>(currentFolderId ?? null);
 
   useEffect(() => {
     const now = currentFolderId ?? null;
-    const prev = lastIdRef.current ?? null;
+    const prev = lastIdRef.current;
+
     if (prev === now) return;
 
-    // push prev to back and clear forward
     if (prev !== null || now !== null) {
-      setBackStack((bs) => [...bs, prev]);
-      setFwdStack([]);
+      setBackStack((bs) => [...bs, prev ?? null]);
+      setForwardStack([]);
     }
     lastIdRef.current = now;
   }, [currentFolderId]);
 
-  const internalCanBack = backStack.length > 0;
-  const internalCanForward = fwdStack.length > 0;
+  const runNavigate = useCallback(
+    (target: string | null) => {
+      if (onNavigate) {
+        onNavigate(target);
+        return;
+      }
+
+      if (!target) return;
+
+      const crumb = path.find((c) => c.id === target);
+      if (crumb) crumb.onClick();
+      else path[path.length - 1]?.onClick();
+    },
+    [onNavigate, path]
+  );
 
   const internalBack = useCallback(() => {
-    if (!internalCanBack) return;
-    const target = backStack[backStack.length - 1];
-    const prev = currentFolderId ?? null;
-    setBackStack((bs) => bs.slice(0, bs.length - 1));
-    setFwdStack((fs) => [...fs, prev]);
-    lastIdRef.current = target;
-    if (onNavigate) onNavigate(target);
-    else {
-      // try to find the crumb for target id; if none, click the closest earlier crumb
-      const targetCrumb = path.find((c) => c.id === target);
-      if (targetCrumb) targetCrumb.onClick();
-      else path[path.length - 1]?.onClick();
-    }
-  }, [internalCanBack, backStack, currentFolderId, onNavigate, path]);
+    setBackStack((bs) => {
+      if (bs.length === 0) return bs;
+
+      const nextBs = bs.slice(0, -1);
+      const target = bs[bs.length - 1] ?? null;
+      const prev = currentFolderId ?? null;
+
+      setForwardStack((fs) => [...fs, prev]);
+      lastIdRef.current = target;
+      runNavigate(target);
+
+      return nextBs;
+    });
+  }, [currentFolderId, runNavigate]);
 
   const internalForward = useCallback(() => {
-    if (!internalCanForward) return;
-    const target = fwdStack[fwdStack.length - 1];
-    const prev = currentFolderId ?? null;
-    setFwdStack((fs) => fs.slice(0, fs.length - 1));
-    setBackStack((bs) => [...bs, prev]);
-    lastIdRef.current = target;
-    if (onNavigate) onNavigate(target);
-    else {
-      const targetCrumb = path.find((c) => c.id === target);
-      if (targetCrumb) targetCrumb.onClick();
-      else path[path.length - 1]?.onClick();
-    }
-  }, [internalCanForward, fwdStack, currentFolderId, onNavigate, path]);
+    setForwardStack((fs) => {
+      if (fs.length === 0) return fs;
+
+      const nextFs = fs.slice(0, -1);
+      const target = fs[fs.length - 1] ?? null;
+      const prev = currentFolderId ?? null;
+
+      setBackStack((bs) => [...bs, prev]);
+      lastIdRef.current = target;
+      runNavigate(target);
+
+      return nextFs;
+    });
+  }, [currentFolderId, runNavigate]);
+
+  const internalCanBack = backStack.length > 0;
+  const internalCanForward = forwardStack.length > 0;
+
+  const canBack =
+    backEnabled ?? (onBack ? true : internalCanBack);
+  const canForward =
+    forwardEnabled ?? (onForward ? true : internalCanForward);
 
   const doBack = onBack ?? internalBack;
   const doForward = onForward ?? internalForward;
-  const canBack = backEnabled ?? internalCanBack;
-  const canForward = forwardEnabled ?? internalCanForward;
 
-  // ----------- Address resolution -----------
-  const fallbackResolve = useCallback(
-    (text: string): string | null => {
-      // Very basic: match the last segment by label within the current breadcrumb chain
-      const parts = text
-        .split(/[\\/]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (!parts.length) return path[0]?.id ?? null;
-      const needle = parts[parts.length - 1].toLowerCase();
-      const match = [...path]
-        .reverse()
-        .find((c) => c.label.toLowerCase() === needle);
-      return match?.id ?? path[path.length - 1]?.id ?? null;
-    },
-    [path]
-  );
+  // --- Address resolution (Enter in text mode) ---
+  const resolveAndNavigate = useCallback(async () => {
+    const text = pathText.trim();
 
-  const applyAddress = useCallback(async () => {
-    setAddrError(null);
-    try {
-      const trimmed = pathText.trim();
-      if (!trimmed) {
-        if (onNavigate) onNavigate(path[0]?.id ?? null);
-        else path[0]?.onClick?.();
-        setEditing(false);
-        return;
-      }
-      const target = onResolvePathText
-        ? await onResolvePathText(trimmed)
-        : fallbackResolve(trimmed);
-
-      if (typeof target === "undefined") {
-        throw new Error("Unable to resolve path.");
-      }
-      if (onNavigate) onNavigate(target ?? null);
-      else {
-        const crumb = path.find((c) => c.id === target);
-        if (crumb) crumb.onClick();
-        else path[path.length - 1]?.onClick?.();
-      }
+    if (!text) {
+      runNavigate(null);
       setEditing(false);
-    } catch (err: any) {
-      setAddrError(err?.message || "Invalid path");
+      return;
     }
-  }, [fallbackResolve, onNavigate, onResolvePathText, path, pathText]);
 
-  // ----------- UI -----------
-  const AddressOrCrumbs = (
-    <div className="flex-1 min-w-0">
-      {editing ? (
-        <div className="relative">
-          <input
-            ref={inputRef}
-            className={`w-full h-9 pl-3 pr-9 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--accent))] ${addrError ? "ring-2 ring-red-500" : ""}`}
-            value={pathText}
-            onChange={(e) => setPathText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") applyAddress();
-              if (e.key === "Escape") {
-                setEditing(false);
-                setAddrError(null);
-                setPathText(currentPathString);
-              }
-            }}
-            aria-label="Address input"
-          />
-          <div className="absolute right-1 top-1 flex gap-1">
-            <button
-              className="px-2 py-1 text-xs rounded-md bg-[hsl(var(--surface-elev))] hover:bg-[hsl(var(--surface-elev-2))] border"
-              onClick={() => {
-                setEditing(false);
-                setAddrError(null);
-                setPathText(currentPathString);
-              }}
-              title="Cancel"
-            >
-              Esc
-            </button>
-            <button
-              className="px-2 py-1 text-xs rounded-md bg-[hsl(var(--accent))] text-white hover:opacity-90"
-              onClick={applyAddress}
-              title="Go"
-            >
-              Go
-            </button>
-          </div>
-          {addrError && (
-            <div className="mt-1 text-xs text-red-600">{addrError}</div>
-          )}
-        </div>
-      ) : (
-        <div
-          role="group"
-          aria-label="Breadcrumb"
-          className="h-9 inline-flex items-center gap-1 pl-2 pr-2 rounded-2xl bg-white/80 border border-white/80 shadow-sm text-[13px] text-[hsl(var(--muted-foreground))] overflow-x-auto fm-no-scrollbar"
-          ref={crumbsRef}
-          onDoubleClick={() => setEditing(true)}
-          title="Double-click to edit path"
-        >
-        <button
-           onClick={path[0]?.onClick}
-           className="inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 hover:bg-white/90"
-           aria-label="Home"
-           title="Home"
-          >
-          <Home className="h-4 w-4" />
-          <span className="font-medium text-[hsl(var(--text))]">
-            {path[0]?.label ?? "Home"}
-          </span>
-        </button>
+    let resolved: string | null = null;
 
-          {path.slice(1).map((c) => (
-            <div key={c.id} className="flex items-center">
-              <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--muted))]" />
-              <button
-                onClick={c.onClick}
-                className="rounded-xl px-2.5 py-1.5 hover:bg-[hsl(var(--surface-elev))]"
-              >
-                {c.label}
-              </button>
-              {getChildren && (
-              <button
-                className="ml-1 px-1.5 py-1 rounded-md opacity-60 group-hover:opacity-100 hover:bg-[hsl(var(--surface-elev))]"
-                title="Quick jump"
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  const items = await getChildren(c.id);
-                  setMenu({ x: rect.left, y: rect.bottom + 6, items });
-                }}
-              >
-                ▾
-              </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+    if (onResolvePathText) {
+      const maybe = await onResolvePathText(text);
+      if (typeof maybe === "string" || maybe === null) {
+        resolved = maybe;
+      }
+    }
 
+    // Fallback: try to match by last segment label
+    if (resolved === null) {
+      const segments = text.split(/[\\/]/).map((s) => s.trim());
+      const last = segments.filter(Boolean).pop()?.toLowerCase();
+      if (last) {
+        const match = displayPath.find(
+          (c) => c.label.toLowerCase() === last
+        );
+        if (match) resolved = match.id;
+      }
+    }
+
+    if (resolved !== null) runNavigate(resolved);
+    setEditing(false);
+  }, [pathText, onResolvePathText, path, runNavigate]);
+
+  const handleAddressKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      resolveAndNavigate();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setEditing(false);
+      setPathText(currentPathString);
+    }
+  };
+
+  // --- Search box (right side) ---
   const SearchBox = onSearchSubmit ? (
-    <div className="hidden md:block w-full max-w-xs">
-      <label className="fm-search block">
-        <Search className="icon h-4 w-4" aria-hidden />
-        <input
-          type="search"
-          name="q"
-          value={initialSearch}
-          onChange={(e) => onSearchSubmit?.(e.target.value)}
-          placeholder="Search this folder"
-          className="h-9 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--accent))]"
-          aria-label="Search this folder"
-        />
-      </label>
+    <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-2xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] shadow-sm w-64">
+      <Search className="h-4 w-4 text-[hsl(var(--fm-muted))]" />
+      <input
+        type="search"
+        name="q"
+        value={search}
+        onChange={(e) => {
+          const v = e.target.value;
+          setSearch(v);
+          onSearchSubmit?.(v);
+        }}
+        placeholder="Search this folder"
+        className="h-7 flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--fm-muted))]"
+        aria-label="Search this folder"
+      />
     </div>
   ) : null;
 
-
-  {menu && createPortal(
-    <div
-      className="fixed z-[80] min-w-[220px] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--popover))] shadow-xl p-1"
-      style={{ left: menu.x, top: menu.y }}
-      onClick={(e) => e.stopPropagation()}
-      onMouseLeave={() => setMenu(null)}
-    >
-      {menu.items.length === 0 ? (
-        <div className="px-3 py-2 text-sm text-[hsl(var(--muted))]">No subfolders</div>
-      ) : (
-        menu.items.map((it) => (
-          <button
-            key={it.id}
-            className="w-full text-left px-3 py-2 rounded-lg hover:bg-[hsl(var(--surface-elev))] text-sm"
-            onClick={() => {
-              setMenu(null);
-              onNavigate?.(it.id);
-            }}
-          >
-            {it.name}
-          </button>
-        ))
-      )}
-    </div>,
-    document.body
-  )}
-
+  // --- Render ---
   return (
     <motion.nav
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="text-sm w-full flex items-center justify-between gap-3"
+      className="w-full flex items-center justify-between gap-3 text-sm"
     >
-    {/* Back / Forward */}
-    <div className="inline-flex rounded-2xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] overflow-hidden shadow-sm">
-      <button
-        className={`px-3 py-2 ${canBack ? "hover:bg-[hsl(var(--surface-elev))]" : "opacity-40 cursor-not-allowed"}`}
-        onClick={doBack}
-        disabled={!canBack}
-        aria-label="Back"
-        title="Back"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </button>
-      <button
-          className={`px-3 py-2 ${canForward ? "hover:bg-[hsl(var(--surface-elev))]" : "opacity-40 cursor-not-allowed"}`}
-          onClick={doForward}
-          disabled={!canForward}
-          aria-label="Forward"
-          title="Forward"
+      {/* Left cluster: Back / Forward + breadcrumb pill */}
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        {/* Back / Forward pill */}
+        <div className="inline-flex items-center rounded-2xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] shadow-sm overflow-hidden">
+          <button
+            type="button"
+            className={`px-3 py-2 transition-colors ${
+              canBack
+                ? "hover:bg-[hsl(var(--surface-elevated))]"
+                : "opacity-40 cursor-not-allowed"
+            }`}
+            onClick={doBack}
+            disabled={!canBack}
+            aria-label="Back"
+            title="Back"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-2 border-l border-[hsl(var(--fm-border))] transition-colors ${
+              canForward
+                ? "hover:bg-[hsl(var(--surface-elevated))]"
+                : "opacity-40 cursor-not-allowed"
+            }`}
+            onClick={doForward}
+            disabled={!canForward}
+            aria-label="Forward"
+            title="Forward"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Address / breadcrumbs pill */}
+        <div className="flex-1 rounded-2xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] shadow-sm px-3 py-1.5 flex items-center gap-2 min-w-0">
+          {/* Home icon bubble */}
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-[hsl(var(--fm-bg))] text-[hsl(var(--fm-accent))] border border-[hsl(var(--fm-border))] shadow-[var(--fm-shadow)]"
+            onClick={() => runNavigate(null)}
+            title="Go to root"
+            aria-label="Go to root"
+          >
+            <Home className="h-4 w-4" />
+          </button>
+
+          {/* Breadcrumbs or editable path */}
+          <div
+            className="flex-1 min-w-0"
+            ref={crumbsRef}
+          >
+            {editing ? (
+              <input
+                ref={inputRef}
+                value={pathText}
+                onChange={(e) => setPathText(e.target.value)}
+                onKeyDown={handleAddressKeyDown}
+                className="w-full bg-transparent text-sm outline-none"
+                spellCheck={false}
+              />
+            ) : (
+              <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-transparent">
+                {(!displayPath || displayPath.length === 0) ? (
+                  <span className="text-[hsl(var(--fm-muted))]">
+                    This PC
+                  </span>
+                ) : (
+                  path.map((crumb, idx) => {
+                    const isLast = idx === displayPath.length;
+                    return (
+                      <div
+                        key={crumb.id}
+                        className="flex items-center gap-1 shrink-0"
+                      >
+                        <button
+                          type="button"
+                          onClick={crumb.onClick}
+                          className={`px-2 py-1 rounded-xl text-xs md:text-sm transition-colors whitespace-nowrap ${
+                            isLast
+                              ? "bg-[hsl(var(--fm-accent))] text-white shadow-sm"
+                              : "hover:bg-[hsl(var(--surface-elevated))] text-[hsl(var(--fm-text))]"
+                          }`}
+                        >
+                          {crumb.label}
+                        </button>
+                        {!isLast && (
+                          <ChevronRight className="h-3 w-3 text-[hsl(var(--fm-muted))]" />
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Right-side actions: Edit toggle + Search */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="h-9 px-3 rounded-xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] text-xs md:text-sm hover:bg-[hsl(var(--surface-elevated))] transition-colors"
+          onClick={() => setEditing((v) => !v)}
+          title={editing ? "Show breadcrumbs" : "Edit address"}
         >
-          <ChevronRight className="h-4 w-4" />
-      </button>
-    </div>
-
-    {/* Address / Breadcrumbs */}
-    <div className="flex-1 rounded-2xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] shadow-sm px-2 py-1">
-    {AddressOrCrumbs}
-    </div>
-
-    {/* Right-side actions */}
-    <div className="flex items-center gap-2">
-      <button
-        className="h-9 px-3 rounded-xl border hover:bg-[hsl(var(--surface-elev))]"
-        onClick={() => setEditing((v) => !v)}
-        title={editing ? "Show breadcrumbs" : "Edit address"}
-      >
-      {editing ? "Breadcrumbs" : "Edit"}
-      </button>
-      {SearchBox}
-    </div>
+          {editing ? "Breadcrumbs" : "Edit"}
+        </button>
+        {SearchBox}
+      </div>
     </motion.nav>
   );
 }
