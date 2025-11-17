@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight} from 'lucide-react';
 import { useToast } from '../components/providers/Toast';
 import { FileItem, FileDetail } from '../types';
-import { formatBytes } from '../utils/fileHelpers';
 import { createFolder, getFolder, toggleFileFavorite, toFileItem, type BackendStoredFile, duplicateFile, moveFile, getJob, startFileTagJob, listFolders } from '../lib/api';
 import BulkActionBar from '../components/common/BulkActionBar';
 import FileList from '../components/filemanager/FileList';
@@ -72,7 +71,6 @@ export default function FileManagerPage() {
   // layout / pagination / minor UI state
   const [layout, setLayout] = useState<Layout>(() => getLS<Layout>('fm:layout', 'icons'));
   useEffect(() => setLS('fm:layout', layout), [layout]);
-  const [inspectorOpen, setInspectorOpen] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
 
@@ -792,7 +790,7 @@ export default function FileManagerPage() {
         </aside>
 
       {/* Center: Files area */}
-      <section className={`col-span-12 ${inspectorOpen ? 'lg:col-span-6' : 'lg:col-span-9'}`}>
+      <section className="col-span-12 lg:col-span-9 flex flex-col space-y-3">
           {/* Sticky toolbar - Enhanced with glassmorphism and animations */}
 
           <div className="mb-2">
@@ -1084,71 +1082,6 @@ export default function FileManagerPage() {
           </motion.div>
           </div>
       </section>
-
-        {/* Right: Inspector */}
-        <aside className="col-span-12 lg:col-span-3 relative">
-          <div
-            className={[
-              "rounded-3xl border border-border/30 bg-surface/70 backdrop-blur-xl shadow-2xl overflow-hidden",
-              inspectorOpen ? "opacity-100 translate-x-0" : "opacity-0 pointer-events-none translate-x-2"
-            ].join(" ")}
-          >
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
-              <div className="text-sm font-semibold">Details</div>
-              <button
-                className="text-xs underline"
-                onClick={() => setInspectorOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-        
-            {/* Body */}
-            <div className="p-4 space-y-4">
-              {selected.length === 0 ? (
-                <div className="text-[13px] text-muted">
-                  Select a file to see details here.
-                </div>
-              ) : (
-              <>
-
-            {/* Summary of first selected */}
-            <div className="space-y-1">
-              <div className="font-medium truncate">{selected[0].title ?? (selected[0] as any).fileName}</div>
-              <div className="text-xs text-muted">
-                {(selected[0] as any).mimeType || (selected[0] as any).ext} • {formatBytes((selected[0] as any).size || 0)}
-              </div>
-            </div>
-  
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1.5 text-sm rounded-lg border border-border/40 hover:bg-surface/20"
-                onClick={() => window.open(`/api/files/${selected[0].id}/download`, "_blank")}
-              >
-                Download
-              </button>
-              <button
-                className="px-3 py-1.5 text-sm rounded-lg border border-border/40 hover:bg-surface/20"
-                onClick={() => handleToggleFavorite(selected[0] as any)}
-              >
-                {(selected[0] as any).isFavorited ? "Unfavorite" : "Favorite"}
-              </button>
-            </div>
-
-                <div>
-                  <button
-                    className="px-3 py-1.5 text-sm rounded-lg border border-border/40 hover:bg-surface/20"
-                    onClick={() => handleOpenPreview(selected[0] as any, { focusTags: true })}
-                  >
-                    Edit tags…
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </aside>
       </div>
 
       {/* Preview modal */}
