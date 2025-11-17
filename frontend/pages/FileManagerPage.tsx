@@ -753,29 +753,25 @@ export default function FileManagerPage() {
       >
       {/* Header */}
       <motion.div
-        className="max-w-7xl mx-auto px-1 pt-2 pb-1 relative z-10 bg-gradient-to-b from-white/90 to-white/50 dark:from-neutral-900/90 dark:to-neutral-900/50 rounded-[28px] shadow-[0_22px_80px_rgba(15,23,42,0.15)] ring-1 ring-white/60 backdrop-blur-2xl"
-        initial={{ y: -20, opacity: 0 }}
+        className="max-w-7xl mx-auto px-1 md:px-0 flex flex-col gap-1"
+        initial={{ y: 0, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
+        transition={{ delay: 0.05, duration: 0.45, ease: "easeOut" }}
       >
-
-      <div className="flex flex-wrap items-start justify-between gap-1 md:gap-1">
-       <div className="relative flex-1 min-w-0">
-      <h2 className="text-4xl font-black text-text tracking-tight mb-1 drop-shadow-lg px-1">File Explorer</h2>
-      <p className="text-lg text-muted-foreground flex items-center gap-2 drop-shadow-lg px-1">
+      <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">File Explorer</h2>
+      <p className="text-sm md:text-base text-slate-600">
       Innovate your journey with seamless file management.
       </p>
-       </div>
-      </div>
       </motion.div>
 
       {/* Content */}
-      <div className="max-w-7xl w-full mx-auto mt-3 grid grid-cols-12 gap-4 rounded-[28px] bg-white/70 shadow-[0_22px_80px_rgba(15,23,42,0.15)] ring-1 ring-white/60 backdrop-blur-2xl px-4 pt-4 pb-2 md:px-6 md:pt-5 md:pb-3">
+      <div className="max-w-7xl w-full mx-auto mt-4 grid grid-cols-12 gap-4 lg:gap-6">
+        
         {/* Left: Quick Access + Folder tree */}
         <aside className="col-span-12 lg:col-span-3 flex flex-col">
           <motion.div
-            className="h-full rounded-[30px] bg-white p-6 border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.16)]"
-            initial={{ x: -30, opacity: 0 }}
+            className="h-full rounded-[28px] bg-white/80 border border-slate-100 shadow-[0_18px_60px_rgba(15,23,42,0.18)] p-4 md:p-5 backdrop-blur-xl"
+            initial={{ x: -10, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.6, duration: 0.6, ease: "easeOut" }}
           >
@@ -789,9 +785,9 @@ export default function FileManagerPage() {
         </aside>
 
       {/* Center: Files area */}
+      <div className="bg-white/50 rounded-3xl p-4 md:p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-lg col-span-12 lg:col-span-9">
       <section className="col-span-12 lg:col-span-9 flex flex-col space-y-3">
           {/* Sticky toolbar - Enhanced with glassmorphism and animations */}
-
           <div className="mb-2">
               <ExplorerBreadcrumbs
                 path={breadcrumb.map((b, idx) => ({
@@ -1081,6 +1077,7 @@ export default function FileManagerPage() {
           </motion.div>
           </div>
       </section>
+      </div>
       </div>
 
       {/* Preview modal */}
