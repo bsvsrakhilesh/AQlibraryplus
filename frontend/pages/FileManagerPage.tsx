@@ -749,7 +749,7 @@ export default function FileManagerPage() {
   return (
     <PageTransition>
       <motion.div
-        className="h-full bg-[hsl(var(--background))] py-1 md:py-2 overflow-visible"
+        className="h-full w-full bg-[hsl(var(--background))] py-1 md:py-1 overflow-visible"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
