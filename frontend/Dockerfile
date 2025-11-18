@@ -1,5 +1,6 @@
 # Build the static app
 FROM node:20-alpine AS build
+RUN npm install -g npm@latest
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci

@@ -2,7 +2,7 @@
 
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
-
+RUN npm install -g npm@latest
 # Faster Puppeteer installs & use system Chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
