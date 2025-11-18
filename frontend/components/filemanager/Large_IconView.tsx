@@ -686,7 +686,7 @@ export default function WindowsGrid({
           padding: cardSize.pad,
         }}
       >
-        {sortedFiles.map((f) => {
+        {sortedFiles.map((f, index) => {
           const id = String((f as any).id);
           const selected = sel.has(id);
           const folder = isFolder(f);
@@ -703,12 +703,15 @@ export default function WindowsGrid({
           return (
             <div
               key={id}
-              className={`wg-card group relative w-full overflow-visible rounded-xl border ${
+              className={`wg-card wg-card-animate group relative w-full overflow-visible rounded-xl border ${
                 selected
                   ? "border-blue-500 ring-2 ring-blue-400/40"
                   : "border-neutral-200 hover:border-neutral-300"
               } bg-white shadow-sm hover:shadow transition-all`}
-              style={{ height: cardSize.h }}
+              style={{
+                height: cardSize.h,
+                animationDelay: `${Math.min(index * 0.02, 0.25)}s`,
+              }}
               draggable
               onDragStart={(e) => handleDragStart(e, f)}
               onDragEnd={handleDragEnd}

@@ -14,7 +14,7 @@ import PropertiesModal from "../components/filemanager/PropertiesModal";
 import FileSidebar from "../components/filemanager/FileSidebar";
 import PageTransition from '../components/motion/PageTransition';
 import { useExplorerHistory } from '../hooks/useExplorerHistory';
-import WindowsGrid from '../components/filemanager/WindowsGrid';
+import WindowsGrid from '../components/filemanager/Large_IconView';
 
 const DEFAULT_PAGE_SIZE = 15;
 const getLS = <T,>(k: string, v: T) => {
@@ -866,18 +866,52 @@ export default function FileManagerPage() {
           )}
 
           {/* Files list */}
-          <div className="rounded-2xl bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.08)] overflow-hidden">
-            <div className="sticky top-0 z-[5] bg-slate-50 border-b border-slate-200">
-              <div className="h-full px-3 sm:px-4 flex items-center gap-2">
-          
-                {/* right: quick density + layout controls mirror your CommandBar */}
-                <div className="flex items-center gap-1 text-[13px] px-1 py-1">
-                  <span className="px-2 py-2 rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]">
-                    {allFiles.length} items
+          <motion.div
+            className="fm-panel"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45, duration: 0.45, ease: 'easeOut' }}
+          >
+          <div className="fm-panel-header">
+            <div className="flex h-11 sm:h-12 items-center justify-between gap-2 px-3 sm:px-4">
+              {/* Left: context + optional search state */}
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-slate-900/[0.02] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))]">
+                    {currentFolderId ? 'Current folder' : 'Home'}
                   </span>
+                  {search && (
+                    <span className="hidden sm:inline-flex text-[11px] text-[hsl(var(--muted-foreground))]">
+                      Filtered by <span className="ml-1 font-medium">"{search}"</span>
+                    </span>
+                  )}
                 </div>
+                <span className="text-[11px] text-[hsl(var(--muted-foreground))] sm:hidden">
+                  {visibleFiles.length} items
+                </span>
+              </div>
+             {/* Right: density micro-chips + total items */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className={`fm-chip-density ${density === 'comfortable' ? 'fm-chip-density-active' : ''}`}
+                  onClick={() => setDensity('comfortable')}
+                >
+                  Cozy
+                </button>
+                <button
+                  type="button"
+                  className={`fm-chip-density ${density === 'compact' ? 'fm-chip-density-active' : ''}`}
+                  onClick={() => setDensity('compact')}
+                >
+                  Compact
+                </button>
+               <span className="hidden sm:inline-flex items-center rounded-full border border-[hsl(var(--border))] bg-white/70 px-3 py-1 text-[11px] font-medium text-[hsl(var(--muted-foreground))] shadow-sm">
+                  {visibleFiles.length} items
+                </span>
               </div>
             </div>
+          </div>
 
             {isLoading && <div className="p-6 text-sm opacity-70">Loading…</div>}
             {error && !isLoading && (
@@ -944,7 +978,7 @@ export default function FileManagerPage() {
                 <WindowsGrid
                   files={visibleFiles}
                   variant={layout === 'icons' ? 'icons' : 'large'} 
-                  density="cozy" 
+                  density={density === 'compact' ? 'compact' : 'comfortable'}
                   onOpen={(f) => {
                     const isFolder = String(f.id).startsWith('folder:');
                     if (isFolder) {
@@ -1021,13 +1055,13 @@ export default function FileManagerPage() {
                       setSortDir(dir as SortDir);
                       setPage(1);
                     },
-                    density: "comfortable",
+                    density,
                   } as any)}
                 />
               )}
             </div>
           )}
-          </div>
+          </motion.div>
 
           {/* Pagination - Enhanced with glassmorphism and animations */}
           <motion.div

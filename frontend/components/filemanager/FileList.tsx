@@ -72,10 +72,10 @@ type Props = {
   resetColumnsToken?: number | string;
   autosizeColumnsToken?: number | string;
 
-  /** extras your page passes — optional, not wired yet */
   layout?: 'details' | 'list';
   selectable?: boolean;
   clipboard?: unknown;
+  density?: 'comfortable' | 'compact';
   onUpdateTags?: (fileId: string, nextTags: string[]) => Promise<void> | void;
   onEditTags?: (file: any) => void;
   onNew?: (kind: 'folder' | 'file') => void;
@@ -112,9 +112,10 @@ export default function FileList({
   resetColumnsToken,
   autosizeColumnsToken,
 
-  // extras
   layout,
   selectable = true,
+  density = 'comfortable',
+
 }: Props) {
   // Row context menu
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
@@ -196,7 +197,7 @@ export default function FileList({
     localStorage.setItem(viewKey, viewMode);
   }, [viewMode, viewKey]);
 
-// Map external layout (details/icons/tiles/list) -> internal viewMode
+// Map external layout (details/list) -> internal viewMode
 useEffect(() => {
   if (!layout) return;
   const mapped: ViewMode =
@@ -1034,7 +1035,7 @@ useEffect(() => {
   /** ---------- render ---------- */
   return (
     <div
-      className="filelist-root rounded-2xl"
+      className={`filelist-root rounded-2xl ${density === 'compact' ? 'fm-list-compact' : ''}`}
       onMouseDown={(e) => { (e.currentTarget as HTMLElement).focus(); }}
       onKeyDown={onKeyDown}
       tabIndex={-1}
