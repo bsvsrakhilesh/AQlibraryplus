@@ -92,6 +92,9 @@ const App: React.FC = () => {
       default:              return <UrlCollectorPage />;
     }
   };
+  const workspacePages: Page[] = ['url-collector', 'saved-urls', 'file-manager'];
+  const isWorkspacePage = workspacePages.includes(currentPage);
+  const isNotebookPage = currentPage === 'notebook';
 
   return (
     <ToastProvider>
@@ -101,7 +104,8 @@ const App: React.FC = () => {
           sidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen(v => !v)}
           onNavigateHome={() => setCurrentPage('url-collector')}
-          hideAmbient={currentPage === 'file-manager'}
+          hideAmbient={isWorkspacePage}
+          variant={isNotebookPage ? 'notebook' : 'workspace'}
         >
           {renderPage()}
         </AppShell>

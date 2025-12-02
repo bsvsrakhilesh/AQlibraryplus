@@ -80,17 +80,17 @@ export default function NotebookPage() {
   }, []);
 
   return (
-    <div className="p-3 md:p-5">
-      <div className="min-h rounded-[28px] border border-emerald-100 bg-gradient-to-b from-emerald-50 to-teal-50 shadow-[0_8px_40px_rgba(16,185,129,0.15)] p-3 md:p-4 h-full">
+    <div className="p-5 md:p-5">
+      <div className="min-h-[calc(100vh-112px)] rounded-[28px] border border-emerald-200/80 bg-emerald-50/40 shadow-[0_24px_80px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
         <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_420px] items-stretch h-full">
       {/* Left rail */}
-      <div className="rounded-2xl border border-emerald-300/70 bg-transparent p-3 flex flex-col overflow-hidden backdrop-blur-[0.5px]">
+      <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/60 shadow-[0_10px_30px_rgba(15,23,42,0.18)] p-3 flex flex-col overflow-hidden backdrop-blur-sm">
         {/* Notebooks */}
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-800">Notebooks</h2>
             <button
               onClick={() => createM.mutate({ title: `Notebook ${new Date().toLocaleTimeString()}` })}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-slate-900 text-white hover:bg-black transition shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-medium shadow-[0_10px_24px_rgba(15,23,42,0.35)] hover:bg-slate-950 hover:-translate-y-0.5 active:translate-y-[1px] active:shadow-[0_4px_14px_rgba(15,23,42,0.55)] transition-all duration-200 transform"
             >
               New
             </button>
@@ -101,18 +101,20 @@ export default function NotebookPage() {
              key={n.id}
              onClick={() => setActiveId(n.id)}
              className={clsx(
-               'group relative w-full h-9 flex items-center text-left px-3 rounded-md text-sm transition',
+               'group relative w-full h-9 flex items-center text-left px-3 rounded-md text-sm transition-all duration-200 transform',
                'shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]',
                activeId === n.id
-                 ? 'bg-emerald-50/70 text-slate-900 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.35)]'
-                 : 'bg-white hover:bg-slate-50 text-slate-700'
+                 ? 'bg-emerald-50/80 text-slate-900 shadow-[0_10px_26px_rgba(16,185,129,0.45)] -translate-y-[1px]'
+                 : 'bg-white/85 text-slate-700 hover:bg-emerald-50/70 hover:shadow-[0_10px_24px_rgba(15,23,42,0.14)] hover:-translate-y-[1px]'
              )}
            >
              {/* mint selection rail */}
              <span
                className={clsx(
-                 'absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r',
-                 activeId === n.id ? 'bg-emerald-500' : 'bg-transparent'
+                 'absolute left-0 top-1/2 -translate-y-1/2 h-5 rounded-r transition-all duration-200',
+                 activeId === n.id
+                   ? 'w-1.5 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.5)]'
+                   : 'w-[3px] bg-emerald-300/80 opacity-0 group-hover:opacity-100 group-hover:translate-x-[1px]'
                )}
              />
              <span className="truncate">{n.title}</span>
@@ -185,13 +187,13 @@ export default function NotebookPage() {
       </div>
 
       {/* Center */}
-      <div className="rounded-2xl border border-emerald-300/70 bg-transparent flex flex-col overflow-hidden min-h-[70vh] backdrop-blur-[0.5px]">
+      <div className="rounded-2xl border border-emerald-300/70 bg-transparent flex flex-col overflow-hidden min-h-[70vh] backdrop-blur-sm">
         <div className="border-b border-emerald-300/70 px-5 py-3 flex items-center gap-3 bg-white/75 backdrop-blur supports-[backdrop-filter]:bg-white/55 sticky top-0 z-10 shadow-[0_1px_0_rgba(16,185,129,0.15)]">
           <input
             value={detailQ.data?.notebook?.title || ''}
             onChange={(e) => activeId && updateTitle.mutate({ id: activeId, title: e.target.value })}
             disabled={!active}
-            className="text-lg font-semibold w-full placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 disabled:bg-transparent"
+            className="text-xl font-semibold w-full bg-transparent border-none outline-none placeholder:text-slate-400 text-slate-900 focus:ring-2 focus:ring-emerald-400/40 focus:ring-offset-0 rounded-md px-1 -mx-1"
             placeholder="Untitled notebook"
           />
           <div className="ml-auto text-[11px] text-slate-600 bg-slate-100/70 px-2 py-0.5 rounded-md tabular-nums">
@@ -202,7 +204,7 @@ export default function NotebookPage() {
       </div>
 
       {/* Right */}
-      <SmartCard as="section" className="rounded-2xl border border-emerald-300/70 bg-transparent flex flex-col overflow-hidden backdrop-blur-[0.5px]">
+      <SmartCard as="section" className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 shadow-[0_10px_30px_rgba(15,23,42,0.16)] flex flex-col overflow-hidden backdrop-blur-sm">
       <NotesEditor notebookId={activeId} />
       <div className="border-t border-emerald-300/70" />
       <RightPanel notebookId={activeId} />

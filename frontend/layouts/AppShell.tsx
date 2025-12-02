@@ -3,14 +3,16 @@ import React from 'react';
 import { AnimatePresence, motion, type Transition } from 'framer-motion';
 import Header from '../components/common/Header';
 
+type ShellVariant = 'workspace' | 'notebook';
+
 type Props = {
   sidebar: React.ReactNode;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onNavigateHome: () => void;
   children: React.ReactNode;
-  /** NEW: turn off animated ambient background + keep shell extra minimal */
   hideAmbient?: boolean;
+  variant?: ShellVariant;
 };
 
 const SIDEBAR_W_OPEN = '250px';    // 250px
@@ -25,16 +27,20 @@ export default function AppShell({
   onNavigateHome,
   children,
   hideAmbient = false,
+  variant = 'workspace',
 }: Props) {
   const sidebarVar = sidebarOpen ? SIDEBAR_W_OPEN : SIDEBAR_W_COLLAPSED;
 
+  const backgroundClass =
+    variant === 'notebook'
+      // Notebook: soft teal / mint canvas, still distinct but not dark
+      ? "min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100"
+      // Workspace (File Manager, URL Collector, Saved URLs): airy mint/sky gradient
+      : "min-h-screen bg-[radial-gradient(circle_at_top,_#d2f9e6,_#c9f5ff_45%,_#b7e4ff_85%)]";
+
   return (
     <div
-      className={
-        hideAmbient
-          ? "min-h-screen bg-[radial-gradient(circle_at_top,_#d2f9e6,_#c9f5ff_45%,_#b7e4ff_85%)]"
-          : "min-h-screen bg-gradient-to-b from-muted/40 to-background"
-      }
+      className={backgroundClass}
       style={{ ['--sidebar-w' as any]: sidebarVar }}
     >
       <header className="fixed inset-x-0 top-0 z-50">
