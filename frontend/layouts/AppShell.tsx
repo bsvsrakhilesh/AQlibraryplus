@@ -31,16 +31,16 @@ export default function AppShell({
 }: Props) {
   const sidebarVar = sidebarOpen ? SIDEBAR_W_OPEN : SIDEBAR_W_COLLAPSED;
 
-  const backgroundClass =
+  const shellClass =
     variant === 'notebook'
-      // Notebook: soft teal / mint canvas, still distinct but not dark
-      ? "min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100"
-      // Workspace (File Manager, URL Collector, Saved URLs): airy mint/sky gradient
-      : "min-h-screen bg-[radial-gradient(circle_at_top,_#d2f9e6,_#c9f5ff_45%,_#b7e4ff_85%)]";
+      // Notebook: emerald-tinted canvas, matching its card palette
+      ? "app-shell app-shell--notebook min-h-screen bg-[radial-gradient(circle_at_top,_#ecfdf5,_#e0f2fe_60%,_#f8fafc_95%)]"
+      // Workspace (File Manager, URL Collector, Saved URLs): same airy mint/sky gradient for all
+      : "app-shell app-shell--workspace min-h-screen bg-[radial-gradient(circle_at_top,_#d2f9e6,_#c9f5ff_45%,_#b7e4ff_85%)]";
 
   return (
     <div
-      className={backgroundClass}
+      className={shellClass}
       style={{ ['--sidebar-w' as any]: sidebarVar }}
     >
       <header className="fixed inset-x-0 top-0 z-50">

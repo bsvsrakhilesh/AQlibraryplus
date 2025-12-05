@@ -81,7 +81,7 @@ export default function NotebookPage() {
 
   return (
     <div className="p-5 md:p-5">
-      <div className="min-h-[calc(100vh-112px)] rounded-[28px] border border-emerald-200/80 bg-emerald-50/40 shadow-[0_24px_80px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
+      <div className="h-full rounded-[28px] border border-emerald-200/80 bg-emerald-50/40 shadow-[0_24px_80px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
         <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_420px] items-stretch h-full">
       {/* Left rail */}
       <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/60 shadow-[0_10px_30px_rgba(15,23,42,0.18)] p-3 flex flex-col overflow-hidden backdrop-blur-sm">
