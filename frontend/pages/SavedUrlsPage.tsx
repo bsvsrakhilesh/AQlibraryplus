@@ -400,14 +400,37 @@ const onAutoTagSelected = useCallback(async (ids: string[]) => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selectedItems, clipboard, selectedCollectionId, collPickerOpen, pickerOpen, detail, selection.size, handleCopy, handleCut, handlePaste, clearSelection]);
 
-  return (
-  <main className="space-y-6 px-4 md:px-6 lg:px-8 pt-6 md:pt-8">
+    return (
+    <main className="space-y-6 px-4 md:px-6 lg:px-8 pt-6 md:pt-8">
+    <header className="page-header">
+      <div className="page-header-main">
+        <p className="page-header-kicker">Library</p>
+        <h1 className="page-header-title">Saved URLs</h1>
+        <p className="page-header-subtitle">
+          Browse, filter, and organise all the links you’ve collected from searches and uploads.
+        </p>
+      </div>
+
+      <div className="page-header-meta">
+        <div className="page-header-pill">
+          <span className="page-header-pill-label">Links</span>
+          <span className="page-header-pill-value">{urls.length}</span>
+        </div>
+        {selection.size > 0 && (
+          <div className="page-header-pill page-header-pill--accent">
+            <span className="page-header-pill-label">Selected</span>
+            <span className="page-header-pill-value">{selection.size}</span>
+          </div>
+        )}
+      </div>
+    </header>
+
     {/* Grid inside AppShell content */}
     <section className="grid grid-cols-12 gap-4 sm:gap-6">
       {/* Sidebar */}
       <div className="col-span-12 md:col-span-4 lg:col-span-3">
         <div className="md:sticky md:top-20 lg:top-[76px]">
-          <div className="glass-surface h-full rounded-2xl ring-1 ring-black/5 dark:ring-white/10 supports-backdrop:backdrop-blur-md transition-shadow duration-200 hover:shadow-lg">
+          <div className="fm-panel h-full p-4 sm:p-5">
             <CollectionSidebar
               collections={collections}
               selectedCollectionId={selectedCollectionId}
@@ -423,7 +446,8 @@ const onAutoTagSelected = useCallback(async (ids: string[]) => {
       </div>
 
       {/* Main content */}
-      <div className="col-span-12 md:col-span-8 lg:col-span-9 space-y-4 md:space-y-5 mb-10">
+      <div className="col-span-12 md:col-span-8 lg:col-span-9">
+        <div className="fm-panel p-4 sm:p-5 space-y-4 md:space-y-5 mb-10">
         {/* Toolbar: 2-row responsive grid to avoid collisions */}
       <header
       className="toolbar--glass relative grid grid-cols-12 gap-3 rounded-xl p-3 md:p-4 ring-1 ring-black/5 dark:ring-white/10 supports-backdrop:backdrop-blur-md"
@@ -662,6 +686,7 @@ const onAutoTagSelected = useCallback(async (ids: string[]) => {
             onNotesChange={handleNotesChange}
           />
         )}
+        </div>
       </div>
     </section>
   </main>

@@ -752,17 +752,33 @@ export default function FileManagerPage() {
         transition={{ duration: 0.3 }}
       >
       {/* Header */}
-      <motion.div
-        className="max-w-7xl mx-auto px-1 md:px-0 flex flex-col gap-1"
+      <motion.header
+        className="page-header max-w-7xl mx-auto px-1 md:px-0 mb-4 md:mb-6"
         initial={{ y: 0, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.05, duration: 0.45, ease: "easeOut" }}
       >
-      <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">File Explorer</h2>
-      <p className="text-sm md:text-base text-slate-600">
-      Innovate your journey with seamless file management.
-      </p>
-      </motion.div>
+        <div className="page-header-main">
+          <p className="page-header-kicker">Workspace</p>
+          <h1 className="page-header-title">File Explorer</h1>
+          <p className="page-header-subtitle">
+            Upload, organise, and search all your project files in one focused workspace.
+          </p>
+        </div>
+
+        <div className="page-header-meta">
+          <div className="page-header-pill">
+            <span className="page-header-pill-label">Files</span>
+            <span className="page-header-pill-value">{allFiles.length}</span>
+          </div>
+          {selected.length > 0 && (
+            <div className="page-header-pill page-header-pill--accent">
+              <span className="page-header-pill-label">Selected</span>
+              <span className="page-header-pill-value">{selected.length}</span>
+            </div>
+          )}
+        </div>
+      </motion.header>
 
       {/* Content */}
       <div className="max-w-7xl w-full mx-auto mt-4 grid grid-cols-12 gap-4 lg:gap-6">

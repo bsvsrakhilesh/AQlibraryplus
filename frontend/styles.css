@@ -1414,41 +1414,40 @@ html, body, #__next, .app-shell {
   box-shadow: 0 1px 0 hsl(var(--border) / 0.35);
 }
 
-/* Variant-specific header palettes */
+/* Variant-specific header palettes – softer & background-neutral */
 .app-shell--workspace .app-header {
-  background:
-    linear-gradient(
-      to right,
-      color-mix(in srgb, hsl(var(--surface-elevated)) 94%, transparent),
-      color-mix(in srgb, hsl(var(--surface)) 96%, transparent)
-    );
-  backdrop-filter: saturate(145%) blur(16px);
-  border-bottom: 1px solid hsl(var(--border) / 0.8);
+  /* Light glass over mint/sky background */
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.45); /* slate-400-ish */
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
 }
 .dark .app-shell--workspace .app-header {
-  background:
-    linear-gradient(
-      to right,
-      color-mix(in srgb, hsl(var(--surface)) 70%, transparent),
-      color-mix(in srgb, hsl(var(--surface-elevated)) 60%, transparent)
-    );
-  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  /* Dark glass that doesn’t fight the gradient */
+  background: linear-gradient(
+    to bottom,
+    rgba(15, 23, 42, 0.94),
+    rgba(15, 23, 42, 0.98)
+  );
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 }
 
 .app-shell--notebook .app-header {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(16,185,129,0.14), transparent 55%),
-    radial-gradient(circle at 100% 0%, rgba(59,130,246,0.12), transparent 60%),
-    hsl(var(--surface));
-  backdrop-filter: saturate(155%) blur(18px);
-  border-bottom: 1px solid color-mix(in srgb, hsl(var(--accent)) 22%, hsl(var(--border)));
+  /* Mostly neutral, with subtle emerald edge */
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-bottom: 1px solid rgba(45, 212, 191, 0.35); /* emerald-400 tint */
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
 }
 .dark .app-shell--notebook .app-header {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(45,212,191,0.18), transparent 55%),
-    radial-gradient(circle at 100% 0%, rgba(129,140,248,0.18), transparent 60%),
-    hsl(var(--surface));
-  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  background: linear-gradient(
+    to bottom,
+    rgba(15, 23, 42, 0.94),
+    rgba(15, 23, 42, 0.98)
+  );
+  border-bottom: 1px solid rgba(45, 212, 191, 0.45);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 }
 
 /* icon buttons in header — unified hover & keyboard focus */
@@ -1506,41 +1505,39 @@ html, body, #__next, .app-shell {
   background: hsl(var(--surface-elev));
 }
 
-/* Variant-specific sidebar palettes */
+/* Variant-specific sidebar palettes – calmer, in the same family as the page bg */
 .app-shell--workspace .app-sidebar {
-  background:
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, hsl(var(--surface-elevated)) 96%, transparent),
-      color-mix(in srgb, hsl(var(--surface)) 94%, transparent)
-    );
-  border-right: 1px solid hsl(var(--border) / 0.85);
-  box-shadow: var(--shadow-soft);
+  /* Neutral glass panel on mint/sky */
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(20px) saturate(150%);
+  border-right: 1px solid rgba(148, 163, 184, 0.40);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
 }
 .dark .app-shell--workspace .app-sidebar {
-  background:
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, hsl(var(--surface)) 70%, transparent),
-      color-mix(in srgb, hsl(var(--surface-elevated)) 60%, transparent)
-    );
-  border-right: 1px solid hsl(var(--border) / 0.4);
+  background: linear-gradient(
+    to bottom,
+    rgba(15, 23, 42, 0.97),
+    rgba(15, 23, 42, 0.99)
+  );
+  border-right: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.65);
 }
 
 .app-shell--notebook .app-sidebar {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(16,185,129,0.18), transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(59,130,246,0.16), transparent 65%),
-    hsl(var(--surface-elevated));
-  border-right: 1px solid color-mix(in srgb, hsl(var(--accent)) 22%, hsl(var(--border)));
-  box-shadow: 0 18px 50px rgba(15,23,42,0.20);
+  /* Slight emerald wash that still reads “light” */
+  background: rgba(240, 253, 250, 0.94); /* emerald-50-ish */
+  backdrop-filter: blur(20px) saturate(150%);
+  border-right: 1px solid rgba(45, 212, 191, 0.40);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.10);
 }
 .dark .app-shell--notebook .app-sidebar {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(45,212,191,0.22), transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(129,140,248,0.22), transparent 65%),
-    hsl(var(--surface));
-  border-right: 1px solid hsl(var(--border) / 0.5);
+  background: linear-gradient(
+    to bottom,
+    rgba(15, 23, 42, 0.97),
+    rgba(15, 23, 42, 0.99)
+  );
+  border-right: 1px solid rgba(45, 212, 191, 0.40);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.65);
 }
 
 /* 3) Content container — predictable vertical rhythm (optional) */
@@ -1637,3 +1634,112 @@ html, body, #__next, .app-shell {
 }
 .hover-lift:hover { transform: translateY(-1px); }
 .hover-lift:active { transform: translateY(0); }
+
+/* ====== Page Headers (shared across app pages) ====== */
+
+.page-header {
+  max-width: 72rem; /* 1152px */
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+
+.page-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.page-header-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(100, 116, 139, 0.95); /* slate-500 */
+}
+.dark .page-header-kicker {
+  color: rgba(148, 163, 184, 0.9); /* slate-400 */
+}
+
+.page-header-title {
+  font-size: clamp(1.6rem, 1.1rem + 1.2vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: rgb(15, 23, 42); /* slate-900 */
+}
+.dark .page-header-title {
+  color: rgb(226, 232, 240); /* slate-200 */
+}
+
+.page-header-subtitle {
+  max-width: 40rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgba(71, 85, 105, 0.98); /* slate-600 */
+}
+.dark .page-header-subtitle {
+  color: rgba(148, 163, 184, 0.96); /* slate-400 */
+}
+
+.page-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.page-header-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  font-size: 0.75rem;
+  color: rgb(15, 23, 42);
+  backdrop-filter: blur(10px);
+}
+.dark .page-header-pill {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.4);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+.page-header-pill--accent {
+  background: rgba(16, 185, 129, 0.06);
+  border-color: rgba(16, 185, 129, 0.55);
+  color: rgb(4, 120, 87); /* emerald-700 */
+}
+.dark .page-header-pill--accent {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.65);
+  color: rgb(204, 251, 241); /* emerald-100 */
+}
+
+.page-header-pill-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.65rem;
+  opacity: 0.85;
+}
+
+.page-header-pill-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+
+/* Stack header on small screens */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .page-header-meta {
+    justify-content: flex-start;
+  }
+}

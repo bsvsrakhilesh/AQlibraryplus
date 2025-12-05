@@ -180,7 +180,7 @@ const UrlCollectorPage: React.FC = () => {
   }, [navigate]);
 
   return (
-    <main className="space-y-6">
+      <main className="space-y-6">
       {/* Top loading bar (micro-feedback) */}
       {isLoading && (
         <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 overflow-hidden">
@@ -188,15 +188,29 @@ const UrlCollectorPage: React.FC = () => {
         </div>
       )}
 
-      <header className="rounded-2xl p-5 bg-landing-gradient shadow-soft mb-4 text-center">
-        <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white">URL Collector</h1>
-        <p className="text-gray-700 dark:text-gray-300">Search the web and save relevant sources to your workspace.</p>
+      <header className="page-header">
+        <div className="page-header-main">
+          <p className="page-header-kicker">Discovery</p>
+          <h1 className="page-header-title">URL Collector</h1>
+          <p className="page-header-subtitle">
+            Search the web, review results, and send the best links straight into your Saved URLs library.
+          </p>
+        </div>
+
+        <div className="page-header-meta">
+          {hasSearched && (
+            <div className="page-header-pill">
+              <span className="page-header-pill-label">Results</span>
+              <span className="page-header-pill-value">{searchResults.length}</span>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Search card */}
-      <section className="glass-card rounded-2xl p-5 sm:p-6 elevate-on-hover" aria-labelledby="search-section-title">
+      <section aria-labelledby="search-section-title">
         <h2 id="search-section-title" className="sr-only">Search</h2>
-        <SmartCard as="section" className="p-4 sm:p-6">
+        <SmartCard as="section" className="fm-panel !bg-transparent !border-none !shadow-none p-4 sm:p-6">
         <SearchForm
           isLoading={isLoading}
           onSearch={(site, kw) => { setWebsite(site); setKeywords(kw); return handleSearch(site, kw); }}
@@ -221,7 +235,7 @@ const UrlCollectorPage: React.FC = () => {
 
       {/* Results (sticky toolbar inside the card) */}
       <section aria-labelledby="results-title" className="space-y-4">
-         <SmartCard as="div" className="overflow-hidden">
+         <SmartCard as="div" className="fm-panel !bg-transparent !border-none !shadow-none overflow-hidden">
           {/* Sticky header row */}
           <div className="flex items-center justify-between sticky top-0 z-10 px-3 sm:px-4 py-3 backdrop-blur-sm">
             <h2 id="results-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">

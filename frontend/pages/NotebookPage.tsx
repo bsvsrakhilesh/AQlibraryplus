@@ -80,8 +80,35 @@ export default function NotebookPage() {
   }, []);
 
   return (
-    <div className="p-5 md:p-5">
-      <div className="h-full rounded-[28px] border border-emerald-200/80 bg-emerald-50/40 shadow-[0_24px_80px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
+    <div className="p-5 md:p-6 space-y-4">
+      <header className="page-header">
+        <div className="page-header-main">
+          <p className="page-header-kicker">Notebook</p>
+          <h1 className="page-header-title">AI Research Notebook</h1>
+          <p className="page-header-subtitle">
+            Pin sources on the left, write structured notes in the centre, and make notes on the right.
+          </p>
+        </div>
+
+        <div className="page-header-meta">
+          <div className="page-header-pill">
+            <span className="page-header-pill-label">Notebooks</span>
+            <span className="page-header-pill-value">
+              {listQ.data?.length ?? 0}
+            </span>
+          </div>
+          {active && (
+            <div className="page-header-pill page-header-pill--accent">
+              <span className="page-header-pill-label">Active</span>
+              <span className="page-header-pill-value truncate max-w-[10rem]">
+                {active.title}
+              </span>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <div className="min-h-full rounded-[28px] border border-emerald-200/70 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.07),_rgba(59,130,246,0.06),_rgba(15,23,42,0.03))] shadow-[0_40px_120px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
         <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_420px] items-stretch h-full">
       {/* Left rail */}
       <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/60 shadow-[0_10px_30px_rgba(15,23,42,0.18)] p-3 flex flex-col overflow-hidden backdrop-blur-sm">
