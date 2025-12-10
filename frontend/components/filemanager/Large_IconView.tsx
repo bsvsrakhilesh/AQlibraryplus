@@ -177,7 +177,8 @@ type Props = {
   onCopy?: (ids: string[]) => void;
   onCut?: (ids: string[]) => void;
   onPaste?: () => void;
-  onDelete?: (f: FileItem) => void; // typically calls trashFile(id)
+  onDelete?: (f: FileItem) => void;
+  onDeleteMany?: (ids: string[]) => void;
   onRename?: (id: string, nextName: string) => void;
   onPreview?: (f: FileItem, opts?: any) => void;
   onDownload?: (f: FileItem) => void; // e.g. navigate to /api/files/:id/download
@@ -235,6 +236,7 @@ export default function Large_IconView({
   onCut,
   onPaste,
   onDelete,
+  onDeleteMany,
   onRename,
   onPreview,
   onDownload,
@@ -520,7 +522,13 @@ export default function Large_IconView({
           label: "Delete",
           shortcut: "Del",
           disabled: !onDelete,
-          onSelect: () => onDelete?.(file), // parent can call trashFile(id)
+          onSelect: () => {
+            if (many && onDeleteMany) {
+              onDeleteMany(targetIds);
+            } else if (onDelete) {
+              onDelete(file);
+            }
+          },
         },
         {
           type: "item",
@@ -557,6 +565,7 @@ export default function Large_IconView({
       onPaste,
       onDownload,
       onDelete,
+      onDeleteMany,
       onShowProperties,
       onOpenVirtual,
       currentFolderId,

@@ -1006,6 +1006,7 @@ export default function FileManagerPage() {
                   onShowProperties={(f: FileItem) => { setPropertiesFile(f); }}
                   onDownload={handleDownloadItem}
                   onDelete={handleDelete}
+                  onDeleteMany={onDeleteSelected}
                   onPaste={handlePaste}
                   onRename={handleRenameById}
                   onCopy={(ids: string[]) => handleCopy(byIds(ids))}
