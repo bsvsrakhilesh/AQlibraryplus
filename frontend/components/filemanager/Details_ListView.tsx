@@ -1087,6 +1087,8 @@ useEffect(() => {
         onClick={(e) => {
           if (!(e.target as HTMLElement).closest('[data-row]')) {
             setSelectedIds(new Set());
+            setRowMenu(null);
+            setBgMenu(null);
           }
         }}
         onContextMenu={(e) => {

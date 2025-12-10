@@ -664,6 +664,7 @@ export default function Large_IconView({
       onDrop={onDrop}
       onDragOver={(e) => e.preventDefault()}
       onContextMenu={(e) => {
+        if ((e.target as HTMLElement).closest('.wg-card')) return;
         e.preventDefault();
         setRowMenu(null);
         setBgMenu({ x: e.clientX, y: e.clientY });

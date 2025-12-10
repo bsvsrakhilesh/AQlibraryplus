@@ -88,11 +88,38 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
     return () => { alive = false }
   }, [])
 
-  const favorites = useMemo(() => ([
-    { label: 'Quick Access', icon: <Star className="w-4 h-4" />, go: () => onFolderSelect?.(undefined, 'Quick Access') },
-    { label: 'Desktop',      icon: <Monitor className="w-4 h-4" />, go: () => onFolderSelect?.(undefined, 'Desktop') },
-    { label: 'Downloads',    icon: <Download className="w-4 h-4" />, go: () => onFolderSelect?.(undefined, 'Downloads') },
-  ]), [onFolderSelect])
+ const favorites = useMemo(() => {
+   // Helper: try to open a library by name; fall back to root
+   const openByName = (needle: string) => {
+     const match = libraryFolders?.find(
+       f => f.name.toLowerCase().includes(needle.toLowerCase())
+     );
+     if (match) {
+       onFolderSelect?.(match.id, match.name);
+     } else {
+       // Fallback to logical root if specific library is missing
+       onFolderSelect?.('root', needle);
+     }
+   };
+   return [
+     {
+       label: 'Quick Access',
+       icon: <Star className="w-4 h-4" />,
+       // treat as root / home
+       go: () => onFolderSelect?.('root', 'Quick Access'),
+     },
+     {
+       label: 'Desktop',
+       icon: <Monitor className="w-4 h-4" />,
+       go: () => openByName('desktop'),
+     },
+     {
+       label: 'Downloads',
+       icon: <Download className="w-4 h-4" />,
+       go: () => openByName('download'),
+     },
+   ];
+ }, [onFolderSelect, libraryFolders]);
 
   return (
     <nav className="h-full overflow-y-auto pr-1" aria-label="Folders">
