@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   Star, Monitor, Download,
   FileText, Image as ImageIcon, Music, Video, HardDrive, Database,
@@ -88,6 +88,10 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
     return () => { alive = false }
   }, [])
 
+  const goHome = useCallback(() => {
+  onFolderSelect?.(undefined, 'Home');
+  }, [onFolderSelect]);
+
  const favorites = useMemo(() => {
    // Helper: try to open a library by name; fall back to root
    const openByName = (needle: string) => {
@@ -97,8 +101,7 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
      if (match) {
        onFolderSelect?.(match.id, match.name);
      } else {
-       // Fallback to logical root if specific library is missing
-       onFolderSelect?.('root', needle);
+       goHome();
      }
    };
    return [
@@ -106,7 +109,7 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
        label: 'Quick Access',
        icon: <Star className="w-4 h-4" />,
        // treat as root / home
-       go: () => onFolderSelect?.('root', 'Quick Access'),
+       go: goHome,
      },
      {
        label: 'Desktop',
@@ -119,7 +122,7 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
        go: () => openByName('download'),
      },
    ];
- }, [onFolderSelect, libraryFolders]);
+ }, [onFolderSelect, libraryFolders, goHome]);
 
   return (
     <nav className="h-full overflow-y-auto pr-1" aria-label="Folders">
@@ -151,9 +154,9 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
         <Section title="This PC">
           <NavBtn
             label="Local Disk (C:)"
-            onClick={() => onFolderSelect?.('root', 'C:')}
+            onClick={goHome}
             left={<HardDrive className="w-4 h-4" />}
-            active={currentFolderId === 'root' || (!currentFolderId)}
+            active={!currentFolderId}
           />
         </Section>
 
