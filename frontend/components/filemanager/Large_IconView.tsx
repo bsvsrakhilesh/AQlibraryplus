@@ -248,6 +248,10 @@ export default function Large_IconView({
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
 
+  // Manual double-click detector (more reliable than native onDoubleClick)
+  const lastClickRef = useRef<{ id: string; t: number } | null>(null);
+  const DOUBLE_CLICK_MS = 320;
+
   // selection bridge
   const [uncontrolledSel, setUncontrolledSel] = useState<Set<string>>(
     () => new Set()
@@ -581,30 +585,37 @@ export default function Large_IconView({
     };
   }, [variant, density]);
 
-  const toggleSelect = useCallback(
+  const handleTileClick = useCallback(
     (file: FileItem, e: React.MouseEvent) => {
       const id = String((file as any).id);
+      const now = Date.now();
+
+      // If user clicks same item twice quickly => treat as double click (open)
+      const last = lastClickRef.current;
+      const isModifiedClick = e.ctrlKey || e.metaKey || e.shiftKey || e.altKey;
+
+      if (!isModifiedClick && last && last.id === id && now - last.t < DOUBLE_CLICK_MS) {
+        lastClickRef.current = null; // reset
+        onOpen(file);                // ✅ open on 2nd click
+        return;
+      }
+
+      lastClickRef.current = { id, t: now };
+
+      // Otherwise: normal selection behavior (Explorer-like)
       const next = new Set(sel);
 
       if (e.metaKey || e.ctrlKey) {
         if (next.has(id)) next.delete(id);
         else next.add(id);
       } else {
-        const onlyThis = next.size === 1 && next.has(id);
         next.clear();
-        if (!onlyThis) next.add(id);
+        next.add(id);
       }
 
       setSel(next);
     },
-    [sel, setSel]
-  );
-
-  const handleDoubleClick = useCallback(
-    (f: FileItem) => {
-      onOpen(f);
-    },
-    [onOpen]
+    [sel, setSel, onOpen]
   );
 
   const handleDragStart = useCallback(
@@ -685,8 +696,7 @@ export default function Large_IconView({
               draggable
               onDragStart={(e) => handleDragStart(e, f)}
               onDragEnd={handleDragEnd}
-              onClick={(e) => toggleSelect(f, e)}
-              onDoubleClick={() => handleDoubleClick(f)}
+              onClick={(e) => handleTileClick(f, e)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 const id = String((f as any).id);

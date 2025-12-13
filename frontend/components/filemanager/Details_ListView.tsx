@@ -164,6 +164,10 @@ export default function Details_ListView({
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // Manual double-click detector (more reliable than native onDoubleClick)
+  const lastClickRef = useRef<{ id: string; t: number } | null>(null);
+  const DOUBLE_CLICK_MS = 320;
+
   const [rowMenu, setRowMenu] = useState<{
     x: number;
     y: number;
@@ -257,6 +261,18 @@ export default function Details_ListView({
   const handleRowClick = (file: FileItem, e: React.MouseEvent) => {
     if (!selectable) return;
     const id = String((file as any).id ?? (file as any).fileId ?? fileDisplayName(file));
+    const now = Date.now();
+    const last = lastClickRef.current;
+    const isModifiedClick = e.ctrlKey || e.metaKey || e.shiftKey || e.altKey;
+
+    if (!isModifiedClick && last && last.id === id && now - last.t < DOUBLE_CLICK_MS) {
+      lastClickRef.current = null;     // reset
+      handleRowDoubleClick(file);      // ✅ open on 2nd click
+      return;
+    }
+
+    lastClickRef.current = { id, t: now };
+
     const next = new Set(selectedIds);
     const isSelected = next.has(id);
 
@@ -698,7 +714,6 @@ export default function Details_ListView({
           draggable
           onDragStart={(e) => handleRowDragStart(e, f)}
           onDragEnd={handleRowDragEnd}
-          onDoubleClick={() => handleRowDoubleClick(f)}
           onClick={(e) => handleRowClick(f, e)}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -773,7 +788,6 @@ export default function Details_ListView({
         draggable
         onDragStart={(e) => handleRowDragStart(e, f)}
         onDragEnd={handleRowDragEnd}
-        onDoubleClick={() => handleRowDoubleClick(f)}
         onClick={(e) => handleRowClick(f, e)}
         onContextMenu={(e) => {
           e.preventDefault();

@@ -100,8 +100,10 @@ export default function FileManagerPage() {
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(undefined);
   const { initialFolderId } =
   useExplorerHistory(currentFolderId ?? null, {
-    onPopNavigate: async (fid) => {
+      onPopNavigate: async (fid) => {
       // load folder when user presses Back/Forward
+      setSelected([]);
+      setEmptyBgMenu(null);
       setCurrentFolderId(fid ?? undefined);
       setPage(1);
       const bc = await buildBreadcrumb(fid ?? undefined);
@@ -600,6 +602,9 @@ export default function FileManagerPage() {
 
   // ------- Navigation handlers  -------
   const onFolderSelect = useCallback(async (id?: string, folderName?: string) => {
+    setSelected([]);
+    setEmptyBgMenu(null);
+
     const folderId = id || '';
     // Update history
     const newHistory = history.slice(0, historyIndex + 1);
@@ -621,6 +626,7 @@ export default function FileManagerPage() {
 
   const handleBack = useCallback(() => {
     if (historyIndex > 0) {
+      setSelected([]);
       const newIndex = historyIndex - 1;
       const folderId = history[newIndex] || undefined;
       setHistoryIndex(newIndex);
@@ -632,6 +638,8 @@ export default function FileManagerPage() {
 
   const handleForward = useCallback(() => {
     if (historyIndex < history.length - 1) {
+      setSelected([]);
+      setEmptyBgMenu(null);
       const newIndex = historyIndex + 1;
       const folderId = history[newIndex] || undefined;
       setHistoryIndex(newIndex);
@@ -642,6 +650,8 @@ export default function FileManagerPage() {
   }, [history, historyIndex, buildBreadcrumb]);
 
   const onCrumbClick = useCallback(async (idx: number) => {
+    setSelected([]);
+    setEmptyBgMenu(null);
     const target = breadcrumb[idx];
     const bc = await buildBreadcrumb(target.id);
     setBreadcrumb(bc);

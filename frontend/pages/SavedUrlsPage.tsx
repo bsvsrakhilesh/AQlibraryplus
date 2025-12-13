@@ -8,7 +8,7 @@ import CollectionPickerModal from '../components/savedurls/CollectionPickerModal
 import BulkActionBar from '../components/common/BulkActionBar';
 import {fetchSavedUrls as apiFetchSavedUrls, saveUrls as apiSaveUrls, patchUrl, deleteUrlsBulk,
   type BackendUrlRow, crawlSavePdf, crawlSaveText, getJob, startUrlTagJob} from '../lib/api';
-import FolderPickerModal from '../components/common/FolderPickerModal';
+import FolderPickerModal from '../components/savedurls/FolderPickerModal';
 import { getCollections, createCollection, getUrlCollections, addUrlToCollection, setUrlCollections,} from '../utils/collections';
 import { StaggerList, StaggerItem } from '../components/motion/StaggerList';
 

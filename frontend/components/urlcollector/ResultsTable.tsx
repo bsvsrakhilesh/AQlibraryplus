@@ -4,7 +4,7 @@ import { getCollections, createCollection, addUrlToCollection } from '../../util
 import { SearchResult } from '../../types';
 import { saveUrls, type SaveUrlsResponse, type SaveUrlsRequestRow, crawlSavePdf, crawlSaveText } from '../../lib/api';
 import DownloadIcon from '../icons/DownloadIcon';
-import FolderPickerModal from '../common/FolderPickerModal';
+import FolderPickerModal from '../savedurls/FolderPickerModal';
 import { StaggerList, StaggerItem } from '../motion/StaggerList';
 
 interface ResultsTableProps {

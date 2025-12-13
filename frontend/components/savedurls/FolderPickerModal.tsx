@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { listFolders, createFolder, getFolder } from '../../lib/api';
 
 type Folder = { id: string; name: string; parentId?: string | null };
@@ -23,9 +23,20 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
   const [currentInfo, setCurrentInfo] = useState<Folder | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
 
+  // Which folder in the list is selected as the destination (single click)
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+
+  // Manual double-click detector (more reliable than native dblclick if UI re-renders)
+  const lastClickRef = useRef<{ id: string; t: number } | null>(null);
+  const DOUBLE_CLICK_MS = 320;
+
   useEffect(() => {
     if (!open) return;
     setFileName(suggestedName);
+    setCurrent(null);
+    setStack([]);
+    setSelectedFolderId(null);
+    lastClickRef.current = null;
   }, [open, suggestedName]);
 
   const load = useCallback(async (parentId: string | null) => {
@@ -33,12 +44,14 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
     try {
       const res = await listFolders(parentId ?? undefined);
       setChildren(res);
+      setSelectedFolderId(null);
+      lastClickRef.current = null;
     } finally {
       setLoading(false);
     }
   }, []);
 
-useEffect(() => {
+  useEffect(() => {
   let active = true;
 
   // Modal closed → clear state and stop
@@ -70,17 +83,34 @@ useEffect(() => {
   })();
 
   return () => { active = false; };
-}, [current, open /* , getFolder */]);
+  }, [current, open /* , getFolder */]);
 
-    useEffect(() => {
-        if (open) {
-        load(current);
-        }
-    }, [open, current, load]);
+  useEffect(() => {
+    if (open) {
+    load(current);
+    }
+  }, [open, current, load]);
 
   const goInto = (f: Folder) => {
     setStack((s) => [...s, f]);
     setCurrent(f.id);
+  };
+
+  const handleChildClick = (f: Folder) => {
+    const now = Date.now();
+    const last = lastClickRef.current;
+
+    // If the same folder is clicked twice quickly → enter it
+    if (last && last.id === f.id && now - last.t < DOUBLE_CLICK_MS) {
+      lastClickRef.current = null;
+      setSelectedFolderId(null);
+      goInto(f);
+      return;
+    }
+
+    // Otherwise just select it as the destination
+    lastClickRef.current = { id: f.id, t: now };
+    setSelectedFolderId(f.id);
   };
 
   const goUp = async () => {
@@ -140,6 +170,8 @@ useEffect(() => {
                     const next = stack.slice(0, Math.max(0, idx));
                     setStack(next);
                     setCurrent(next.length ? next[next.length - 1].id : null);
+                    setSelectedFolderId(null);
+                    lastClickRef.current = null;
                   }}
                 >
                   {b.name}
@@ -160,12 +192,34 @@ useEffect(() => {
               <div className="text-sm text-neutral-500">No folders here.</div>
             ) : (
               <ul className="divide-y dark:divide-neutral-800">
-                {children.map((f) => (
-                  <li key={f.id} className="py-2 flex items-center justify-between">
-                    <div className="truncate">{f.name}</div>
-                    <button className="btn-outline text-sm" onClick={() => goInto(f)}>Open</button>
-                  </li>
-                ))}
+                {children.map((f) => {
+                  const active = selectedFolderId === f.id;
+                  return (
+                    <li key={f.id} className="py-1">
+                      <div
+                        className={[
+                          "flex items-center justify-between gap-3 rounded-xl px-3 py-2 transition cursor-pointer",
+                          active
+                            ? "bg-brand-primary/10 ring-1 ring-brand-primary/30"
+                            : "hover:bg-black/5 dark:hover:bg-white/5",
+                        ].join(" ")}
+                        onClick={() => handleChildClick(f)}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{f.name}</div>
+                          <div className="text-xs text-neutral-500 truncate">Click to select • Double-click to open</div>
+                        </div>
+
+                        <button
+                          className="btn-outline text-sm"
+                          onClick={(e) => { e.stopPropagation(); setSelectedFolderId(null); lastClickRef.current = null; goInto(f); }}
+                        >
+                          Open
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -198,7 +252,7 @@ useEffect(() => {
               />
               <button
                 className="btn-primary"
-                onClick={() => onConfirm({ folderId: current, fileName, mode })}
+                onClick={() => onConfirm({ folderId: (selectedFolderId ?? current), fileName, mode })}
                 disabled={!fileName.trim()}
               >
                 Save here
