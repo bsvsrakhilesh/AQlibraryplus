@@ -54,3 +54,14 @@ export function addMany(rows: SearchResult[]): { added: number; skipped: number 
   setSaved(merged);
   return { added, skipped };
 }
+
+export function removeSaved(rawUrl: string): boolean {
+  const target = canonicalize(rawUrl);
+  const existing = getSaved();
+
+  const next = existing.filter((r) => canonicalize(r.url) !== target);
+  if (next.length === existing.length) return false;
+
+  setSaved(next);
+  return true;
+}

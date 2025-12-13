@@ -1,11 +1,28 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CollectionPickerModal from '../savedurls/CollectionPickerModal';
-import { getCollections, createCollection, addUrlToCollection } from '../../utils/collections';
+import {
+  addUrlToCollection,
+  createCollection,
+  getCollections,
+  getUrlCollections,
+  removeUrlFromCollection,
+  setUrlCollections,
+} from '../../utils/collections';
 import { SearchResult } from '../../types';
-import { saveUrls, type SaveUrlsResponse, type SaveUrlsRequestRow, crawlSavePdf, crawlSaveText } from '../../lib/api';
+import {
+  fetchSavedUrls,
+  saveUrls,
+  deleteUrlsBulk,
+  type SaveUrlsRequestRow,
+  type SaveUrlsResponse,
+  type BackendUrlRow,
+  crawlSavePdf,
+  crawlSaveText,
+} from '../../lib/api';
 import DownloadIcon from '../icons/DownloadIcon';
 import FolderPickerModal from '../savedurls/FolderPickerModal';
 import { StaggerList, StaggerItem } from '../motion/StaggerList';
+import { canonicalize as canonicalizeSaved, removeSaved, SAVED_KEY } from '../../utils/saved';
 
 interface ResultsTableProps {
   results: SearchResult[];
@@ -20,16 +37,73 @@ interface ResultsTableProps {
 
 /* ---------------- helpers ---------------- */
 
-const host = (url: string) => { try { return new URL(url).host; } catch { return ''; } };
+const host = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+};
+
 const nicePath = (url: string) => {
   try {
     const u = new URL(url);
     const p = decodeURIComponent(u.pathname || '/');
     const short = p.length > 48 ? p.slice(0, 45) + '…' : p || '/';
     return short + (u.search ? '…' : '');
-  } catch { return url; }
+  } catch {
+    return url;
+  }
 };
+
 const favicon = (url: string) => `https://icons.duckduckgo.com/ip3/${host(url)}.ico`;
+
+// Dedupe canonicalization (strip common tracking params)
+const TRACKING_PARAMS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'utm_id',
+  'utm_name',
+  'utm_reader',
+  'utm_referrer',
+  'gclid',
+  'fbclid',
+  'igshid',
+  'msclkid',
+  'mc_cid',
+  'mc_eid',
+  'mkt_tok',
+]);
+
+const canonicalUrl = (raw: string) => {
+  try {
+    const u = new URL(raw);
+
+    u.hash = '';
+    TRACKING_PARAMS.forEach((p) => u.searchParams.delete(p));
+
+    u.hostname = u.hostname.toLowerCase();
+    if ((u.protocol === 'http:' && u.port === '80') || (u.protocol === 'https:' && u.port === '443')) {
+      u.port = '';
+    }
+
+    if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+      u.pathname = u.pathname.slice(0, -1);
+    }
+
+    const params = Array.from(u.searchParams.entries());
+    params.sort(([a], [b]) => a.localeCompare(b));
+    u.search = '';
+    params.forEach(([k, v]) => u.searchParams.append(k, v));
+
+    return u.toString();
+  } catch {
+    return raw;
+  }
+};
 
 function exportToCsv(rows: SearchResult[], filename = 'results') {
   const headers = ['title', 'url', 'snippet'];
@@ -38,16 +112,19 @@ function exportToCsv(rows: SearchResult[], filename = 'results') {
     const s = String(v).replace(/"/g, '""');
     return /[,"\n]/.test(s) ? `"${s}"` : s;
   };
-  const body = rows.map(r => [r.title, r.url, r.snippet ?? ''].map(esc).join(',')).join('\r\n');
+  const body = rows.map((r) => [r.title, r.url, r.snippet ?? ''].map(esc).join(',')).join('\r\n');
   const csv = [headers.join(','), body].join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `${filename}.csv`; a.click();
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
   URL.revokeObjectURL(url);
 }
 
 type SortKey = 'original' | 'title' | 'domain';
+type SavedFilter = 'all' | 'saved' | 'unsaved';
 
 /* ---------------- component ---------------- */
 
@@ -68,22 +145,36 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [rowSaving, setRowSaving] = useState<string | null>(null);
   const [rowSaved, setRowSaved] = useState<Record<string, boolean>>({});
+
   const [sortKeyLocal, setSortKeyLocal] = useState<SortKey>('original');
   const sortKey = (sortKeyProp ?? sortKeyLocal) as SortKey;
-  const setSortKey = (onSortChange ?? setSortKeyLocal);
+  const setSortKey = onSortChange ?? setSortKeyLocal;
 
-  // Collection picker state (new)
+  // Collection picker state (Save)
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
   const [collections, setCollections] = useState(getCollections());
   const [pendingRows, setPendingRows] = useState<SaveUrlsRequestRow[] | null>(null);
 
-  // capture modal state (existing)
+  // Remove-from-collection picker state
+  const [removePickerOpen, setRemovePickerOpen] = useState(false);
+  const [removeTargetUrl, setRemoveTargetUrl] = useState<string | null>(null);
+
+  // capture modal state
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<'text' | 'pdf'>('text');
   const [pickerTarget, setPickerTarget] = useState<{ url: string; title: string }>({ url: '', title: '' });
   const [captureBusy, setCaptureBusy] = useState<string | null>(null);
 
-  // Non-blocking notifications (replaces alert())
+  // Dedupe toggle
+  const [hideDuplicates, setHideDuplicates] = useState(true);
+
+  // Filtering UI
+  const [filterQuery, setFilterQuery] = useState('');
+  const [filterDomain, setFilterDomain] = useState<'all' | string>('all');
+  const [savedFilter, setSavedFilter] = useState<SavedFilter>('all');
+  const [selectedOnly, setSelectedOnly] = useState(false);
+
+  // Non-blocking notifications
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const noticeTimer = useRef<number | null>(null);
 
@@ -93,10 +184,71 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     noticeTimer.current = window.setTimeout(() => setNotice(null), 4500);
   };
 
-  const allSelected = useMemo(
-    () => results.length > 0 && selected.size === results.length,
-    [results.length, selected]
-  );
+  // Backend saved index (canonicalUrl -> id)
+  const backendIdsRef = useRef<Record<string, number>>({});
+  const backendSetRef = useRef<Set<string>>(new Set());
+
+  const refreshBackendSavedIndex = async (rowsForRecalc: SearchResult[] = results) => {
+    try {
+      const saved: BackendUrlRow[] = await fetchSavedUrls();
+      const idMap: Record<string, number> = {};
+      const set = new Set<string>();
+
+      for (const r of saved) {
+        const c = canonicalizeSaved(r.url);
+        set.add(c);
+        idMap[c] = r.id;
+      }
+
+      backendIdsRef.current = idMap;
+      backendSetRef.current = set;
+
+      // Merge backend-saved OR locally categorized
+      setRowSaved((prev) => {
+        const next = { ...prev };
+        for (const rr of rowsForRecalc) {
+          const c = canonicalizeSaved(rr.url);
+          const inBackend = set.has(c);
+          const inLocalCategory = getUrlCollections(rr.url).length > 0;
+          next[rr.url] = inBackend || inLocalCategory;
+        }
+        return next;
+      });
+    } catch (e) {
+      // If backend is unreachable, keep UI usable with local categories
+      setRowSaved((prev) => {
+        const next = { ...prev };
+        for (const rr of rowsForRecalc) {
+          const inLocalCategory = getUrlCollections(rr.url).length > 0;
+          next[rr.url] = prev[rr.url] || inLocalCategory;
+        }
+        return next;
+      });
+    }
+  };
+
+  // Initial sync + when results change
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    refreshBackendSavedIndex(results);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results]);
+
+  // Recompute saved states if local storage changes (other tabs/pages)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key === 'collections' || e.key === 'urlCollectionsByUrl' || e.key === SAVED_KEY) {
+        refreshBackendSavedIndex(results);
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results]);
 
   const sorted = useMemo(() => {
     if (sortKey === 'original') return results;
@@ -106,11 +258,84 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     return clone;
   }, [results, sortKey]);
 
+  // Dedupe + duplicate counters
+  const { displayed, dupCountByUrl, duplicatesRemoved } = useMemo(() => {
+    if (!hideDuplicates) {
+      return { displayed: sorted, dupCountByUrl: {} as Record<string, number>, duplicatesRemoved: 0 };
+    }
+
+    const seen = new Map<string, string>(); // canonical -> first original url
+    const dupCount: Record<string, number> = {};
+    const out: SearchResult[] = [];
+
+    for (const r of sorted) {
+      const canon = canonicalUrl(r.url);
+      const first = seen.get(canon);
+
+      if (!first) {
+        seen.set(canon, r.url);
+        out.push(r);
+      } else {
+        dupCount[first] = (dupCount[first] ?? 0) + 1;
+      }
+    }
+
+    return {
+      displayed: out,
+      dupCountByUrl: dupCount,
+      duplicatesRemoved: sorted.length - out.length,
+    };
+  }, [sorted, hideDuplicates]);
+
+  // Domain options derived from displayed list
+  const domainOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of displayed) {
+      const d = host(r.url) || 'unknown';
+      counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+    const arr = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([d, c]) => ({ d, c }));
+    return arr;
+  }, [displayed]);
+
+  // Apply filters on top of displayed list
+  const filtered = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+
+    return displayed.filter((r) => {
+      const d = host(r.url) || 'unknown';
+      if (filterDomain !== 'all' && d !== filterDomain) return false;
+
+      const isSaved = !!rowSaved[r.url];
+      if (savedFilter === 'saved' && !isSaved) return false;
+      if (savedFilter === 'unsaved' && isSaved) return false;
+
+      if (selectedOnly && !selected.has(r.url)) return false;
+
+      if (q) {
+        const hay = `${r.title ?? ''}\n${r.snippet ?? ''}\n${r.url}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [displayed, filterQuery, filterDomain, savedFilter, selectedOnly, selected, rowSaved]);
+
+  const allSelected = useMemo(() => {
+    if (filtered.length === 0) return false;
+    for (const r of filtered) if (!selected.has(r.url)) return false;
+    return true;
+  }, [filtered, selected]);
+
   const toggleAll = () => {
     if (onToggleAll) return onToggleAll();
     if (allSelected) setLocalSelected(new Set());
-    else setLocalSelected(new Set(results.map(r => r.url)));
+    else setLocalSelected(new Set(filtered.map((r) => r.url)));
   };
+
   const toggleRow = (url: string) => {
     if (onToggleRow) return onToggleRow(url);
     const next = new Set(localSelected);
@@ -118,14 +343,20 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     setLocalSelected(next);
   };
 
-  // --- Updated: open category picker first, then save + assign ---
   const saveSelected = async () => {
     if (selected.size === 0) return;
-    const rows: SaveUrlsRequestRow[] = results
-      .filter(r => selected.has(r.url))
-      .map(r => ({ url: r.url, title: r.title ?? r.url, snippet: r.snippet ?? '' }));
-    if (rows.length === 0) return;
+
+    const rows: SaveUrlsRequestRow[] = filtered
+      .filter((r) => selected.has(r.url))
+      .map((r) => ({ url: r.url, title: r.title ?? r.url, snippet: r.snippet ?? '' }));
+
+    if (rows.length === 0) {
+      pushNotice('info', 'No selected rows match current filters.');
+      return;
+    }
+
     setPendingRows(rows);
+    setCollections(getCollections());
     setCollectionPickerOpen(true);
   };
 
@@ -133,10 +364,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     if (rowSaved[r.url]) return;
     const rows: SaveUrlsRequestRow[] = [{ url: r.url, title: r.title ?? r.url, snippet: r.snippet ?? '' }];
     setPendingRows(rows);
+    setCollections(getCollections());
     setCollectionPickerOpen(true);
   };
 
-  // Category picker handlers
   const onPickCancel = () => {
     setCollectionPickerOpen(false);
     setPendingRows(null);
@@ -145,19 +376,28 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   const onPickConfirm = async (collectionId: string) => {
     if (!pendingRows) return;
     setCollectionPickerOpen(false);
+
     const isSingle = pendingRows.length === 1;
     if (isSingle) setRowSaving(pendingRows[0].url);
-
     setIsSaving(true);
+
     try {
       const res: SaveUrlsResponse = await saveUrls(pendingRows);
-      const mark: Record<string, boolean> = {};
-      pendingRows.forEach(r => {
-        mark[r.url] = true;
-        addUrlToCollection(collectionId, r.url);
+
+      // local category assignment
+      pendingRows.forEach((r) => addUrlToCollection(collectionId, r.url));
+
+      // optimistic saved UI
+      setRowSaved((prev) => {
+        const next = { ...prev };
+        pendingRows.forEach((r) => (next[r.url] = true));
+        return next;
       });
-      setRowSaved(prev => ({ ...prev, ...mark }));
+
       pushNotice('success', `Saved ${res.added} URL${res.added === 1 ? '' : 's'} (skipped ${res.skipped}).`);
+
+      // refresh to get backend ids
+      await refreshBackendSavedIndex(results);
     } catch (e: any) {
       pushNotice('error', `Failed to save URLs: ${e?.message ?? 'Unknown error'}`);
     } finally {
@@ -168,8 +408,9 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   };
 
   const exportSelected = () => {
-    const rows = selected.size > 0 ? results.filter(r => selected.has(r.url)) : results;
-    exportToCsv(rows, selected.size > 0 ? 'results_selected' : 'results_all');
+    const rows = selected.size > 0 ? filtered.filter((r) => selected.has(r.url)) : filtered;
+    exportToCsv(rows, selected.size > 0 ? 'results_selected' : 'results_filtered');
+    pushNotice('info', `Exported ${rows.length} row${rows.length === 1 ? '' : 's'} to CSV.`);
   };
 
   const copyUrl = async (url: string) => {
@@ -181,7 +422,71 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     }
   };
 
-  // open modal to choose destination + filename (existing capture flow)
+  // Remove Saved (backend + local categories)
+  const unsaveUrl = async (rawUrl: string) => {
+    const canon = canonicalizeSaved(rawUrl);
+
+    setRowSaving(rawUrl);
+
+    try {
+      // 1) Remove from backend if we have an id
+      let id = backendIdsRef.current[canon];
+      if (!id) {
+        await refreshBackendSavedIndex(results);
+        id = backendIdsRef.current[canon];
+      }
+      if (id) {
+        await deleteUrlsBulk([id]);
+      }
+
+      // 2) Remove from local “saved” list if present
+      removeSaved(rawUrl);
+
+      // 3) Remove from all local categories
+      setUrlCollections(rawUrl, []);
+
+      // 4) UI update
+      setRowSaved((prev) => ({ ...prev, [rawUrl]: false }));
+      pushNotice('success', 'Removed from Saved.');
+
+      // 5) Refresh backend set/map (in case multiple rows share same canonical)
+      await refreshBackendSavedIndex(results);
+    } catch (e: any) {
+      pushNotice('error', `Could not remove: ${e?.message ?? 'Unknown error'}`);
+    } finally {
+      setRowSaving(null);
+    }
+  };
+
+  // Remove from a single category
+  const openRemoveFromCategory = (url: string) => {
+    setCollections(getCollections());
+    setRemoveTargetUrl(url);
+    setRemovePickerOpen(true);
+  };
+
+  const onRemoveCancel = () => {
+    setRemovePickerOpen(false);
+    setRemoveTargetUrl(null);
+  };
+
+  const onRemoveConfirm = (collectionId: string) => {
+    if (!removeTargetUrl) return;
+
+    removeUrlFromCollection(collectionId, removeTargetUrl);
+
+    const canon = canonicalizeSaved(removeTargetUrl);
+    const stillBackendSaved = backendSetRef.current.has(canon);
+    const stillInAnyCategory = getUrlCollections(removeTargetUrl).length > 0;
+
+    setRowSaved((prev) => ({ ...prev, [removeTargetUrl]: stillBackendSaved || stillInAnyCategory }));
+
+    pushNotice('info', 'Removed from category.');
+    setRemovePickerOpen(false);
+    setRemoveTargetUrl(null);
+  };
+
+  // open modal to choose destination + filename
   const openCapture = (mode: 'text' | 'pdf', url: string, title: string) => {
     setPickerMode(mode);
     setPickerTarget({ url, title });
@@ -201,8 +506,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
       } else {
         await crawlSavePdf(url, folderId ?? undefined, fileName, true, true);
       }
-      // mark as saved (visual cue like others)
-      setRowSaved(prev => ({ ...prev, [url]: true }));
       pushNotice('success', 'Captured and saved successfully.');
     } catch (e) {
       console.error(e);
@@ -212,9 +515,24 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     }
   };
 
-  // Comfort density only
   const padY = 'py-4';
   const titleSize = 'text-[16px]';
+
+  const filtersActive =
+    filterQuery.trim() !== '' || filterDomain !== 'all' || savedFilter !== 'all' || selectedOnly;
+
+  const clearFilters = () => {
+    setFilterQuery('');
+    setFilterDomain('all');
+    setSavedFilter('all');
+    setSelectedOnly(false);
+  };
+
+  const removeCollectionsForTarget = useMemo(() => {
+    if (!removeTargetUrl) return [];
+    const ids = new Set(getUrlCollections(removeTargetUrl));
+    return getCollections().filter((c) => ids.has(c.id));
+  }, [removeTargetUrl]);
 
   return (
     <div className="w-full">
@@ -244,68 +562,129 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
       {/* Toolbar */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="text-sm text-gray-600">
-            {results.length ? `${results.length} result${results.length === 1 ? '' : 's'}` : 'No results'}
-            {selectable && selected.size > 0 && (
-              <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                {selected.size} selected
-              </span>
+            {results.length ? (
+              <>
+                Showing <span className="font-medium text-gray-900">{filtered.length}</span> of{' '}
+                <span className="font-medium text-gray-900">{displayed.length}</span>
+                {hideDuplicates && duplicatesRemoved > 0 && (
+                  <span className="ml-2 text-xs text-gray-500">
+                    ({duplicatesRemoved} duplicate{duplicatesRemoved === 1 ? '' : 's'} hidden)
+                  </span>
+                )}
+                {selectable && selected.size > 0 && (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                    {selected.size} selected
+                  </span>
+                )}
+              </>
+            ) : (
+              'No results'
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-          {onClear && (
-            <button
-              onClick={() => onClear?.()}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-red-200 bg-red-50 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 transition"
-              title="Clear searches"
-            >
-              Clear searches
-            </button>
-          )}
-          </div>
-          
-          {selectable && selected.size > 0 && (
-            <button
-              type="button"
-              className="md3-btn md3-btn--tonal px-3 py-1 rounded-full"
-              onClick={() => {
-                const text = Array.from(selected).join('\n');
-                navigator.clipboard?.writeText(text).catch(() => {});
-              }}
-              title="Copy selected URLs"
-            >
-              Copy URLs
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              className="w-[260px] max-w-[70vw] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+              placeholder="Search title, snippet, or URL…"
+            />
 
-          <div className="hidden sm:flex items-center gap-2 text-sm">
-            <ListFilterIcon className="h-4 w-4 text-gray-500" />
-            {/* Show internal sort UI only when uncontrolled */}
-            {!(sortKeyProp && onSortChange) && (
-              <div className="flex items-center gap-2">
-                <ListFilterIcon className="h-4 w-4 text-gray-500" />
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value as SortKey)}
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 dark:bg-gray-800 dark:border-gray-700"
-                  aria-label="Sort results"
-                >
-                  <option value="original">Original order</option>
-                  <option value="title">Title</option>
-                  <option value="domain">Domain</option>
-                </select>
-              </div>
-            )}
-          </div>
+            <select
+              value={filterDomain}
+              onChange={(e) => setFilterDomain(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+              title="Filter by domain"
+            >
+              <option value="all">All domains</option>
+              {domainOptions.map((x) => (
+                <option key={x.d} value={x.d}>
+                  {x.d} ({x.c})
+                </option>
+              ))}
+            </select>
 
-          {selectable && results.length > 0 && (
-            <label className="ml-1 flex cursor-pointer select-none items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" className="h-4 w-4" checked={allSelected} onChange={toggleAll} />
-              Select all
+            <select
+              value={savedFilter}
+              onChange={(e) => setSavedFilter(e.target.value as SavedFilter)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+              title="Filter by saved status"
+            >
+              <option value="all">All</option>
+              <option value="unsaved">Unsaved</option>
+              <option value="saved">Saved</option>
+            </select>
+
+            <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={selectedOnly}
+                onChange={() => setSelectedOnly((v) => !v)}
+              />
+              Selected only
             </label>
-          )}
+
+            {filtersActive && (
+              <button
+                type="button"
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+                onClick={clearFilters}
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {onClear && (
+              <button
+                onClick={() => onClear?.()}
+                className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 transition"
+                title="Clear searches"
+              >
+                Clear searches
+              </button>
+            )}
+
+            <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={hideDuplicates}
+                onChange={() => setHideDuplicates((v) => !v)}
+              />
+              Hide duplicates
+              {hideDuplicates && duplicatesRemoved > 0 && (
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                  {duplicatesRemoved} removed
+                </span>
+              )}
+            </label>
+
+            <div className="flex items-center gap-2 text-sm">
+              <ListFilterIcon className="h-4 w-4 text-gray-500" />
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                aria-label="Sort results"
+              >
+                <option value="original">Original order</option>
+                <option value="title">Title</option>
+                <option value="domain">Domain</option>
+              </select>
+            </div>
+
+            {selectable && filtered.length > 0 && (
+              <label className="ml-1 flex cursor-pointer select-none items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" className="h-4 w-4" checked={allSelected} onChange={toggleAll} />
+                Select all (filtered)
+              </label>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -326,24 +705,29 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
         </div>
       </div>
 
-      {/* Results list (card rows) */}
+      {/* Results */}
       <StaggerList as="ul" className="space-y-2 m-0 p-0">
-        {sorted.map((r) => {
+        {filtered.map((r) => {
           const h = host(r.url);
           const isChecked = selected.has(r.url);
-          const isSaved = rowSaved[r.url];
+          const isSaved = !!rowSaved[r.url];
+          const dupN = dupCountByUrl[r.url] ?? 0;
+          const categoryCount = getUrlCollections(r.url).length;
 
           return (
             <StaggerItem
               as="li"
               key={r.url}
               onClick={(e: React.MouseEvent) => {
-              const t = e.target as HTMLElement;
-              if (t.closest('button, a, input')) return;
-              window.open(r.url, '_blank', 'noopener,noreferrer');
+                const t = e.target as HTMLElement;
+                if (t.closest('button, a, input, select, textarea, label')) return;
+                window.open(r.url, '_blank', 'noopener,noreferrer');
               }}
               onKeyDown={(e: React.KeyboardEvent) => {
-                if ((e.key === 'Enter' || e.key === ' ') && !(e.target as HTMLElement).closest('button, a, input')) {
+                if (
+                  (e.key === 'Enter' || e.key === ' ') &&
+                  !(e.target as HTMLElement).closest('button, a, input, select, textarea, label')
+                ) {
                   e.preventDefault();
                   window.open(r.url, '_blank', 'noopener,noreferrer');
                 }
@@ -356,12 +740,9 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                 'transition-all duration-200 ease-out cursor-pointer',
               ].join(' ')}
             >
-              {/* left accent on hover */}
-              <span className="absolute left-0 top-0 h-full w-[2px] rounded-l-xl bg-transparent group-hover:bg-green-400/90 group-hover:w-[3px]
-                transition-all duration-200 ease-out" />
+              <span className="absolute left-0 top-0 h-full w-[2px] rounded-l-xl bg-transparent group-hover:bg-green-400/90 group-hover:w-[3px] transition-all duration-200 ease-out" />
 
               <div className={['grid grid-cols-[auto,1fr,auto] items-start gap-3 px-3 sm:px-4', padY].join(' ')}>
-                {/* checkbox (optional) */}
                 {selectable ? (
                   <div className="pt-1">
                     <input
@@ -373,11 +754,11 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                       aria-label={`Select ${r.title || r.url}`}
                     />
                   </div>
-                ) : <div />}
+                ) : (
+                  <div />
+                )}
 
-                {/* main content */}
                 <div className="min-w-0">
-                  {/* title row */}
                   <div className="flex items-start gap-2">
                     <a
                       href={r.url}
@@ -392,7 +773,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                     <ExternalIcon className="mt-[2px] h-3.5 w-3.5 text-gray-400 opacity-0 transition-opacity group-hover/title:opacity-100" />
                   </div>
 
-                  {/* domain chip */}
                   <div className="mt-1 inline-flex items-center gap-2 text-xs text-gray-700">
                     <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/90 px-2 py-0.5">
                       <img
@@ -400,32 +780,53 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                         alt=""
                         className="h-3.5 w-3.5 rounded-sm"
                         referrerPolicy="no-referrer"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+                        }}
                       />
                       {h || 'unknown'}
                       <span className="text-gray-400">·</span>
                       <span className="text-gray-500">{nicePath(r.url)}</span>
                     </span>
+
+                    {dupN > 0 && (
+                      <span
+                        className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                        title="Other results were the same page with tracking parameters"
+                      >
+                        +{dupN} duplicate{dupN === 1 ? '' : 's'}
+                      </span>
+                    )}
+
+                    {categoryCount > 0 && (
+                      <span
+                        className="ml-1 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+                        title="This URL is assigned to local categories"
+                      >
+                        {categoryCount} categor{categoryCount === 1 ? 'y' : 'ies'}
+                      </span>
+                    )}
                   </div>
 
-                  {/* snippet */}
                   {r.snippet && (
-                    <p className="mt-2 text-[13.5px] leading-6 text-gray-700 line-clamp-3">
-                      {r.snippet}
-                    </p>
+                    <p className="mt-2 text-[13.5px] leading-6 text-gray-700 line-clamp-3">{r.snippet}</p>
                   )}
                 </div>
 
-                {/* actions (Save / Capture / Copy) */}
                 <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
                   {!isSaved ? (
                     <button
-                      onClick={(e) => { e.stopPropagation(); saveSingle(r); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        saveSingle(r);
+                      }}
                       disabled={rowSaving === r.url}
                       className="btn-primary px-3 py-1.5 rounded-full"
                       title="Save URL"
                     >
-                      {rowSaving === r.url ? 'Saving…' : (
+                      {rowSaving === r.url ? (
+                        'Saving…'
+                      ) : (
                         <>
                           <SaveIcon className="h-4 w-4" />
                           <span className="hidden sm:inline">Save</span>
@@ -433,19 +834,50 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                       )}
                     </button>
                   ) : (
-                    <span
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-100 text-green-700"
-                    >
-                      <CheckIcon className="h-4 w-4" />
-                      <span className="hidden sm:inline">Saved</span>
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-100 text-green-700"
+                      >
+                        <CheckIcon className="h-4 w-4" />
+                        <span className="hidden sm:inline">Saved</span>
+                      </span>
+
+                      {categoryCount > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openRemoveFromCategory(r.url);
+                          }}
+                          className="btn-ghost px-3 py-1.5"
+                          title="Remove from a category"
+                        >
+                          <TagOffIcon className="h-4 w-4" />
+                          <span className="hidden sm:inline">Un-tag</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          unsaveUrl(r.url);
+                        }}
+                        disabled={rowSaving === r.url}
+                        className="btn-ghost px-3 py-1.5"
+                        title="Remove from Saved"
+                      >
+                        {rowSaving === r.url ? <SpinnerMini /> : <TrashIcon className="h-4 w-4" />}
+                        <span className="hidden sm:inline">Unsave</span>
+                      </button>
+                    </div>
                   )}
 
-                  {/* Capture as Text / PDF */}
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={(e) => { e.stopPropagation(); openCapture('text', r.url, r.title || h || 'page'); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openCapture('text', r.url, r.title || h || 'page');
+                      }}
                       className="btn-ghost px-3 py-1.5"
                       title="Capture as text"
                     >
@@ -453,7 +885,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                       <span className="hidden sm:inline">Text</span>
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); openCapture('pdf', r.url, r.title || h || 'page'); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openCapture('pdf', r.url, r.title || h || 'page');
+                      }}
                       className="btn-ghost px-3 py-1.5"
                       title="Capture as PDF"
                     >
@@ -469,7 +904,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                   </div>
 
                   <button
-                    onClick={(e) => { e.stopPropagation(); copyUrl(r.url); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyUrl(r.url);
+                    }}
                     className="btn-ghost px-3 py-1.5"
                     title="Copy URL"
                   >
@@ -482,27 +920,43 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           );
         })}
 
-        {results.length === 0 && (
+        {results.length > 0 && filtered.length === 0 && (
           <li className="rounded-xl border border-dashed border-gray-300 bg-white/60 p-10 text-center">
-            <div className="mx-auto mb-3 h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-              <SearchGlassIcon className="h-5 w-5 text-green-700" />
-            </div>
-            <div className="text-lg font-semibold text-gray-900">No results yet</div>
-            <div className="text-gray-600">Try a broader query or adjust your filters.</div>
+            <div className="text-lg font-semibold text-gray-900">No matches</div>
+            <div className="text-gray-600">Your filters removed all results. Try clearing filters.</div>
+            <button
+              type="button"
+              className="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm hover:bg-gray-50"
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
           </li>
         )}
       </StaggerList>
 
-      {/* Category picker for Save actions */}
+      {/* Save-to-category modal */}
       <CollectionPickerModal
         isOpen={collectionPickerOpen}
+        title="Save to category"
         collections={collections}
         onCancel={onPickCancel}
         onConfirm={onPickConfirm}
-        onCreate={(name) => { createCollection(name); setCollections(getCollections()); }}
+        onCreate={(name) => {
+          createCollection(name);
+          setCollections(getCollections());
+        }}
       />
 
-      {/* Folder picker modal (existing capture flow) */}
+      {/* Remove-from-category modal */}
+      <CollectionPickerModal
+        isOpen={removePickerOpen}
+        title="Remove from category"
+        collections={removeCollectionsForTarget}
+        onCancel={onRemoveCancel}
+        onConfirm={onRemoveConfirm}
+      />
+
       <FolderPickerModal
         open={pickerOpen}
         suggestedName={
@@ -525,50 +979,80 @@ export default ResultsTable;
 function ExternalIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3ZM5 5h6v2H7v10h10v-4h2v6H5V5Z"/>
+      <path
+        fill="currentColor"
+        d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3ZM5 5h6v2H7v10h10v-4h2v6H5V5Z"
+      />
     </svg>
   );
 }
+
 function SaveIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="M17 3H5a2 2 0 0 0-2 2v14l4-4h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-2 6H7V7h8v2Z"/>
+      <path
+        fill="currentColor"
+        d="M17 3H5a2 2 0 0 0-2 2v14l4-4h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-2 6H7V7h8v2Z"
+      />
     </svg>
   );
 }
+
 function CheckIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="m9 16.2-3.5-3.6L4 14l5 5 11-11-1.5-1.5L9 16.2Z"/>
+      <path fill="currentColor" d="m9 16.2-3.5-3.6L4 14l5 5 11-11-1.5-1.5L9 16.2Z" />
     </svg>
   );
 }
+
 function CopyIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14h13a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z"/>
+      <path
+        fill="currentColor"
+        d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14h13a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z"
+      />
     </svg>
   );
 }
+
+function TrashIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path
+        fill="currentColor"
+        d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 6h2v9h-2V9Zm4 0h2v9h-2V9ZM7 9h2v9H7V9Z"
+      />
+    </svg>
+  );
+}
+
+function TagOffIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path
+        fill="currentColor"
+        d="M21 10.41V6a2 2 0 0 0-2-2h-4.41l-1.83-1.83A2 2 0 0 0 11.34 2H6a2 2 0 0 0-2 2v5.34a2 2 0 0 0 .59 1.42l9.24 9.24a2 2 0 0 0 2.83 0l3.34-3.34-1.41-1.41-3.34 3.34L6 9.34V4h5.34l1.83 1.83H19v4.17l2 2Zm-6.5-3.91a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Z"
+      />
+      <path fill="currentColor" d="M3 3l18 18-1.41 1.41L1.59 4.41 3 3Z" />
+    </svg>
+  );
+}
+
 function ListFilterIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="M10 18v-2h10v2H10Zm-6-5v-2h16v2H4Zm3-5V6h13v2H7Z"/>
+      <path fill="currentColor" d="M10 18v-2h10v2H10Zm-6-5v-2h16v2H4Zm3-5V6h13v2H7Z" />
     </svg>
   );
 }
-function SearchGlassIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79L20 21.5 21.5 20l-6-6Zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14Z"/>
-    </svg>
-  );
-}
+
 function SpinnerMini() {
   return (
     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity=".2"></circle>
-      <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" fill="none"></path>
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity=".2" />
+      <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" fill="none" />
     </svg>
   );
 }

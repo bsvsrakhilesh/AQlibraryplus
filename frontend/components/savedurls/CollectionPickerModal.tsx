@@ -4,6 +4,7 @@ import CloseIcon from '../icons/CloseIcon';
 
 interface Props {
   isOpen: boolean;
+  title?: string;
   collections: Collection[];
   onCancel: () => void;
   onConfirm: (collectionId: string) => void;
@@ -12,6 +13,7 @@ interface Props {
 
 const CollectionPickerModal: React.FC<Props> = ({
   isOpen,
+  title = 'Save to category',
   collections,
   onCancel,
   onConfirm,
@@ -37,7 +39,7 @@ const CollectionPickerModal: React.FC<Props> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold">Save to category</h3>
+          <h3 className="font-semibold">{title}</h3>
           <button className="btn-ghost" onClick={onCancel} title="Close">
             <CloseIcon />
           </button>
