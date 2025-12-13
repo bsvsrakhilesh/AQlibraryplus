@@ -995,6 +995,52 @@ html, body, #__next, .app-shell {
   color: color-mix(in oklab, hsl(var(--accent)) 70%, hsl(var(--text)));
 }
 
+/* ------------------------------------------------------------
+   Density support — Details view (cozy vs compact)
+   (Details previously ignored `density`, so the toggle looked broken.)
+------------------------------------------------------------- */
+
+/* Cozy = a touch roomier than default */
+.fm-table-wrap[data-density="cozy"] .fm-table-head {
+  height: 46px;
+}
+.fm-table-wrap[data-density="cozy"] .fm-th {
+  padding: 0 14px;
+  font-size: 12px;
+}
+.fm-table-wrap[data-density="cozy"] .fm-td {
+  padding: 11px 14px;
+}
+
+/* Compact = tighter rows + smaller separators */
+.fm-table-wrap[data-density="compact"] .fm-table-body {
+  padding: 6px;
+}
+.fm-table-wrap[data-density="compact"] .fm-table-head {
+  height: 38px;
+}
+.fm-table-wrap[data-density="compact"] .fm-th {
+  padding: 0 10px;
+  font-size: 11px;
+}
+.fm-table-wrap[data-density="compact"] .fm-td {
+  padding: 7px 10px;
+}
+.fm-table-wrap[data-density="compact"] .fm-td--date,
+.fm-table-wrap[data-density="compact"] .fm-td--size,
+.fm-table-wrap[data-density="compact"] .fm-td--visibility {
+  font-size: 11px;
+}
+.fm-table-wrap[data-density="compact"] .fm-file-icon {
+  width: 14px;
+  height: 14px;
+}
+.fm-table-wrap[data-density="compact"] .fm-th:not(:first-child)::before,
+.fm-table-wrap[data-density="compact"] .fm-td:not(:first-child)::before {
+  top: 7px;
+  bottom: 7px;
+}
+
 /* Badge, breadcrumbs, simple header helpers */
 .fm-badge {
   @apply absolute -top-1.5 -right-1.5 text-[10px] rounded-full px-1.5 py-0.5 font-medium;
@@ -1863,6 +1909,22 @@ html, body, #__next, .app-shell {
 .fm-list-compact[data-density="compact"] .fm-list-name {
   font-size: 14px;
 }
+
+.fm-list-compact[data-density="cozy"] .fm-row {
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.fm-list-compact[data-density="cozy"] .fm-list-name {
+  font-size: 15px;
+}
+
+.fm-list-compact[data-density="compact"] .fm-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+}
+
 /* =========================================================
    Header & Sidebar premium polish (scoped, no duplicates)
    ========================================================= */

@@ -572,6 +572,11 @@ export default function Large_IconView({
         ? { w: 160, h: 160, thumb: 80, icon: 40 }
         : { w: 120, h: 120, thumb: 56, icon: 28 };
 
+    // Make density visibly affect how many tiles fit + tile height.
+    // (Previously, `gap` was calculated but never used, and tile size never changed.)
+    const sizeDelta =
+      density === "compact" ? -12 : density === "cozy" ? -6 : 0;
+
     const densityOffsets = {
       comfortable: { pad: 12, gap: 12 },
       cozy: { pad: 8, gap: 10 },
@@ -580,6 +585,11 @@ export default function Large_IconView({
 
     return {
       ...base,
+      // slightly smaller tiles for compact, slightly smaller for cozy
+      w: Math.max(96, base.w + sizeDelta),
+      h: Math.max(96, base.h + sizeDelta),
+      thumb: Math.max(44, base.thumb + Math.round(sizeDelta * 0.5)),
+      icon: Math.max(22, base.icon + Math.round(sizeDelta * 0.35)),
       pad: densityOffsets[density].pad,
       gap: densityOffsets[density].gap,
     };
@@ -656,12 +666,10 @@ export default function Large_IconView({
       <div
         className="grid"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${
-            variant === "large" ? 160 : 120
-          }px, 1fr))`,
+          gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize.w}px, 1fr))`,
           gridAutoFlow: "row dense",
           justifyItems: "stretch",
-          gap: 14,
+          gap: cardSize.gap,
           padding: cardSize.pad,
         }}
       >

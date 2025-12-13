@@ -471,20 +471,28 @@ r.get('/files', async (req, res, next) => {
       const ps = Math.min(100, Math.max(1, Number(pageSize)));
       const skip = (p - 1) * ps;
       try {
-        const [items, total] = await Promise.all([
+        const [items, total, sum] = await Promise.all([
           prisma.storedFile.findMany({ where, orderBy, skip, take: ps }),
           prisma.storedFile.count({ where }),
+          prisma.storedFile.aggregate({ where, _sum: { size: true } }),
         ]);
-        return res.json({ items, total, page: p, pageSize: ps });
+
+        const totalBytes = sum?._sum?.size ?? 0;
+        return res.json({ items, total, totalBytes, page: p, pageSize: ps });
+
       } catch (e: any) {
         // Fallback when older Prisma client doesn't know folderId
         if (String(e?.message || '').includes('Unknown argument `folderId`')) {
           const { folderId: _omit, ...whereNoFolder } = where;
-          const [items, total] = await Promise.all([
+          const [items, total, sum] = await Promise.all([
             prisma.storedFile.findMany({ where: whereNoFolder, orderBy, skip, take: ps }),
             prisma.storedFile.count({ where: whereNoFolder }),
+            prisma.storedFile.aggregate({ where: whereNoFolder, _sum: { size: true } }),
           ]);
-          return res.json({ items, total, page: p, pageSize: ps });
+
+          const totalBytes = sum?._sum?.size ?? 0;
+          return res.json({ items, total, totalBytes, page: p, pageSize: ps });
+
         }
         throw e;
       }
@@ -501,6 +509,25 @@ r.get('/files', async (req, res, next) => {
       }
       throw e;
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/storage/usage
+// Returns the total stored bytes across all non-deleted files.
+r.get('/storage/usage', async (_req, res, next) => {
+  try {
+    const agg = await prisma.storedFile.aggregate({
+      where: { deletedAt: null },
+      _sum: { size: true },
+      _count: { _all: true },
+    });
+
+    return res.json({
+      usedBytes: agg._sum.size ?? 0,
+      fileCount: agg._count._all ?? 0,
+    });
   } catch (err) {
     next(err);
   }

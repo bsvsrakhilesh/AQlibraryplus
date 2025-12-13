@@ -878,7 +878,7 @@ export default function Details_ListView({
       }}
     >
       {viewMode === "details" && (
-        <div data-view="details" className="fm-table-wrap">
+        <div data-view="details" className="fm-table-wrap" data-density={density}>
           {renderHeader()}
           <div className="fm-table-body">{renderDetailsRows()}</div>
         </div>

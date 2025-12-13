@@ -136,6 +136,7 @@ export default function FileManagerPage() {
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [totalBytes, setTotalBytes] = useState<number>(0);
+  const [storageUsedBytes, setStorageUsedBytes] = useState<number>(0);
 
   // preview + upload modal
   const [selectedPreview, setSelectedPreview] = useState<FileDetail | null>(null);
@@ -144,6 +145,28 @@ export default function FileManagerPage() {
   // refresh flag
   const [refreshToken, setRefreshToken] = useState<number>(0);
   const refresh = useCallback(() => setRefreshToken((n) => n + 1), []);
+
+  // ------- Sidebar Storage (global usage) -------
+  const fetchStorageUsage = useCallback(async () => {
+    try {
+      const res = await fetch('/api/storage/usage');
+      if (!res.ok) throw new Error(`Failed to fetch storage usage (${res.status})`);
+      const data = await res.json();
+      setStorageUsedBytes(Number(data?.usedBytes ?? 0));
+    } catch {
+      // keep the last value (don’t flash 0 / break UI)
+    }
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    refresh();                // refresh listing
+    void fetchStorageUsage(); // refresh sidebar immediately
+  }, [refresh, fetchStorageUsage]);
+
+  // initial load for sidebar storage
+  useEffect(() => {
+    void fetchStorageUsage();
+  }, [fetchStorageUsage]);
 
   // Drag state for UI feedback
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -383,13 +406,17 @@ export default function FileManagerPage() {
     
           // Total counts include folders
           const totalCount =
-            typeof data.total === 'number'
-              ? data.total + folderItems.length
+            typeof (data as any)?.total === 'number'
+              ? (data as any).total + folderItems.length
               : items.length;
           setTotal(totalCount);
     
           // Bytes: folders count as 0
-          const bytes = fileItems.reduce((acc, f) => acc + (typeof f.size === 'number' ? f.size : 0), 0);
+          const bytes =
+            typeof (data as any)?.totalBytes === "number"
+              ? (data as any).totalBytes
+              : fileItems.reduce((acc, f) => acc + (typeof f.size === "number" ? f.size : 0), 0);
+
           setTotalBytes(bytes);
         }
       } catch (e: any) {
@@ -415,6 +442,28 @@ export default function FileManagerPage() {
     sortDir,
     refreshToken,
   ]);
+
+  // ------- Storage usage (sidebar) -------
+  // Sidebar should show *global* usage, not only the current folder's total bytes.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+    try {
+      const res = await fetch('/api/storage/usage');
+      if (!res.ok) throw new Error(`Failed to fetch storage usage (${res.status})`);
+      const data = await res.json();
+      if (!cancelled) setStorageUsedBytes(Number(data?.usedBytes ?? 0));
+    } catch {
+      // graceful fallback (won't be perfect, but avoids showing 0)
+      if (!cancelled) setStorageUsedBytes(totalBytes);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+  }, [refreshToken, totalBytes]);
 
   // ------- Actions -------
   const handleOpenPreview = useCallback((f: FileDetail) => {
@@ -462,7 +511,13 @@ export default function FileManagerPage() {
       }
 
       notify(isFolder ? 'Folder deleted' : 'File deleted', 'success');
-      refresh();
+            // Instant UI: if it's a file, subtract its size right away
+      if (!isFolder && typeof file.size === 'number') {
+        setStorageUsedBytes((s) => Math.max(0, s - file.size));
+      }
+
+      // Then sync from server (folders can remove many files)
+      refreshAll();
     } catch (e: any) {
       notify(e?.message || 'Delete failed', 'error');
     }
@@ -486,7 +541,11 @@ export default function FileManagerPage() {
   const handleUploaded = useCallback(
     (nf: FileItem) => {
       notify(`Uploaded ${nf.title}`, 'success');
-      refresh();
+      // Instant UI bump (then we sync from server)
+      if (typeof nf.size === 'number') {
+        setStorageUsedBytes((s) => s + nf.size);
+      }
+      refreshAll();
       setShowUpload(false);
     },
     [notify, refresh]
@@ -530,7 +589,16 @@ export default function FileManagerPage() {
         await Promise.all(ids.map(id => moveFile(id, currentFolderId ?? null)));
         notify(`Moved ${ids.length} item(s), 'success'`);
       }
-      refresh();
+      // Copy increases storage; Move does not
+      if (clipboard.mode === 'copy') {
+        const added = clipboard.files.reduce((acc, f) => {
+          const isFolder = (f as any)?.mimeType === 'folder' || String(f.id).startsWith('folder:');
+          return acc + (isFolder ? 0 : typeof f.size === 'number' ? f.size : 0);
+        }, 0);
+        if (added > 0) setStorageUsedBytes((s) => s + added);
+      }
+
+      refreshAll();
     } catch {
       notify('Paste failed', 'error');
     } finally {
@@ -570,11 +638,11 @@ export default function FileManagerPage() {
     type: 'item',
     id: 'refresh',
     label: 'Refresh',
-    onSelect: () => refresh(),
+    onSelect: () => refreshAll(),
   });
 
   return items;
-  }, [clipboard, handlePaste, refresh]);
+  }, [clipboard, handlePaste, refreshAll]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((ids: string[]) => {
@@ -893,7 +961,7 @@ export default function FileManagerPage() {
         </div>
       </motion.header>
 
-            {/* Content */}
+      {/* Content */}
       <div className="max-w-7xl w-full mx-auto mt-4 ex-grid">
         {/* Left: Quick Access + Folder tree */}
         <aside className="ex-sidebar">
@@ -906,7 +974,7 @@ export default function FileManagerPage() {
             <FileSidebar
               onFolderSelect={onFolderSelect}
               currentFolderId={currentFolderId}
-              storageUsedBytes={totalBytes}
+              storageUsedBytes={storageUsedBytes}
               storageCapacityBytes={1024 ** 4}
             />
           </motion.div>
@@ -1222,7 +1290,7 @@ export default function FileManagerPage() {
                   )}
 
                   <span className="ex-status-pill">
-                    Total • {formatBytes(totalBytes)}
+                    This folder • {formatBytes(totalBytes)}
                   </span>
                 </div>
 
