@@ -331,30 +331,10 @@ const UrlCollectorPage: React.FC = () => {
       <section aria-labelledby="results-title" className="space-y-4">
          <SmartCard as="div" className="fm-panel !bg-transparent !border-none !shadow-none overflow-hidden">
           {/* Sticky header row */}
-          <div className="flex items-center justify-between sticky top-0 z-10 px-3 sm:px-4 py-3 backdrop-blur-sm">
+          <div className="flex items-center sticky top-0 z-10 px-3 sm:px-4 py-3 backdrop-blur-sm">
             <h2 id="results-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">
               Results
             </h2>
-            <div className="sort-toolbar flex items-center gap-2">
-              <label
-                htmlFor="sortKey"
-                className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap"
-              >
-                Sort by
-              </label>
-
-              <select
-                id="sortKey"
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="select-pill"
-                aria-label="Sort results"
-              >
-                <option value="original">Original</option>
-                <option value="title">Title</option>
-                <option value="domain">Domain</option>
-              </select>
-            </div>
           </div>
 
           {/* Results body */}
