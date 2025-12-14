@@ -4,6 +4,7 @@ import { log } from '../utils/logger';
 
 export async function searchHandler(req: Request, res: Response, next: NextFunction) {
   const q = String(req.query.q || '').trim();
+  const page = Number(req.query.page ?? 1);
 
   if (!q) {
     log.warn('search.request.invalid', { reason: 'missing q' });
@@ -12,7 +13,12 @@ export async function searchHandler(req: Request, res: Response, next: NextFunct
 
   const startedAt = Date.now();
   try {
-    const results = await googleSearch(q);
+    const { results, nextPage, totalResults } = await googleSearch(q, page);
+
+    if (nextPage) res.setHeader('x-next-page', String(nextPage));
+    if (typeof totalResults === 'number' && !Number.isNaN(totalResults)) {
+      res.setHeader('x-total-results', String(totalResults));
+    }
     log.info('search.response.ok', { items_count: results.length, ms: Date.now() - startedAt });
     return res.json(results);
   } catch (err: any) {

@@ -3,7 +3,7 @@ import { log, mask } from '../utils/logger';
 
 const GOOGLE_CSE_URL = 'https://www.googleapis.com/customsearch/v1';
 
-export async function googleSearch(q: string) {
+export async function googleSearch(q: string, page: number = 1) {
   const key = process.env.GOOGLE_CSE_KEY;
   const cx  = process.env.GOOGLE_CSE_CX;
 
@@ -13,6 +13,10 @@ export async function googleSearch(q: string) {
     throw new Error(msg);
   }
 
+  // Google CSE supports start index up to ~91 for 10-per-page (max 100 results)
+  const safePage = Number.isFinite(page) ? Math.max(1, Math.min(10, page)) : 1;
+  const start = (safePage - 1) * 10 + 1;
+
   const startedAt = Date.now();
   try {
     const resp = await axios.get(GOOGLE_CSE_URL, {
@@ -21,6 +25,7 @@ export async function googleSearch(q: string) {
         key,
         cx,
         num: 10,
+        start,               // <-- pagination
         safe: 'off',
         prettyPrint: false,
       },
@@ -34,15 +39,31 @@ export async function googleSearch(q: string) {
       snippet: item?.snippet ?? '',
     }));
 
+    const nextStart: unknown = resp?.data?.queries?.nextPage?.[0]?.startIndex;
+    const nextPage =
+      typeof nextStart === 'number' ? Math.floor((nextStart - 1) / 10) + 1 : null;
+
+    const totalRaw: unknown = resp?.data?.searchInformation?.totalResults;
+    const totalResults =
+      typeof totalRaw === 'string'
+        ? Number(totalRaw)
+        : typeof totalRaw === 'number'
+        ? totalRaw
+        : null;
+
     log.info('cse.search.ok', {
       query: q,
       cx: mask(cx),
+      page: safePage,
+      start,
       status: resp.status,
       items_count: results.length,
+      nextPage,
+      totalResults,
       ms: Date.now() - startedAt,
     });
 
-    return results;
+    return { results, nextPage, totalResults };
   } catch (err: any) {
     const status = err?.response?.status;
     const data   = err?.response?.data;
@@ -64,4 +85,3 @@ export async function googleSearch(q: string) {
     throw new Error(`Google CSE error ${status ?? ''}: ${reason}${hint ? ` (${hint})` : ''}`);
   }
 }
-
