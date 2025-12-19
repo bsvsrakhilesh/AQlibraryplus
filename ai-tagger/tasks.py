@@ -150,7 +150,7 @@ def process_job(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         input_type = payload.get("input_type")
         topk = int(payload.get("topk", 10))
-        use_llm = bool(payload.get("use_llm", True))
+        use_llm = bool(payload.get("use_llm", False))
 
         if input_type == "text":
             text = payload.get("text") or ""

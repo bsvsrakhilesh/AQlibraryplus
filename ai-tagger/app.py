@@ -54,7 +54,7 @@ async def create_job(
     file: Optional[UploadFile] = File(None),
     # knobs
     topk: Optional[int] = Form(20),
-    use_llm: Optional[str] = Form("true"),
+    use_llm: Optional[str] = Form("false"),
 ):
     """
     Accepts any of: url, text, file_base64, or a file upload (under any field name).

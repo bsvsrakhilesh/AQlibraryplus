@@ -135,8 +135,30 @@ def extract_and_tag_sync(*, text: Optional[str] = None, url: Optional[str] = Non
     raw_tags = _pick_top_tags(phrases, unigrams, topk=topk)
     tags     = apply_taxonomy(raw_tags)
 
+    llm_used = False
+    llm_model: Optional[str] = None
+    tagger_version = TAGGER_VERSION
+
+    # Optional: rerank tags with an LLM (OpenAI/OpenRouter) when enabled.
+    if use_llm:
+        try:
+            from reranker import has_llm_key, get_llm_model, rerank_with_llm  # type: ignore
+
+            if has_llm_key():
+                candidates = list(phrases[:120]) + list(unigrams[:120])
+                llm_tags = rerank_with_llm(candidates, topk=topk, context_text=content)
+                llm_tags = apply_taxonomy(llm_tags)
+                if llm_tags:
+                    tags = llm_tags
+                    llm_used = True
+                    llm_model = get_llm_model()
+                    tagger_version = f"{TAGGER_VERSION}+llm:{llm_model}"
+        except Exception as e:
+            log.warning("LLM rerank failed: %s", e)
+
     h = hashlib.md5(content.encode("utf-8")).hexdigest()
     return {"tags": tags, "phrases": phrases[:200], "unigrams": unigrams[:200],
-            "length": len(content), "hash": h, "tagger_version": TAGGER_VERSION}
+            "length": len(content), "hash": h, "tagger_version": tagger_version,
+            "llm_used": llm_used, "llm_model": llm_model}
 
 __all__ = ["extract_and_tag_sync"]
