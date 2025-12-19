@@ -65,6 +65,10 @@ export async function patchUrl(id: number, patch: any) {
   const res = await api.patch(`/api/urls/${id}`, patch);
   return res.data;
 }
+export async function getUrlById(id: number): Promise<BackendUrlRow> {
+  const res = await api.get(`/api/urls/${id}`);
+  return res.data as BackendUrlRow;
+}
 export async function deleteUrlsBulk(ids: number[]): Promise<void> {
   await api.delete('/api/urls', { data: { ids } });
 }
@@ -209,6 +213,18 @@ export async function startUrlTagJob(urlId: number) {
 export async function getJob(jobId: string, query: string) {
   const { data } = await api.get(`/api/tag-jobs/${encodeURIComponent(jobId)}?${query}`);
   return data as JobState;
+}
+
+export async function getFileTagJob(jobId: string, fileId: string) {
+  // Backend persists tags ONLY when fileId is present on /api/tag-jobs/:jobId
+  const q = `fileId=${encodeURIComponent(fileId)}`;
+  return getJob(jobId, q);
+}
+
+export async function getUrlTagJob(jobId: string, urlId: number) {
+  // Same concept for URLs (used later / elsewhere)
+  const q = `urlId=${encodeURIComponent(String(urlId))}`;
+  return getJob(jobId, q);
 }
 
 api.interceptors.request.use(cfg => {

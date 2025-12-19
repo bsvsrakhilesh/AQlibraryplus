@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight} from 'lucide-react';
 import { useToast } from '../components/providers/Toast';
 import { FileItem, FileDetail } from '../types';
-import { createFolder, getFolder, toggleFileFavorite, toFileItem, type BackendStoredFile, duplicateFile, moveFile, getJob, startFileTagJob, listFolders, } from '../lib/api';
+import { createFolder, getFolder, toggleFileFavorite, toFileItem, type BackendStoredFile, duplicateFile, moveFile, getFileTagJob, startFileTagJob, listFolders, getFileById, } from '../lib/api';
 import BulkActionBar from '../components/common/BulkActionBar';
 import ContextMenu, { type MenuItem } from '../components/common/ContextMenu';
 import Details_ListView from '../components/filemanager/Details_ListView';
@@ -817,7 +817,7 @@ export default function FileManagerPage() {
         // 2) poll job
         let attempt = 0;
         while (attempt < 90) { // ~90s
-          const data = await getJob(jobId, 'topk=10&useLLM=true');
+          const data = await getFileTagJob(jobId, f.id);
 
           if (data?.state === 'SUCCESS') {
             const ai = Array.from(new Set<string>((data.tags ?? []).map(String)));
@@ -830,14 +830,15 @@ export default function FileManagerPage() {
               prev.map(x => x.id === f.id ? { ...x, tags: mergedUi(x.tags) } : x)
             );
 
-            // persist to backend (mirror your PATCH style used elsewhere)
-            const current = allFiles.find(x => x.id === f.id)?.tags ?? [];
-            const merged = Array.from(new Set([...current, ...ai]));
-            await fetch(`/api/files/${f.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tags: merged })
-            });
+            // NEW: replace optimistic tags with server truth (backend merge + meta)
+            try {
+              const fresh = await getFileById(f.id);
+              setAllFiles(prev => prev.map(x => x.id === f.id ? { ...x, tags: fresh.tags ?? [] } : x));
+            } catch (e) {
+              console.warn('Failed to refresh file after AI tag', f.id, e);
+            }
+
+            // Persist is handled by GET /api/tag-jobs/:jobId?fileId=... when state=SUCCESS
             break;
           }
 

@@ -7,7 +7,7 @@ import CollectionSidebar from '../components/savedurls/CollectionSidebar';
 import CollectionPickerModal from '../components/savedurls/CollectionPickerModal';
 import BulkActionBar from '../components/common/BulkActionBar';
 import {fetchSavedUrls as apiFetchSavedUrls, saveUrls as apiSaveUrls, patchUrl, deleteUrlsBulk,
-  type BackendUrlRow, crawlSavePdf, crawlSaveText, getJob, startUrlTagJob} from '../lib/api';
+  type BackendUrlRow, crawlSavePdf, crawlSaveText, getUrlTagJob, startUrlTagJob, getUrlById} from '../lib/api';
 import FolderPickerModal from '../components/savedurls/FolderPickerModal';
 import { getCollections, createCollection, getUrlCollections, addUrlToCollection, setUrlCollections,} from '../utils/collections';
 import { StaggerList, StaggerItem } from '../components/motion/StaggerList';
@@ -248,7 +248,7 @@ const onAutoTagSelected = useCallback(async (ids: string[]) => {
       // 2) poll job
       let attempt = 0;
       while (attempt < 90) { // ~90s
-        const data = await getJob(jobId, 'topk=10&useLLM=true');
+        const data = await getUrlTagJob(jobId, idNum);
 
         if (data?.state === 'SUCCESS') {
           const ai = Array.from(new Set<string>((data.tags ?? []).map(String)));
@@ -257,8 +257,15 @@ const onAutoTagSelected = useCallback(async (ids: string[]) => {
           // 3) update UI immediately
           setUrls(prev => prev.map(x => x.id === u.id ? { ...x, tags: merged } : x));
 
-          // 4) persist to backend
-          await patchUrl(idNum, { tags: merged });
+          // NEW: replace optimistic tags with server truth (backend merge + meta)
+          try {
+            const freshRow = await getUrlById(idNum);
+            setUrls(prev => prev.map(x => x.id === u.id ? toUISaved(freshRow) : x));
+          } catch (e) {
+            console.warn('Failed to refresh URL after AI tag', idNum, e);
+          }
+
+          // Persist is handled by GET /api/tag-jobs/:jobId?urlId=... when state=SUCCESS
           break;
         }
 
@@ -273,7 +280,7 @@ const onAutoTagSelected = useCallback(async (ids: string[]) => {
       console.error('Auto-tag URL failed', u.id, err);
     }
   }
-}, [urls, patchUrl, setUrls]);
+}, [urls]);
 
 
   const onAddTag = async (ids: string[], tag: string) => {

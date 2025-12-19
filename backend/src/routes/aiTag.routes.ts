@@ -5,7 +5,7 @@ import { createJobFromFile, createJobFromUrl, getJob, healthCheck } from "../ser
 const prisma = new PrismaClient();
 const r = Router();
 
-const TOPK = Number(process.env.TAGS_TOPK || 6);
+const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "false").toLowerCase() === "true";
 
 /** Quick health proxy (optional) */

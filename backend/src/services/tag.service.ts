@@ -6,8 +6,8 @@ import { tagText } from "./tagger";
 const prisma = new PrismaClient();
 
 // Tunables (aligned with dist/services/tag.service.js)
-const TAGS_TOPK     = Number(process.env.TAGS_TOPK ?? 20);
-const TAGS_MAX_GRAM = Number(process.env.TAGS_MAX_GRAM ?? 3);
+const TAGS_TOPK     = Number(process.env.TAGS_TOPK ?? 10);
+const TAGS_MAX_GRAM = Number(process.env.TAGS_MAX_GRAM ?? 4);
 const TAGS_PMI      = Number(process.env.TAGS_PMI ?? 1.2);
 
 /**
