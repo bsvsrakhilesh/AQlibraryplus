@@ -86,6 +86,22 @@ app.use('/api', crawlRoutes);
 app.use('/api', notebookRoutes);
 app.use("/api", aiTagRoutes);
 
+// ---- Basic root + health endpoints (fix "Cannot GET /") ----
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "SmartScrape backend",
+    ping: "/ping",
+    apiPing: "/api/ping",
+    health: "/health",
+  });
+});
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+// ---- end ----
+
 app.get('/ping', (_req, res) => res.send('pong'));
 
 app.use((err: any, req: any, res: any, _next: any) => {

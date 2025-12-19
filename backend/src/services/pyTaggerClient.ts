@@ -23,19 +23,40 @@ export async function createJobFromUrl(url: string, topk = 10, useLLM = true) {
   return pickJobId(data);
 }
 
-export async function createJobFromFile(path: string, topk = 10, useLLM = true) {
-  const b64 = fs.readFileSync(path).toString("base64");
-  const form = new URLSearchParams();
-  form.append("file_base64", b64);
-  form.append("topk", String(topk));
-  form.append("use_llm", useLLM ? "true" : "false");
-  const { data } = await axios.post(`${TAGGER_URL}/jobs`, form, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    timeout: 60000,
-  });
-  return pickJobId(data);
-}
+export async function createJobFromFile(filePath: string, topk = 10, useLLM = true) {
+  // Prefer multipart upload (FastAPI supports UploadFile and is much more reliable than base64)
+  try {
+    const form = new FormData();
+    form.append("topk", String(topk));
+    form.append("use_llm", useLLM ? "true" : "false");
+    form.append("file", fs.createReadStream(filePath)); // field name "file" is supported
 
+    const { data } = await axios.post(`${TAGGER_URL}/jobs`, form, {
+      headers: form.getHeaders(),
+      timeout: 120000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+
+    return pickJobId(data);
+  } catch (e) {
+    // Fallback to base64 for rare environments where multipart may be blocked
+    const b64 = fs.readFileSync(filePath).toString("base64");
+    const form = new URLSearchParams();
+    form.append("file_base64", b64);
+    form.append("topk", String(topk));
+    form.append("use_llm", useLLM ? "true" : "false");
+
+    const { data } = await axios.post(`${TAGGER_URL}/jobs`, form, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: 120000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+
+    return pickJobId(data);
+  }
+}
 
 export async function getJob(jobId: string) {
   const { data } = await axios.get(`${TAGGER_URL}/jobs/${jobId}`, { timeout: 10000 });

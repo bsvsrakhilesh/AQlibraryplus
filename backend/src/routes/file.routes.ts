@@ -10,28 +10,13 @@ import unzipper from 'unzipper';
 const r = Router();
 
 const STORAGE_DIR = process.env.FILE_STORAGE_DIR || path.join(process.cwd(), 'storage');
-const incomingDir = path.join(STORAGE_DIR, 'incoming');
-fs.mkdirSync(incomingDir, { recursive: true });
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _f, cb) => cb(null, incomingDir),
-    filename: (_req, f, cb) => cb(null, `${Date.now()}_${f.originalname.replace(/[^\w.\-]+/g,'_')}`)
-  }),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB cap
-  fileFilter: async (_req, file, cb) => {
-    try {
-      const { fileTypeFromBuffer } = await import('file-type');
-      const buf = (file as any).buffer?.subarray?.(0, 4100);
-      if (!buf) return cb(null, false);
-      const ft = await fileTypeFromBuffer(buf);
-      const okExt  = /\.(pdf|png|jpe?g|webp|gif|svg)$/i.test(file.originalname);
-      const okMime = ft && /^(application\/pdf|image\/(png|jpeg|webp|gif|svg\+xml))$/.test(ft.mime);
-      return cb(null, !!(okExt && okMime));
-    } catch {
-      return cb(null, false);
-    }
-  }
+// NOTE: chunk uploads must use memoryStorage so req.file.buffer exists.
+// We validate the final stitched file type later (after stitching).
+const chunkUpload = multer({
+  storage: multer.memoryStorage(),
+  // per-chunk cap; your frontend chunk size is 1MB, so 2MB is safe headroom
+  limits: { fileSize: 2 * 1024 * 1024 },
 });
 
 const prisma = new PrismaClient();
@@ -198,7 +183,7 @@ function newStoragePathLike(srcPath: string, fileName: string) {
 
 // POST /api/files/upload/chunk
 // Fields: chunk (blob), fingerprint, chunkIndex, totalChunks, fileName
-r.post('/files/upload/chunk', upload.single('chunk'), async (req, res, next) => {
+r.post('/files/upload/chunk', chunkUpload.single('chunk'), async (req, res, next) => {
   try {
     const { fingerprint, chunkIndex, totalChunks, fileName, folderId } = req.body as Record<string, string>;
     if (!fingerprint || !fileName) return res.status(400).json({ message: 'Missing fingerprint or fileName' });
