@@ -77,7 +77,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       # Optional (enables LLM-based reranking):
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_MODEL: ${LLM_MODEL}
     ports:
       - "7071:7071"
     depends_on:
