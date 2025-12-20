@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import type { SavedUrl as UISavedUrl, Collection } from '../types';
 import SearchFilterUrls, { UrlFilterState } from '../components/savedurls/SearchFilterUrls';
 import SavedUrlCard from '../components/savedurls/SavedUrlCard';
@@ -74,6 +74,9 @@ const SavedUrlsPage: React.FC = () => {
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<UISavedUrl | null>(null);
 
+  // Poll saved URLs briefly so newly-generated AI tags show up automatically
+  const tagPollRef = useRef<number | null>(null);
+
   // Clipboard for bulk copy/cut/paste
   const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; items: UISavedUrl[] } | null>(null);
 
@@ -100,6 +103,56 @@ const SavedUrlsPage: React.FC = () => {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const needsPolling = (rows: UISavedUrl[]) => {
+      const now = Date.now();
+      return rows.some((u) => {
+        const ageMs = now - new Date(u.createdAt).getTime();
+        const hasNoTags = (u.tags?.length ?? 0) === 0;
+        return hasNoTags && ageMs < 10 * 60 * 1000; // only recent items
+      });
+    };
+  
+    // Stop polling if nothing needs it
+    if (!needsPolling(urls)) {
+      if (tagPollRef.current) {
+        window.clearInterval(tagPollRef.current);
+        tagPollRef.current = null;
+      }
+      return;
+    }
+  
+    // Already polling
+    if (tagPollRef.current) return;
+  
+    let ticks = 0;
+    const MAX_TICKS = 20; // ~60 seconds (20 * 3s)
+  
+    const stop = () => {
+      if (tagPollRef.current) {
+        window.clearInterval(tagPollRef.current);
+        tagPollRef.current = null;
+      }
+    };
+  
+    tagPollRef.current = window.setInterval(async () => {
+      ticks++;
+      try {
+        const rows = await apiFetchSavedUrls();
+        const ui = rows.map(toUISaved);
+        setUrls(ui);
+  
+        // If tags arrived (or time budget exceeded), stop polling
+        if (!needsPolling(ui) || ticks >= MAX_TICKS) stop();
+      } catch {
+        if (ticks >= MAX_TICKS) stop();
+      }
+    }, 3000);
+  
+    return stop;
+  }, [urls]);
+
 
   // Domain/Tag options
   const availableDomains = useMemo(

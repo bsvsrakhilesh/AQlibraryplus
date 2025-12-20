@@ -97,15 +97,17 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'url-collector': return <UrlCollectorPage />;
-      case 'saved-urls':    return <SavedUrlsPage />;
-      case 'file-manager':  return <FileManagerPage />;
-      case 'notebook':      return <NotebookPage />;
-      default:              return <UrlCollectorPage />;
-    }
-  };
+  const renderPages = () => (
+  <>
+    <div style={{ display: currentPage === 'url-collector' ? 'block' : 'none' }}>
+      <UrlCollectorPage />
+    </div>
+
+    {currentPage === 'saved-urls' && <SavedUrlsPage />}
+    {currentPage === 'file-manager' && <FileManagerPage />}
+    {currentPage === 'notebook' && <NotebookPage />}
+  </>
+  );
   const workspacePages: Page[] = ['url-collector', 'saved-urls', 'file-manager'];
   const isWorkspacePage = workspacePages.includes(currentPage);
   const isNotebookPage = currentPage === 'notebook';
@@ -121,7 +123,7 @@ const App: React.FC = () => {
           hideAmbient={isWorkspacePage}
           variant={isNotebookPage ? 'notebook' : 'workspace'}
         >
-          {renderPage()}
+          {renderPages()}
         </AppShell>
 
         <CommandPalette

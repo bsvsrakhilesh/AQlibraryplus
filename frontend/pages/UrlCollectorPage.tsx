@@ -79,6 +79,7 @@ const UrlCollectorPage: React.FC = () => {
       if (typeof p.lastQuery === 'string') setLastQuery(p.lastQuery);
       if (typeof p.nextPage !== 'undefined') setNextPage(p.nextPage ?? null);
       if (typeof p.totalResults !== 'undefined') setTotalResults(p.totalResults ?? null);
+      if ((p.results && p.results.length > 0) || p.lastRunAt) { setHasSearched(true); }
 
     } catch {
       /* ignore */
