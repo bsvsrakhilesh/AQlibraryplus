@@ -34,6 +34,15 @@ r.post("/urls/:id/auto-tags", async (req, res, next) => {
     if (!row) return res.status(404).json({ message: "Url not found" });
 
     const { jobId } = await createJobFromUrl(row.url, TOPK, USE_LLM);
+    await prisma.url.update({
+      where: { id },
+      data: {
+        taggingStatus: "RUNNING",
+        taggingJobId: jobId,
+        taggingError: null,
+      },
+    });
+
     return res.status(202).json({ jobId });
   } catch (e) { next(e); }
 });
@@ -47,13 +56,20 @@ r.get("/tag-jobs/:jobId", async (req, res, next) => {
 
     const data = await getJob(jobId);
 
-    // if not done, just return status
-    if (data.state !== "SUCCESS") return res.json(data);
+    if (data.state !== "SUCCESS") {
+      if (urlId && data.state === "FAILURE") {
+        const msg = String(data?.error || data?.message || "Unknown ai-tagger failure").slice(0, 500);
+        await prisma.url.update({
+          where: { id: urlId },
+          data: { taggingStatus: "FAILED", taggingJobId: null, taggingError: msg },
+        });
+      }
+      return res.json(data);
+    }
 
     const { tags, hash, tagger_version, phrases, unigrams } = data;
-
     
-if (fileId) {
+  if (fileId) {
   const rec = await prisma.storedFile.findUnique({ where: { id: fileId } });
   if (rec) {
     const merged = Array.from(new Set([...(rec.tags || []), ...(tags || [])]));
@@ -80,6 +96,9 @@ if (urlId) {
         contentHash: hash ?? null,
         taggerVersion: tagger_version ?? null,
         tagsMeta: { phrases: phrases || [], unigrams: unigrams || [] },
+        taggingStatus: "SUCCESS",
+        taggingJobId: null,
+        taggingError: null,
       },
     });
   }

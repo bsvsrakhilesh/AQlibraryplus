@@ -4,6 +4,7 @@ import FormData from "form-data";
 import fs from "fs";
 
 const TAGGER_URL = process.env.TAGGER_PY_URL || "http://localhost:7071";
+const GET_JOB_TIMEOUT_MS = Number(process.env.TAGS_JOB_GET_TIMEOUT_MS || 25000);
 
 function pickJobId(data: any): { jobId: string } {
   const jobId = data?.jobId || data?.job_id || data?.id;
@@ -59,7 +60,7 @@ export async function createJobFromFile(filePath: string, topk = 10, useLLM = tr
 }
 
 export async function getJob(jobId: string) {
-  const { data } = await axios.get(`${TAGGER_URL}/jobs/${jobId}`, { timeout: 10000 });
+  const { data } = await axios.get(`${TAGGER_URL}/jobs/${jobId}`, { timeout: GET_JOB_TIMEOUT_MS });
   return data as any;
 }
 

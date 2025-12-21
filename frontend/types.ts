@@ -14,6 +14,8 @@ export interface FileUploader {
 
 export type Visibility = 'public' | 'private';
 
+export type TaggingStatus = 'NONE' | 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+
 export interface FileItem {
   id: string;
   title: string;
@@ -59,6 +61,8 @@ export interface SavedUrl {
   faviconUrl?: string;
   domain: string;
   tags: string[];
+  taggingStatus?: TaggingStatus;
+  taggingError?: string | null;
   notes?: string;
   isFavorited: boolean;
   collections: string[]; // collection IDs

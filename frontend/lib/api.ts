@@ -14,6 +14,9 @@ export type BackendUrlRow = {
   isFavorited?: boolean;
   notes?: string | null;
   tags?: string[] | null;
+  taggingStatus?: 'NONE' | 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  taggingJobId?: string | null;
+  taggingError?: string | null;
 };
 
 export type BackendStoredFile = {

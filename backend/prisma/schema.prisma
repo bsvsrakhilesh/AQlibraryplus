@@ -12,6 +12,14 @@ enum SourceKind {
   FILE
 }
 
+enum TaggingStatus {
+  NONE
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
 model Url {
   id          Int      @id @default(autoincrement())
   url         String   @unique
@@ -25,6 +33,10 @@ model Url {
   contentHash   String?
   taggerVersion String?
   tagsMeta      Json?
+
+  taggingStatus TaggingStatus @default(NONE)
+  taggingJobId  String?
+  taggingError  String?
 
   notebookSources NotebookSource[] @relation("UrlNotebookSources")
 }

@@ -41,6 +41,25 @@ function chipClassForTag(tagRaw: string): string {
   return palette[idx];
 }
 
+function taggerChip(u: SavedUrl) {
+  const s = (u as any).taggingStatus as string | undefined;
+  if (!s || s === 'NONE' || s === 'SUCCESS') return null;
+
+  const label =
+    s === 'PENDING' ? 'AI: queued' :
+    s === 'RUNNING' ? 'AI: tagging…' :
+    s === 'FAILED'  ? 'AI: failed' :
+    `AI: ${s}`;
+
+  const cls =
+    s === 'PENDING' ? 'chip-slate' :
+    s === 'RUNNING' ? 'chip-sky' :
+    s === 'FAILED'  ? 'chip-red' :
+    'chip-gray';
+
+  return { label, cls, title: (u as any).taggingError || label };
+}
+
 const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
   url,
   selected = false,
@@ -134,6 +153,18 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
           <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
             {url.domain}
           </div>
+
+          {(() => {
+            const chip = taggerChip(url);
+            if (!chip) return null;
+            return (
+              <div className="mt-2">
+                <span className={`chip ${chip.cls}`} title={chip.title}>
+                  {chip.label}
+                </span>
+              </div>
+            );
+          })()}
 
           {url.description ? (
             <p className="mt-2 line-clamp-3 text-sm text-gray-700 dark:text-gray-300">

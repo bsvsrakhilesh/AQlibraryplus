@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
 
 const prisma = new PrismaClient();
 
@@ -107,12 +108,12 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
   }
 
   // 🔹 Non-blocking tagging via Python ai-tagger
-  try {
-    const { scheduleAiTagForUrl } = await import("./aiTagUrlAuto.service");
-    for (const { id } of created) scheduleAiTagForUrl(id);
-  } catch (err) {
-    console.error("scheduleAiTagForUrl import failed (bulk create)", err);
-  }
+  // Stagger starts a bit to avoid hammering the tagger when the user saves many URLs at once.
+  const STAGGER_MS = Number(process.env.TAGS_STAGGER_MS || 250);
+
+  created.forEach(({ id }, i) => {
+    setTimeout(() => scheduleAiTagForUrl(id), i * STAGGER_MS);
+  });
 
   return { added, skipped, skippedUrls };
 }

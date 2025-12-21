@@ -1,5 +1,5 @@
 // backend/src/services/aiTagUrlAuto.service.ts
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, TaggingStatus } from "@prisma/client";
 import { createJobFromUrl, getJob } from "./pyTaggerClient";
 
 const prisma = new PrismaClient();
@@ -36,6 +36,14 @@ export async function runAiTagForUrl(urlId: number, opts?: { force?: boolean }) 
   }
 
   const { jobId } = await createJobFromUrl(rec.url, TOPK, USE_LLM);
+  await prisma.url.update({
+    where: { id: urlId },
+    data: {
+      taggingStatus: TaggingStatus.RUNNING,
+      taggingJobId: jobId,
+      taggingError: null,
+    },
+  });
 
   const startedAt = Date.now();
   let delay = INITIAL_DELAY_MS;
@@ -45,14 +53,29 @@ export async function runAiTagForUrl(urlId: number, opts?: { force?: boolean }) 
       throw new Error(`ai-tagger job timed out for urlId=${urlId} jobId=${jobId}`);
     }
 
-    const data = await getJob(jobId);
+    let data: any;
+    try {
+      data = await getJob(jobId);
+    } catch (e) {
+      // Treat as transient (network hiccup / timeout / tagger under load).
+      // Keep polling until MAX_WAIT_MS instead of failing the whole auto-tag run.
+      console.warn("[aiTagUrlAuto] getJob transient error", { urlId, jobId, delay }, e);
+      await sleep(delay);
+      delay = Math.min(MAX_DELAY_MS, Math.round(delay * 1.3));
+      continue;
+    }
 
     if (data?.state === "SUCCESS") {
       const tags = Array.isArray(data?.tags) ? data.tags : [];
       const phrases = Array.isArray(data?.phrases) ? data.phrases : [];
       const unigrams = Array.isArray(data?.unigrams) ? data.unigrams : [];
 
-      const merged = mergeUnique(rec.tags, tags);
+      const latest = await prisma.url.findUnique({
+        where: { id: urlId },
+        select: { tags: true },
+      });
+
+      const merged = mergeUnique(latest?.tags, tags);
 
       await prisma.url.update({
         where: { id: urlId },
@@ -61,6 +84,9 @@ export async function runAiTagForUrl(urlId: number, opts?: { force?: boolean }) 
           contentHash: data?.hash ?? null,
           taggerVersion: data?.tagger_version ?? null,
           tagsMeta: { phrases, unigrams } as any,
+          taggingStatus: TaggingStatus.SUCCESS,
+          taggingJobId: null,
+          taggingError: null,
         },
       });
 
@@ -81,8 +107,30 @@ export async function runAiTagForUrl(urlId: number, opts?: { force?: boolean }) 
 export function scheduleAiTagForUrl(urlId: number, opts?: { force?: boolean }) {
   setImmediate(async () => {
     try {
+      // Show status immediately in UI
+      await prisma.url.update({
+        where: { id: urlId },
+        data: {
+          taggingStatus: TaggingStatus.PENDING,
+          taggingError: null,
+        },
+      });
+
       await runAiTagForUrl(urlId, opts);
-    } catch (e) {
+    } catch (e: any) {
+      const msg = String(e?.message || e || "Unknown error").slice(0, 500);
+
+      try {
+        await prisma.url.update({
+          where: { id: urlId },
+          data: {
+            taggingStatus: TaggingStatus.FAILED,
+            taggingJobId: null,
+            taggingError: msg,
+          },
+        });
+      } catch {}
+
       console.error("[aiTagUrlAuto] scheduleAiTagForUrl failed", { urlId }, e);
     }
   });

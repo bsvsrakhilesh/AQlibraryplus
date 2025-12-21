@@ -34,6 +34,8 @@ function toUISaved(row: BackendUrlRow): UISavedUrl {
     faviconUrl: faviconFor(row.url),
     domain: domain || '',
     tags: row.tags || [],
+    taggingStatus: row.taggingStatus ?? 'NONE',
+    taggingError: (row as any).taggingError ?? null,
     notes: row.notes || '',
     isFavorited: !!row.isFavorited,
     collections,
@@ -109,8 +111,12 @@ const SavedUrlsPage: React.FC = () => {
       const now = Date.now();
       return rows.some((u) => {
         const ageMs = now - new Date(u.createdAt).getTime();
+        const status = (u as any).taggingStatus;
+        const isTagging = status === 'PENDING' || status === 'RUNNING';
         const hasNoTags = (u.tags?.length ?? 0) === 0;
-        return hasNoTags && ageMs < 10 * 60 * 1000; // only recent items
+
+        // If backend is actively tagging, poll. Also keep old fallback for older rows.
+        return (isTagging && ageMs < 10 * 60 * 1000) || (hasNoTags && ageMs < 10 * 60 * 1000);
       });
     };
   
