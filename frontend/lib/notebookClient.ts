@@ -20,6 +20,14 @@ export type NBSource = {
   createdAt: string;
 };
 
+export type ChunkDetail = {
+  id: ID;
+  sourceId: ID;
+  idx: number;
+  text: string;
+  source: NBSource;
+};
+
 export type NBNote = {
   id: ID;
   notebookId: ID;
@@ -48,6 +56,7 @@ export interface NotebookClient {
   deleteSource(notebookId: ID, sourceId: ID): Promise<void>;
 
   chat(notebookId: ID, message: string): Promise<ChatAnswer>;
+  getChunk(chunkId: ID): Promise<ChunkDetail>;
 
   createNote(notebookId: ID, p: { title?: string; content: string; citations?: any }): Promise<NBNote>;
   updateNote(notebookId: ID, noteId: ID, p: { title?: string; content?: string; citations?: any }): Promise<NBNote>;
@@ -108,6 +117,9 @@ export const notebookClient: NotebookClient = {
   // chat
   chat(notebookId, message) {
     return j<ChatAnswer>('POST', `/notebooks/${notebookId}/chat`, { message });
+  },
+  getChunk(chunkId) {
+    return j<ChunkDetail>('GET', `/chunks/${chunkId}`);
   },
 
   // notes
