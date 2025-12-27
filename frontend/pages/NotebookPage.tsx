@@ -85,6 +85,7 @@ export default function NotebookPage() {
   const active: Notebook | null = detailQ.data?.notebook ?? null;
 
   // highlight + scroll to a source card
+  if (window.innerWidth < 768) setMobileTab('sources');
   const focusSource = (sourceId: string) => {
     const el = cardRefs.current[sourceId];
     if (!el) return;

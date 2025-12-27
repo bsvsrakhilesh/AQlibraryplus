@@ -3,6 +3,7 @@ import { notebookClient as api } from '../../lib/notebookClient';
 import { Loader2 } from 'lucide-react';
 import CitationBadge from './CitationBadge';
 import MessageActions from './MessageActions';
+import EvidenceDrawer from './EvidenceDrawer';
 
 type Msg = {
   id: string;
@@ -47,6 +48,9 @@ export default function ChatPanel({ notebookId }: { notebookId: string | null })
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const [showJump, setShowJump] = useState(false);
+
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [evidenceChunkId, setEvidenceChunkId] = useState<string | null>(null);
 
   // Persist composer draft per notebook
   const draftKey = notebookId ? `nb:chatDraft:${notebookId}` : null;
@@ -93,7 +97,8 @@ export default function ChatPanel({ notebookId }: { notebookId: string | null })
   }, [messages, pending, showJump]);
 
   const openSource = (chunkId: string) => {
-    window.dispatchEvent(new CustomEvent('nb:open-source', { detail: chunkId }));
+    setEvidenceChunkId(chunkId);
+    setEvidenceOpen(true);
   };
 
   const addToNotes = (html: string) => {
@@ -395,6 +400,11 @@ export default function ChatPanel({ notebookId }: { notebookId: string | null })
           </button>
         </div>
       </div>
+      <EvidenceDrawer
+        open={evidenceOpen}
+        chunkId={evidenceChunkId}
+        onClose={() => setEvidenceOpen(false)}
+      />
     </div>
   );
 }
