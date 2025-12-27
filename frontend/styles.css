@@ -33,7 +33,7 @@ html, body, #__next, .app-shell {
 
 
 :root {
-    --fm-bg:            hsl(210 30% 98%);
+  --fm-bg:            hsl(210 30% 98%);
   --fm-bg-elev:       hsl(0 0% 100%);
   --fm-border:        hsl(210 16% 90%);
   --fm-muted:         hsl(210 10% 60%);
@@ -47,9 +47,12 @@ html, body, #__next, .app-shell {
   --fm-ring:          0 0 0 2px color-mix(in oklab, var(--fm-accent) 25%, transparent);
 
   /* Optional: match subtle card-glow to brand */
-  --shadow: 0 10px 30px
-  --color-bg: #ffffff;
-  --color-fg: #1a202c;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+
+  /* App base colors should follow your theme tokens */
+  --color-bg: hsl(var(--background));
+  --color-fg: hsl(var(--text));
+
   --gutter-x: 20px;
 
   /* === Modern Design Tokens === */
@@ -153,20 +156,11 @@ html, body, #__next, .app-shell {
   --md3-shadow-2: var(--shadow-md);
   --md3-shadow-3: var(--shadow-lg);
 
-  --accent-h: 222; --accent-s: 85%; --accent-l: 60%;
-  --bg: var(--background);
-  --surface: var(--surface);
+  /* Convenience tokens (do NOT override core tokens like --surface/--border/--text) */
   --surface-elev: var(--surface-elevated);
-  --border: var(--border);
-  --text: var(--text);
-  --muted: var(--muted);
   --ease-std: var(--easing-standard);
   --ease-emph: var(--easing-emphasized);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-  --radius-2xl: var(--radius-2xl);
+
 }
 .dark {
   /* Color Palette (Dark) */
@@ -211,13 +205,9 @@ html, body, #__next, .app-shell {
   --md3-outline: hsl(var(--border));
   --md3-focus-ring: hsl(var(--accent));
 
-  --accent-h: 222; --accent-s: 85%; --accent-l: 65%;
-  --bg: var(--background);
-  --surface: var(--surface);
+  /* Convenience tokens (do NOT override core tokens) */
   --surface-elev: var(--surface-elevated);
-  --border: var(--border);
-  --text: var(--text);
-  --muted: var(--muted);
+
 }
 
 @layer base {
