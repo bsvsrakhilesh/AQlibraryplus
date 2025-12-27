@@ -2,23 +2,57 @@ import { useEffect, useMemo, useState } from 'react';
 import { notebookClient as api } from '../../lib/notebookClient';
 
 export default function SourcePicker({
-  open, onClose, kind, notebookId
-}: { open: boolean; onClose: () => void; kind: 'url'|'file'; notebookId: string | null }) {
+  open,
+  onClose,
+  kind,
+  notebookId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  kind: 'url' | 'file';
+  notebookId: string | null;
+}) {
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // ✅ NEW: prevent white-screen crashes
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open) return;
+
+    let cancelled = false;
+
     (async () => {
-      setItems(kind==='url' ? await api.listAllUrls() : await api.listAllFiles());
-      setSelected(new Set());
+      try {
+        setLoading(true);
+        setErr(null);
+        setSelected(new Set());
+        setQ('');
+
+        const data = kind === 'url' ? await api.listAllUrls() : await api.listAllFiles();
+        if (cancelled) return;
+
+        setItems(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        if (cancelled) return;
+        setItems([]);
+        setErr(e?.message || 'Failed to load items.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, kind]);
 
   const filtered = useMemo(() => {
-    const key = (x:any) => kind==='url' ? (x.title || x.url) : x.fileName;
-    return items.filter(x => key(x).toLowerCase().includes(q.toLowerCase()));
+    const key = (x: any) => (kind === 'url' ? (x.title || x.url) : x.fileName);
+    return items.filter((x) => String(key(x)).toLowerCase().includes(q.toLowerCase()));
   }, [items, q, kind]);
 
   const toggle = (id: string) => {
@@ -29,12 +63,23 @@ export default function SourcePicker({
 
   const attach = async () => {
     if (!notebookId) return;
-    for (const id of selected) {
-      if (kind==='url') await api.addUrlSource(notebookId, id);
-      else await api.addFileSource(notebookId, id);
+
+    try {
+      setLoading(true);
+      setErr(null);
+
+      for (const id of selected) {
+        if (kind === 'url') await api.addUrlSource(notebookId, id);
+        else await api.addFileSource(notebookId, id);
+      }
+
+      onClose();
+      window.dispatchEvent(new Event('focus'));
+    } catch (e: any) {
+      setErr(e?.message || 'Failed to attach selected items.');
+    } finally {
+      setLoading(false);
     }
-    onClose();
-    window.dispatchEvent(new Event('focus'));
   };
 
   if (!open) return null;
@@ -46,35 +91,68 @@ export default function SourcePicker({
           <input
             autoFocus
             value={q}
-            onChange={(e)=>setQ(e.target.value)}
-            placeholder={`Search ${kind==='url'?'URLs':'Files'}…`}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={`Search ${kind === 'url' ? 'URLs' : 'Files'}…`}
             className="flex-1 border rounded px-3 py-2 text-sm"
+            disabled={loading}
           />
-          <button onClick={onClose} className="text-sm px-2 py-1 border rounded">Close</button>
+
+          <button
+            onClick={onClose}
+            className="text-sm px-2 py-1 border rounded"
+          >
+            Close
+          </button>
+
           <button
             onClick={attach}
-            disabled={!selected.size}
+            disabled={!selected.size || loading}
             className="text-sm px-3 py-1.5 border rounded bg-gray-900 text-white disabled:opacity-60"
           >
-            Attach {selected.size ? `(${selected.size})` : ''}
+            {loading ? 'Working…' : `Attach ${selected.size ? `(${selected.size})` : ''}`}
           </button>
         </div>
+
         <div className="p-2 overflow-auto">
-          {filtered.map((item:any) => {
-            const title = kind==='url' ? (item.title || item.url) : item.fileName;
-            const sub = kind==='url' ? item.url : (item.mimeType || 'file');
-            const checked = selected.has(item.id);
-            return (
-              <label key={item.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 rounded border-b cursor-pointer">
-                <input type="checkbox" checked={checked} onChange={()=>toggle(item.id)} className="accent-indigo-600" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{title}</div>
-                  <div className="text-[11px] text-gray-500 truncate">{sub}</div>
-                </div>
-              </label>
-            );
-          })}
-          {!filtered.length && <div className="text-xs text-gray-500 p-3">No items.</div>}
+          {err && (
+            <div className="p-3 mb-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm">
+              <div className="font-semibold mb-1">Something went wrong</div>
+              <div className="text-[13px] leading-snug">{err}</div>
+            </div>
+          )}
+
+          {loading && (
+            <div className="text-sm text-gray-500 p-3">Loading…</div>
+          )}
+
+          {!loading &&
+            filtered.map((item: any) => {
+              const title = kind === 'url' ? (item.title || item.url) : item.fileName;
+              const sub = kind === 'url' ? item.url : (item.mimeType || 'file');
+              const checked = selected.has(item.id);
+
+              return (
+                <label
+                  key={item.id}
+                  className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 rounded border-b cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(item.id)}
+                    className="accent-indigo-600"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{title}</div>
+                    <div className="text-[11px] text-gray-500 truncate">{sub}</div>
+                  </div>
+                </label>
+              );
+            })}
+
+          {!loading && !filtered.length && !err && (
+            <div className="text-xs text-gray-500 p-3">No items.</div>
+          )}
         </div>
       </div>
     </div>
