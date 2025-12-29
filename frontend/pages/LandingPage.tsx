@@ -1,5 +1,4 @@
 // frontend/pages/LandingPage.tsx
-
 import React, {
   useCallback,
   useEffect,
@@ -156,13 +155,6 @@ function LandingNav() {
             </nav>
 
             <div className="flex items-center gap-2">
-              <a
-                href="/app#url-collector"
-                className="hidden sm:inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white/40 transition"
-              >
-                <Sparkles className="h-4 w-4" />
-                Open workspace
-              </a>
               <MagneticButton
                 onClick={() => navigate("/app")}
                 className="landing-primary-btn inline-flex items-center gap-2"
@@ -245,8 +237,7 @@ function Hero() {
               >
                 Smart Scrape gives you four tightly-connected pages: collect
                 sources, auto-tag & organize them, manage files, and synthesize
-                everything into notebooks — fast, searchable, and
-                keyboard-first.
+                everything into notebooks — all designed for speed and ease.
               </motion.p>
 
               <motion.div
@@ -449,7 +440,7 @@ function FeatureGrid() {
           className="text-3xl font-bold tracking-tight md:text-4xl"
           {...fadeUp(0)}
         >
-          Everything on your landing page is already in your app.
+          Everything you need for archive analysis.
         </motion.h2>
         <motion.p className="mt-3 text-slate-600" {...fadeUp(0.08)}>
           Four pages, one workflow — designed to feel like a premium research
@@ -492,9 +483,6 @@ function FeatureGrid() {
             <div className="mt-5 landing-card-footer">
               <span className="landing-tag">/app</span>
               <span className="landing-tag">#{f.key}</span>
-              <span className="landing-tag landing-tag-soft">
-                Keyboard-first
-              </span>
             </div>
           </motion.a>
         ))}
@@ -817,7 +805,6 @@ function WorkflowTour() {
    Keyboard-first proof
    ======================== */
 function KeyboardSection() {
-  const navigate = useNavigate();
   return (
     <section
       id="keyboard"
@@ -865,15 +852,6 @@ function KeyboardSection() {
               </div>
             </div>
           </motion.div>
-
-          <motion.div className="mt-7" {...fadeUp(0.22)}>
-            <MagneticButton
-              className="landing-primary-btn inline-flex items-center gap-2"
-              onClick={() => navigate("/app")}
-            >
-              Try it now <ArrowRight className="h-4 w-4" />
-            </MagneticButton>
-          </motion.div>
         </div>
       </div>
     </section>
@@ -884,7 +862,6 @@ function KeyboardSection() {
    Bottom CTA
    ======================== */
 function BottomCTA() {
-  const navigate = useNavigate();
   return (
     <section id="start" className="relative overflow-hidden">
       <div className="landing-cta-bg">
@@ -894,49 +871,11 @@ function BottomCTA() {
             className="text-2xl font-bold text-white md:text-3xl"
             {...fadeUp(0)}
           >
-            Ready to make your research workflow look (and feel) premium?
+            Ready to make your research workflow look premium?
           </motion.h3>
           <motion.p className="mt-2 text-white/90" {...fadeUp(0.08)}>
             Open the workspace and start collecting sources in seconds.
           </motion.p>
-          <motion.div className="mt-6" {...fadeUp(0.14)}>
-            <MagneticButton
-              className="landing-primary-btn landing-primary-btn--onDark inline-flex items-center gap-2"
-              onClick={() => navigate("/app")}
-            >
-              Open App <ArrowRight className="h-4 w-4" />
-            </MagneticButton>
-          </motion.div>
-          <div className="mt-6 text-xs text-white/75">
-            Deep links:{" "}
-            <a
-              className="underline underline-offset-4 hover:text-white"
-              href="/app#url-collector"
-            >
-              URL Collector
-            </a>
-            {" · "}
-            <a
-              className="underline underline-offset-4 hover:text-white"
-              href="/app#saved-urls"
-            >
-              Saved URLs
-            </a>
-            {" · "}
-            <a
-              className="underline underline-offset-4 hover:text-white"
-              href="/app#file-manager"
-            >
-              File Manager
-            </a>
-            {" · "}
-            <a
-              className="underline underline-offset-4 hover:text-white"
-              href="/app#notebook"
-            >
-              Notebook
-            </a>
-          </div>
         </div>
       </div>
     </section>
