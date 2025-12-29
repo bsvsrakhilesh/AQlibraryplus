@@ -5,6 +5,19 @@ import CitationBadge from "./CitationBadge";
 import MessageActions from "./MessageActions";
 import SourceReaderDrawer from "./SourceReaderDrawer";
 
+type ChatPromptDetail =
+  | string
+  | {
+      prompt: string;
+      /** default true */
+      autoSend?: boolean;
+      /** if true, the final assistant answer is pushed into Notes as a new artifact */
+      saveToNotes?: boolean;
+      noteTitle?: string;
+      /** append (default) or replace the current note editor contents */
+      noteMode?: "append" | "replace";
+    };
+
 type Msg = {
   id: string;
   ts: number;
@@ -126,7 +139,10 @@ export default function ChatPanel({
   };
 
   const send = useCallback(
-    async (q: string) => {
+    async (
+      q: string,
+      saveToNotes?: { title: string; mode: "append" | "replace" }
+    ) => {
       if (!notebookId) return;
 
       const userMsg: Msg = { id: uid(), ts: Date.now(), role: "user", html: q };
@@ -154,6 +170,19 @@ export default function ChatPanel({
         const step = 14;
 
         while (i < full.length) {
+          // Studio: push final answer into Notes as a titled artifact (markdown).
+          if (saveToNotes?.title) {
+            window.dispatchEvent(
+              new CustomEvent("nb:add-note", {
+                detail: {
+                  title: saveToNotes.title,
+                  content: res.answer,
+                  mode: saveToNotes.mode,
+                },
+              })
+            );
+          }
+
           await new Promise((r) => setTimeout(r, 12));
           i += step;
           const slice = full.slice(0, i);
@@ -170,6 +199,42 @@ export default function ChatPanel({
     },
     [notebookId]
   );
+
+  // Notebook Guide / Studio can fire a "send this prompt" event.
+  useEffect(() => {
+    function onPrompt(e: any) {
+      const d: ChatPromptDetail = e?.detail;
+      const detailObj =
+        typeof d === "string" ? { prompt: d } : d || { prompt: "" };
+      const prompt = String((detailObj as any).prompt || "").trim();
+      if (!prompt) return;
+
+      const autoSend = (detailObj as any).autoSend !== false;
+      const saveToNotes = !!(detailObj as any).saveToNotes;
+      const noteTitle = String((detailObj as any).noteTitle || "").trim();
+      const noteMode: "append" | "replace" =
+        (detailObj as any).noteMode === "replace" ? "replace" : "append";
+
+      // Pre-fill composer for transparency
+      setInput(prompt);
+      composerRef.current?.focus();
+
+      if (autoSend && notebookId && !pending) {
+        setInput("");
+        const note =
+          saveToNotes && noteTitle
+            ? ({ title: noteTitle, mode: noteMode } as {
+                title: string;
+                mode: "append" | "replace";
+              })
+            : undefined;
+        send(prompt, note);
+      }
+    }
+
+    window.addEventListener("nb:chat-prompt", onPrompt as any);
+    return () => window.removeEventListener("nb:chat-prompt", onPrompt as any);
+  }, [notebookId, pending, send]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
