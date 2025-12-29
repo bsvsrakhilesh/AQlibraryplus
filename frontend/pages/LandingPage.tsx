@@ -1,6 +1,12 @@
 // frontend/pages/LandingPage.tsx
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AnimatePresence,
@@ -15,7 +21,6 @@ import {
 import {
   ArrowRight,
   BookOpen,
-  Command,
   FileText,
   FolderOpen,
   Link as LinkIcon,
@@ -38,11 +43,9 @@ const fadeUp = (delay = 0): MotionProps => ({
 /* ========================
    Tiny UX utilities
    ======================== */
-const MagneticButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({
-  className = "",
-  children,
-  ...rest
-}) => {
+const MagneticButton: React.FC<
+  React.ButtonHTMLAttributes<HTMLButtonElement>
+> = ({ className = "", children, ...rest }) => {
   const ref = useRef<HTMLButtonElement>(null);
   const onMove = useCallback((e: React.MouseEvent) => {
     const el = ref.current;
@@ -72,7 +75,10 @@ const MagneticButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = 
   );
 };
 
-function useActiveStep(sectionRef: React.RefObject<HTMLDivElement | null>, steps: number) {
+function useActiveStep(
+  sectionRef: React.RefObject<HTMLDivElement | null>,
+  steps: number
+) {
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -178,9 +184,16 @@ function Hero() {
   const navigate = useNavigate();
   const reduce = useReducedMotion();
   const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end start"],
+  });
   const y = useTransform(scrollYProgress, [0, 1], [0, 60]);
-  const blur = useTransform(scrollYProgress, [0, 1], ["blur(42px)", "blur(82px)"]);
+  const blur = useTransform(
+    scrollYProgress,
+    [0, 1],
+    ["blur(42px)", "blur(82px)"]
+  );
 
   const onMouseMove = (e: React.MouseEvent) => {
     const el = ref.current;
@@ -191,7 +204,11 @@ function Hero() {
   };
 
   return (
-    <section ref={ref} className="relative overflow-hidden spotlight" onMouseMove={onMouseMove}>
+    <section
+      ref={ref}
+      className="relative overflow-hidden spotlight"
+      onMouseMove={onMouseMove}
+    >
       <div className="landing-hero-bg">
         {/* mesh + glow */}
         <motion.div
@@ -217,15 +234,25 @@ function Hero() {
                 {...fadeUp(0.08)}
               >
                 Turn links & files into a
-                <span className="block landing-gradient-text">structured knowledge workspace</span>
+                <span className="block landing-gradient-text">
+                  structured knowledge workspace
+                </span>
               </motion.h1>
 
-              <motion.p className="mt-5 max-w-xl text-slate-700 md:text-lg" {...fadeUp(0.16)}>
-                Smart Scrape gives you four tightly-connected pages: collect sources, auto-tag & organize them,
-                manage files, and synthesize everything into notebooks — fast, searchable, and keyboard-first.
+              <motion.p
+                className="mt-5 max-w-xl text-slate-700 md:text-lg"
+                {...fadeUp(0.16)}
+              >
+                Smart Scrape gives you four tightly-connected pages: collect
+                sources, auto-tag & organize them, manage files, and synthesize
+                everything into notebooks — fast, searchable, and
+                keyboard-first.
               </motion.p>
 
-              <motion.div className="mt-8 flex flex-wrap items-center gap-3" {...fadeUp(0.24)}>
+              <motion.div
+                className="mt-8 flex flex-wrap items-center gap-3"
+                {...fadeUp(0.24)}
+              >
                 <MagneticButton
                   onClick={() => navigate("/app")}
                   className="landing-primary-btn inline-flex items-center gap-2"
@@ -237,15 +264,26 @@ function Hero() {
                   className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-slate-800 bg-white/40 ring-1 ring-white/60 hover:bg-white/55 transition"
                 >
                   See what’s inside
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white/70">↘</span>
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white/70">
+                    ↘
+                  </span>
                 </a>
               </motion.div>
 
-              <motion.div className="mt-8 flex flex-wrap gap-2" {...fadeUp(0.3)} aria-label="Highlights">
-                <span className="landing-pill"><Command className="h-4 w-4" /> Cmd/Ctrl + K</span>
-                <span className="landing-pill"><Sparkles className="h-4 w-4" /> AI tags</span>
-                <span className="landing-pill"><Star className="h-4 w-4" /> Favorites + collections</span>
-                <span className="landing-pill"><FileText className="h-4 w-4" /> PDFs + text capture</span>
+              <motion.div
+                className="mt-8 flex flex-wrap gap-2"
+                {...fadeUp(0.3)}
+                aria-label="Highlights"
+              >
+                <span className="landing-pill">
+                  <Sparkles className="h-4 w-4" /> AI tags
+                </span>
+                <span className="landing-pill">
+                  <Star className="h-4 w-4" /> Favorites + collections
+                </span>
+                <span className="landing-pill">
+                  <FileText className="h-4 w-4" /> PDFs + text capture
+                </span>
               </motion.div>
             </div>
 
@@ -264,8 +302,12 @@ function Hero() {
                     <span className="dot bg-emerald-400" />
                   </div>
                   <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600">
-                    <span className="px-2 py-1 rounded-md bg-white/60 ring-1 ring-black/5">/app</span>
-                    <span className="px-2 py-1 rounded-md bg-white/60 ring-1 ring-black/5">#url-collector</span>
+                    <span className="px-2 py-1 rounded-md bg-white/60 ring-1 ring-black/5">
+                      /app
+                    </span>
+                    <span className="px-2 py-1 rounded-md bg-white/60 ring-1 ring-black/5">
+                      #url-collector
+                    </span>
                   </div>
                 </div>
 
@@ -285,7 +327,9 @@ function Hero() {
                           <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
                             <Sparkles className="h-4 w-4" /> Saved URLs
                           </div>
-                          <span className="text-[11px] text-slate-500">Tagged</span>
+                          <span className="text-[11px] text-slate-500">
+                            Tagged
+                          </span>
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-2">
                           <div className="landing-chip">policy</div>
@@ -303,7 +347,9 @@ function Hero() {
                           <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
                             <BookOpen className="h-4 w-4" /> Notebook
                           </div>
-                          <span className="text-[11px] text-slate-500">Live sources</span>
+                          <span className="text-[11px] text-slate-500">
+                            Live sources
+                          </span>
                         </div>
                         <div className="mt-3 space-y-2">
                           <div className="landing-line w-11/12" />
@@ -394,13 +440,20 @@ const FEATURES: Feature[] = [
 
 function FeatureGrid() {
   return (
-    <section id="features" className="relative mx-auto max-w-7xl px-6 py-20 md:py-24">
+    <section
+      id="features"
+      className="relative mx-auto max-w-7xl px-6 py-20 md:py-24"
+    >
       <div className="mx-auto max-w-2xl text-center">
-        <motion.h2 className="text-3xl font-bold tracking-tight md:text-4xl" {...fadeUp(0)}>
+        <motion.h2
+          className="text-3xl font-bold tracking-tight md:text-4xl"
+          {...fadeUp(0)}
+        >
           Everything on your landing page is already in your app.
         </motion.h2>
         <motion.p className="mt-3 text-slate-600" {...fadeUp(0.08)}>
-          Four pages, one workflow — designed to feel like a premium research tool, not a dashboard.
+          Four pages, one workflow — designed to feel like a premium research
+          tool, not a dashboard.
         </motion.p>
       </div>
 
@@ -416,7 +469,9 @@ function FeatureGrid() {
               <div className="landing-icon">{f.icon}</div>
               <div className="min-w-0">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-lg font-semibold text-slate-900 truncate">{f.title}</h3>
+                  <h3 className="text-lg font-semibold text-slate-900 truncate">
+                    {f.title}
+                  </h3>
                   <span className="landing-card-cta">
                     Open <ArrowRight className="h-4 w-4" />
                   </span>
@@ -437,7 +492,9 @@ function FeatureGrid() {
             <div className="mt-5 landing-card-footer">
               <span className="landing-tag">/app</span>
               <span className="landing-tag">#{f.key}</span>
-              <span className="landing-tag landing-tag-soft">Keyboard-first</span>
+              <span className="landing-tag landing-tag-soft">
+                Keyboard-first
+              </span>
             </div>
           </motion.a>
         ))}
@@ -466,19 +523,22 @@ const TOUR: TourStep[] = [
   },
   {
     title: "Enrich",
-    subtitle: "Auto-tags + collections turn a messy list into an indexable library.",
+    subtitle:
+      "Auto-tags + collections turn a messy list into an indexable library.",
     pageHash: "saved-urls",
     icon: <Sparkles className="h-4 w-4" />,
   },
   {
     title: "Organize",
-    subtitle: "Treat PDFs & datasets like first-class citizens — preview, folder, and version.",
+    subtitle:
+      "Treat PDFs & datasets like first-class citizens — preview, folder, and version.",
     pageHash: "file-manager",
     icon: <FolderOpen className="h-4 w-4" />,
   },
   {
     title: "Synthesize",
-    subtitle: "Attach sources to notebooks and generate structured outputs without losing context.",
+    subtitle:
+      "Attach sources to notebooks and generate structured outputs without losing context.",
     pageHash: "notebook",
     icon: <BookOpen className="h-4 w-4" />,
   },
@@ -494,7 +554,9 @@ function AppPreview({ step }: { step: number }) {
           <div className="landing-frame-bar">
             <div className="landing-frame-pill">site:example.com</div>
             <div className="landing-frame-pill">"emissions policy"</div>
-            <div className="landing-frame-pill landing-frame-pill--cta">Search</div>
+            <div className="landing-frame-pill landing-frame-pill--cta">
+              Search
+            </div>
           </div>
 
           <div className="landing-table">
@@ -528,7 +590,9 @@ function AppPreview({ step }: { step: number }) {
             <div className="landing-frame-pill">Favorites</div>
             <div className="landing-frame-pill">collection: Methods</div>
             <div className="landing-frame-pill">tag: dataset</div>
-            <div className="landing-frame-pill landing-frame-pill--cta">Filter</div>
+            <div className="landing-frame-pill landing-frame-pill--cta">
+              Filter
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3">
@@ -560,7 +624,9 @@ function AppPreview({ step }: { step: number }) {
           <div className="landing-frame-bar">
             <div className="landing-frame-pill">/Research</div>
             <div className="landing-frame-pill">Delhi-2025</div>
-            <div className="landing-frame-pill landing-frame-pill--cta">Upload</div>
+            <div className="landing-frame-pill landing-frame-pill--cta">
+              Upload
+            </div>
           </div>
 
           <div className="landing-table">
@@ -569,16 +635,28 @@ function AppPreview({ step }: { step: number }) {
               <span>Type</span>
               <span>Size</span>
             </div>
-            {["report.pdf", "dataset.csv", "notes.txt", "slides.pptx", "raw.zip"].map((name, i) => (
+            {[
+              "report.pdf",
+              "dataset.csv",
+              "notes.txt",
+              "slides.pptx",
+              "raw.zip",
+            ].map((name, i) => (
               <div key={name} className="landing-table-row">
                 <div className="landing-table-cell flex items-center gap-2">
                   <span className="h-7 w-7 rounded-lg bg-white/70 ring-1 ring-black/5 grid place-items-center text-[11px] font-semibold">
                     {name.split(".").pop()?.toUpperCase().slice(0, 3)}
                   </span>
-                  <span className="text-sm font-medium text-slate-800 truncate">{name}</span>
+                  <span className="text-sm font-medium text-slate-800 truncate">
+                    {name}
+                  </span>
                 </div>
-                <div className="landing-table-cell text-sm text-slate-600">{name.split(".").pop()}</div>
-                <div className="landing-table-cell text-sm text-slate-600">{(i + 2) * 1.4} MB</div>
+                <div className="landing-table-cell text-sm text-slate-600">
+                  {name.split(".").pop()}
+                </div>
+                <div className="landing-table-cell text-sm text-slate-600">
+                  {(i + 2) * 1.4} MB
+                </div>
               </div>
             ))}
           </div>
@@ -591,7 +669,9 @@ function AppPreview({ step }: { step: number }) {
         <div className="landing-frame-bar">
           <div className="landing-frame-pill">Notebook</div>
           <div className="landing-frame-pill">+ Add sources</div>
-          <div className="landing-frame-pill landing-frame-pill--cta">Generate</div>
+          <div className="landing-frame-pill landing-frame-pill--cta">
+            Generate
+          </div>
         </div>
 
         <div className="landing-url-card">
@@ -629,8 +709,12 @@ function AppPreview({ step }: { step: number }) {
           <span className="dot bg-emerald-400" />
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-600">
-          <span className="px-2 py-1 rounded-md bg-white/70 ring-1 ring-black/5">/app</span>
-          <span className="px-2 py-1 rounded-md bg-white/70 ring-1 ring-black/5">#{s.pageHash}</span>
+          <span className="px-2 py-1 rounded-md bg-white/70 ring-1 ring-black/5">
+            /app
+          </span>
+          <span className="px-2 py-1 rounded-md bg-white/70 ring-1 ring-black/5">
+            #{s.pageHash}
+          </span>
         </div>
       </div>
 
@@ -657,13 +741,21 @@ function WorkflowTour() {
   const barScale = useTransform(progress, [0, 1], [0, 1]);
 
   return (
-    <section id="workflow" ref={sectionRef} className="relative mx-auto max-w-7xl px-6 py-20 md:py-24">
+    <section
+      id="workflow"
+      ref={sectionRef}
+      className="relative mx-auto max-w-7xl px-6 py-20 md:py-24"
+    >
       <div className="mx-auto max-w-2xl text-center">
-        <motion.h2 className="text-3xl font-bold tracking-tight md:text-4xl" {...fadeUp(0)}>
+        <motion.h2
+          className="text-3xl font-bold tracking-tight md:text-4xl"
+          {...fadeUp(0)}
+        >
           One workflow. Four pages.
         </motion.h2>
         <motion.p className="mt-3 text-slate-600" {...fadeUp(0.08)}>
-          Scroll this section — the preview updates to show exactly how each page contributes.
+          Scroll this section — the preview updates to show exactly how each
+          page contributes.
         </motion.p>
       </div>
 
@@ -685,17 +777,26 @@ function WorkflowTour() {
                     (isActive ? "landing-step--active" : "landing-step--idle")
                   }
                 >
-                  <div className={"landing-step-badge " + (isActive ? "landing-step-badge--active" : "")}>
+                  <div
+                    className={
+                      "landing-step-badge " +
+                      (isActive ? "landing-step-badge--active" : "")
+                    }
+                  >
                     {s.icon}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-base font-semibold text-slate-900">{s.title}</div>
+                      <div className="text-base font-semibold text-slate-900">
+                        {s.title}
+                      </div>
                       <span className="text-xs text-slate-500 group-hover:text-slate-700 transition">
                         #{s.pageHash}
                       </span>
                     </div>
-                    <div className="mt-1 text-sm text-slate-600">{s.subtitle}</div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      {s.subtitle}
+                    </div>
                   </div>
                 </a>
               );
@@ -718,43 +819,50 @@ function WorkflowTour() {
 function KeyboardSection() {
   const navigate = useNavigate();
   return (
-    <section id="keyboard" className="relative mx-auto max-w-7xl px-6 py-20 md:py-24">
-      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1fr] items-center">
+    <section
+      id="keyboard"
+      className="relative mx-auto max-w-7xl px-6 py-20 md:py-24"
+    >
+      <div className="grid grid-cols-1 gap-10 items-center">
         <div>
-          <motion.h2 className="text-3xl font-bold tracking-tight md:text-4xl" {...fadeUp(0)}>
+          <motion.h2
+            className="text-3xl font-bold tracking-tight md:text-4xl"
+            {...fadeUp(0)}
+          >
             Built for speed (not clicks).
           </motion.h2>
           <motion.p className="mt-3 text-slate-600" {...fadeUp(0.08)}>
-            The UI is designed to reward power-users: command palette, state restore, bulk actions, and clean
-            information hierarchy.
+            The UI is designed to reward power-users: state restore, bulk
+            actions, and clean information hierarchy.
           </motion.p>
 
-          <motion.div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2" {...fadeUp(0.16)}>
-            <div className="landing-kbd-card">
-              <div className="landing-kbd-title">
-                <Command className="h-4 w-4" /> Command palette
-              </div>
-              <div className="mt-2 text-sm text-slate-600">
-                Press <span className="landing-kbd">Ctrl</span> + <span className="landing-kbd">K</span> to jump anywhere.
-              </div>
-            </div>
+          <motion.div
+            className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2"
+            {...fadeUp(0.16)}
+          >
             <div className="landing-kbd-card">
               <div className="landing-kbd-title">
                 <Sparkles className="h-4 w-4" /> AI tagging
               </div>
-              <div className="mt-2 text-sm text-slate-600">Tag jobs + retries so your library stays organized.</div>
+              <div className="mt-2 text-sm text-slate-600">
+                Tag jobs + retries so your library stays organized.
+              </div>
             </div>
             <div className="landing-kbd-card">
               <div className="landing-kbd-title">
                 <Star className="h-4 w-4" /> Bulk actions
               </div>
-              <div className="mt-2 text-sm text-slate-600">Move/copy/cut, favorites, collections — at scale.</div>
+              <div className="mt-2 text-sm text-slate-600">
+                Move/copy/cut, favorites, collections — at scale.
+              </div>
             </div>
             <div className="landing-kbd-card">
               <div className="landing-kbd-title">
                 <FileText className="h-4 w-4" /> Capture & preview
               </div>
-              <div className="mt-2 text-sm text-slate-600">Save PDFs/text snapshots for reliable referencing.</div>
+              <div className="mt-2 text-sm text-slate-600">
+                Save PDFs/text snapshots for reliable referencing.
+              </div>
             </div>
           </motion.div>
 
@@ -767,26 +875,6 @@ function KeyboardSection() {
             </MagneticButton>
           </motion.div>
         </div>
-
-        <motion.div className="landing-command-mock" {...fadeUp(0.12)}>
-          <div className="landing-command-top">
-            <div className="text-sm font-semibold text-slate-900">Command Palette</div>
-            <div className="text-xs text-slate-500">Ctrl + K</div>
-          </div>
-          <div className="landing-command-input">
-            <span className="text-slate-500">Search pages…</span>
-            <span className="ml-auto text-xs text-slate-500">Enter</span>
-          </div>
-          <div className="mt-3 space-y-2">
-            {FEATURES.map((f) => (
-              <a key={f.key} href={`/app#${f.key}`} className="landing-command-item">
-                <span className="landing-command-icon">{f.icon}</span>
-                <span className="flex-1 text-sm font-medium text-slate-800">{f.title}</span>
-                <span className="text-xs text-slate-500">#{f.key}</span>
-              </a>
-            ))}
-          </div>
-        </motion.div>
       </div>
     </section>
   );
@@ -802,7 +890,10 @@ function BottomCTA() {
       <div className="landing-cta-bg">
         <div aria-hidden className="landing-noise" />
         <div className="mx-auto max-w-7xl px-6 py-16 md:py-20 text-center">
-          <motion.h3 className="text-2xl font-bold text-white md:text-3xl" {...fadeUp(0)}>
+          <motion.h3
+            className="text-2xl font-bold text-white md:text-3xl"
+            {...fadeUp(0)}
+          >
             Ready to make your research workflow look (and feel) premium?
           </motion.h3>
           <motion.p className="mt-2 text-white/90" {...fadeUp(0.08)}>
@@ -818,19 +909,31 @@ function BottomCTA() {
           </motion.div>
           <div className="mt-6 text-xs text-white/75">
             Deep links:{" "}
-            <a className="underline underline-offset-4 hover:text-white" href="/app#url-collector">
+            <a
+              className="underline underline-offset-4 hover:text-white"
+              href="/app#url-collector"
+            >
               URL Collector
             </a>
             {" · "}
-            <a className="underline underline-offset-4 hover:text-white" href="/app#saved-urls">
+            <a
+              className="underline underline-offset-4 hover:text-white"
+              href="/app#saved-urls"
+            >
               Saved URLs
             </a>
             {" · "}
-            <a className="underline underline-offset-4 hover:text-white" href="/app#file-manager">
+            <a
+              className="underline underline-offset-4 hover:text-white"
+              href="/app#file-manager"
+            >
               File Manager
             </a>
             {" · "}
-            <a className="underline underline-offset-4 hover:text-white" href="/app#notebook">
+            <a
+              className="underline underline-offset-4 hover:text-white"
+              href="/app#notebook"
+            >
               Notebook
             </a>
           </div>
@@ -857,7 +960,11 @@ export default function LandingPage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="flex flex-col items-center justify-center gap-2">
             <div className="flex items-center gap-2">
-              <img src="/assets/logo.png" alt="Smart Scrape" className="h-6 w-6 rounded-lg ring-1 ring-black/5" />
+              <img
+                src="/assets/logo.png"
+                alt="Smart Scrape"
+                className="h-6 w-6 rounded-lg ring-1 ring-black/5"
+              />
               <span className="font-semibold text-slate-700">Smart Scrape</span>
             </div>
             <div>© {new Date().getFullYear()} — built with care.</div>
