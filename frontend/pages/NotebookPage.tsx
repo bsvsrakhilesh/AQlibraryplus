@@ -217,10 +217,12 @@ export default function NotebookPage() {
 
   useEffect(() => {
     const onManage = () => {
-      if (typeof window !== 'undefined' && window.innerWidth < 768) setMobileTab('sources');
+      if (typeof window !== "undefined" && window.innerWidth < 768)
+        setMobileTab("sources");
     };
-    window.addEventListener('nb:manage-sources', onManage as any);
-    return () => window.removeEventListener('nb:manage-sources', onManage as any);
+    window.addEventListener("nb:manage-sources", onManage as any);
+    return () =>
+      window.removeEventListener("nb:manage-sources", onManage as any);
   }, []);
 
   // Cmd/Ctrl+K opens picker (Shift selects Files)
@@ -242,7 +244,8 @@ export default function NotebookPage() {
           <p className="page-header-kicker">Notebook</p>
           <h1 className="page-header-title">AI Research Notebook</h1>
           <p className="page-header-subtitle">
-            Pin sources on the left, chat in the centre, and write notes on the right.
+            Pin sources on the left, chat in the centre, and write notes on the
+            right.
           </p>
         </div>
 
@@ -653,7 +656,13 @@ export default function NotebookPage() {
           >
             <NotesEditor notebookId={activeId} />
             <div className="border-t border-emerald-300/70" />
-            <RightPanel notebookId={activeId} />
+            <RightPanel
+              notebookId={activeId}
+              sourceStats={{
+                included: includedSourceIds.length,
+                total: sources.length,
+              }}
+            />
           </SmartCard>
 
           {/* Picker modal */}
