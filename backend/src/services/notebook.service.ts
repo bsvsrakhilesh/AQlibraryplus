@@ -129,9 +129,12 @@ export async function getChunkReader(chunkId: string, radius = 3) {
   };
 }
 
-export async function pickNotebookCitations(notebookId: string, limit = 2) {
+export async function pickNotebookCitations(notebookId: string, limit = 2, sourceIds?: string[]) {
   const chunks = await prisma.sourceChunk.findMany({
-    where: { source: { notebookId } },
+    where: {
+      source: { notebookId },
+      ...(sourceIds?.length ? { sourceId: { in: sourceIds } } : {}),
+    },
     orderBy: { createdAt: 'desc' },
     take: limit,
     select: { id: true },

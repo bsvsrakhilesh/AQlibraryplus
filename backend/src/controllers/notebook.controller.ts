@@ -37,7 +37,8 @@ export async function postNotebookChatHandler(req: Request, res: Response, next:
   try {
     const notebookId = req.params.id;
 
-    const citations = await pickNotebookCitations(notebookId, 2);
+    const sourceIds = Array.isArray(req.body?.sourceIds) ? req.body.sourceIds : undefined;
+    const citations = await pickNotebookCitations(notebookId, 2, sourceIds);
 
     res.json({
       answer: `**Draft answer (backend)**\n\nYou asked: _${req.body?.message || ''}_`,

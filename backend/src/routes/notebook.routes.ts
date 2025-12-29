@@ -68,7 +68,8 @@ r.post(
     params: z.object({ id: z.string().min(1) }),
     body: z.object({
       message: z.string().min(1),
-      history: z.array(z.object({ role: z.enum(['user','assistant']), content: z.string() })).optional()
+      history: z.array(z.object({ role: z.enum(['user','assistant']), content: z.string() })).optional(),
+      sourceIds: z.array(z.string().min(1)).optional(),
     })
   }),
   postNotebookChatHandler
