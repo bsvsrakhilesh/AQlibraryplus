@@ -71,7 +71,11 @@ export interface NotebookClient {
   addFileSource(notebookId: ID, fileId: ID): Promise<NBSource>;
   deleteSource(notebookId: ID, sourceId: ID): Promise<void>;
 
-  chat(notebookId: ID, message: string): Promise<ChatAnswer>;
+  chat(
+    notebookId: ID,
+    message: string,
+    opts?: { sourceIds?: ID[]; history?: { role: 'user' | 'assistant'; content: string }[] }
+  ): Promise<ChatAnswer>;
   getChunk(chunkId: ID): Promise<ChunkDetail>;
   getChunkReader(chunkId: ID, radius?: number): Promise<ChunkReader>;
 
@@ -132,9 +136,14 @@ export const notebookClient: NotebookClient = {
   },
 
   // chat
-  chat(notebookId, message) {
-    return j<ChatAnswer>('POST', `/notebooks/${notebookId}/chat`, { message });
+  chat(notebookId, message, opts) {
+    return j<ChatAnswer>('POST', `/notebooks/${notebookId}/chat`, {
+      message,
+      sourceIds: opts?.sourceIds,
+      history: opts?.history,
+    });
   },
+  // chunks
   getChunk(chunkId) {
     return j<ChunkDetail>('GET', `/chunks/${chunkId}`);
   },
