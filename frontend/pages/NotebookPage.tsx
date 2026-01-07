@@ -237,40 +237,12 @@ export default function NotebookPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  return (
-    <div className="p-5 md:p-6 space-y-4 min-h-[calc(100vh-var(--header-h)-2rem)] flex flex-col">
-      <header className="page-header">
-        <div className="page-header-main">
-          <p className="page-header-kicker">Notebook</p>
-          <h1 className="page-header-title">AI Research Notebook</h1>
-          <p className="page-header-subtitle">
-            Pin sources on the left, chat in the centre, and write notes on the
-            right.
-          </p>
-        </div>
-
-        <div className="page-header-meta">
-          <div className="page-header-pill">
-            <span className="page-header-pill-label">Notebooks</span>
-            <span className="page-header-pill-value">
-              {listQ.data?.length ?? 0}
-            </span>
-          </div>
-          {active && (
-            <div className="page-header-pill page-header-pill--accent">
-              <span className="page-header-pill-label">Active</span>
-              <span className="page-header-pill-value truncate max-w-[10rem]">
-                {active.title}
-              </span>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <div className="flex-1 min-h-0 rounded-[28px] border border-emerald-200/70 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.07),_rgba(59,130,246,0.06),_rgba(15,23,42,0.03))] shadow-[0_40px_120px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
-        {/* Step 1: Mobile panel switcher */}
+    return (
+    <div className="h-full min-h-0 flex flex-col overflow-hidden">
+      <div className="h-full min-h-0 flex flex-col p-3 md:p-4">
+        {/* Mobile panel switcher */}
         <div className="md:hidden mb-3">
-          <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-2xl border border-emerald-200/80 bg-white/75 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur supports-[backdrop-filter]:bg-white/60">
+          <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-2xl border border-slate-200/70 bg-white/75 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur supports-[backdrop-filter]:bg-white/60">
             <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900/5 border border-slate-200/70">
               {(["sources", "chat", "notes"] as const).map((t) => (
                 <button
@@ -284,11 +256,7 @@ export default function NotebookPage() {
                   )}
                   aria-pressed={mobileTab === t}
                 >
-                  {t === "sources"
-                    ? "Sources"
-                    : t === "chat"
-                    ? "Chat"
-                    : "Notes"}
+                  {t === "sources" ? "Sources" : t === "chat" ? "Chat" : "Notes"}
                 </button>
               ))}
             </div>
@@ -314,20 +282,19 @@ export default function NotebookPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_420px] items-stretch flex-1 min-h-0 gap-4 md:gap-5">
+        {/* App-like 3-column shell that fills the viewport */}
+        <div className="grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)_420px] items-stretch flex-1 min-h-0 gap-3 md:gap-4">
           {/* Left rail */}
           <div
             className={clsx(
-              "rounded-2xl border border-emerald-200/80 bg-emerald-50/60 shadow-[0_10px_30px_rgba(15,23,42,0.18)] p-3 flex flex-col overflow-hidden backdrop-blur-sm",
+              "rounded-2xl border border-slate-200/70 bg-white/70 shadow-[0_10px_30px_rgba(15,23,42,0.10)] p-3 flex flex-col overflow-hidden backdrop-blur-sm",
               mobileTab === "sources" ? "flex" : "hidden",
               "md:flex"
             )}
           >
             {/* Notebooks */}
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-slate-800">
-                Notebooks
-              </h2>
+              <h2 className="text-sm font-semibold text-slate-800">Notebooks</h2>
               <button
                 onClick={() =>
                   createM.mutate({
@@ -352,16 +319,16 @@ export default function NotebookPage() {
                       "group relative w-full h-9 flex items-center text-left px-3 rounded-md text-sm transition-all duration-200 transform",
                       "shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]",
                       activeId === n.id
-                        ? "bg-emerald-50/80 text-slate-900 shadow-[0_10px_26px_rgba(16,185,129,0.45)] -translate-y-[1px]"
-                        : "bg-white/85 text-slate-700 hover:bg-emerald-50/70 hover:shadow-[0_10px_24px_rgba(15,23,42,0.14)] hover:-translate-y-[1px]"
+                        ? "bg-slate-50 text-slate-900 shadow-[0_10px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]"
+                        : "bg-white/85 text-slate-700 hover:bg-slate-50 hover:shadow-[0_10px_24px_rgba(15,23,42,0.10)] hover:-translate-y-[1px]"
                     )}
                   >
                     <span
                       className={clsx(
                         "absolute left-0 top-1/2 -translate-y-1/2 h-5 rounded-r transition-all duration-200",
                         activeId === n.id
-                          ? "w-1.5 bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.5)]"
-                          : "w-[3px] bg-emerald-300/80 opacity-0 group-hover:opacity-100 group-hover:translate-x-[1px]"
+                          ? "w-1.5 bg-slate-900/70"
+                          : "w-[3px] bg-slate-300/80 opacity-0 group-hover:opacity-100 group-hover:translate-x-[1px]"
                       )}
                     />
                     <span className="truncate">{n.title}</span>
@@ -372,13 +339,11 @@ export default function NotebookPage() {
 
             {/* Sources (library panel) */}
             <div className="mt-4 border-t pt-3 flex-1 min-h-0">
-              <div className="sticky top-0 z-10 mb-2 rounded-t-2xl border-b border-emerald-300/70 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-[0_1px_0_rgba(16,185,129,0.15)]">
+              <div className="sticky top-0 z-10 mb-2 rounded-t-2xl border-b border-slate-200/70 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-[0_1px_0_rgba(15,23,42,0.06)]">
                 {/* Row 1: title + counts + add actions */}
                 <div className="px-2 pt-2 pb-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-xs font-semibold text-slate-800">
-                      Sources
-                    </h3>
+                    <h3 className="text-xs font-semibold text-slate-800">Sources</h3>
                     <span className="text-[11px] text-slate-600 bg-slate-100/80 border border-slate-200 rounded-full px-2 py-0.5 tabular-nums">
                       Using {includedCount}/{sources.length}
                     </span>
@@ -458,33 +423,22 @@ export default function NotebookPage() {
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setSourceSort((s) => (s === "recent" ? "name" : "recent"))
-                    }
+                    onClick={() => setSourceSort((s) => (s === "recent" ? "name" : "recent"))}
                     className="h-7 px-2.5 rounded-full text-[11px] font-semibold border bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    title={
-                      sourceSort === "recent"
-                        ? "Sorting: Recent"
-                        : "Sorting: A→Z"
-                    }
+                    title={sourceSort === "recent" ? "Sorting: Recent" : "Sorting: A→Z"}
                   >
                     {sourceSort === "recent" ? "Recent" : "A→Z"}
                   </button>
                 </div>
               </div>
 
-              <StaggerList
-                as="div"
-                className="overflow-auto h-full space-y-2 pr-1 pb-1"
-              >
+              <StaggerList as="div" className="overflow-auto h-full space-y-2 pr-1 pb-1">
                 {sourcesQ.isLoading ? (
                   <ListSkeleton rows={6} />
                 ) : filteredSources.length === 0 ? (
                   <div className="p-3">
                     <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-                      <div className="text-sm font-semibold text-slate-800">
-                        No sources found
-                      </div>
+                      <div className="text-sm font-semibold text-slate-800">No sources found</div>
                       <div className="mt-1 text-[12px] text-slate-600 leading-relaxed">
                         {sources.length === 0
                           ? "Add a URL or file to start building your library."
@@ -504,17 +458,10 @@ export default function NotebookPage() {
                         <SmartCard
                           as="div"
                           ref={(el) => {
-                            if (el)
-                              cardRefs.current[s.id] =
-                                el as unknown as HTMLDivElement;
+                            if (el) cardRefs.current[s.id] = el as unknown as HTMLDivElement;
                           }}
                           onClick={() => {
-                            if (href)
-                              window.open(
-                                href,
-                                "_blank",
-                                "noopener,noreferrer"
-                              );
+                            if (href) window.open(href, "_blank", "noopener,noreferrer");
                           }}
                           className={clsx(
                             "group relative flex items-start gap-3 p-3 rounded-2xl border border-slate-200/80 bg-white/85",
@@ -522,7 +469,6 @@ export default function NotebookPage() {
                             href ? "cursor-pointer" : "cursor-default"
                           )}
                         >
-                          {/* icon chip */}
                           <div
                             className={clsx(
                               "w-9 h-9 rounded-2xl grid place-items-center border shadow-sm",
@@ -532,18 +478,12 @@ export default function NotebookPage() {
                             )}
                             title={isUrl ? "URL" : "File"}
                           >
-                            {isUrl ? (
-                              <UrlIcon className="w-4 h-4" />
-                            ) : (
-                              <FolderIcon className="w-4 h-4" />
-                            )}
+                            {isUrl ? <UrlIcon className="w-4 h-4" /> : <FolderIcon className="w-4 h-4" />}
                           </div>
 
                           <div className="text-xs flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <div className="font-semibold truncate text-slate-900">
-                                {title}
-                              </div>
+                              <div className="font-semibold truncate text-slate-900">{title}</div>
                               {href ? (
                                 <span className="opacity-0 group-hover:opacity-100 transition text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-600">
                                   Open
@@ -551,9 +491,7 @@ export default function NotebookPage() {
                               ) : null}
                             </div>
 
-                            <div className="mt-1 text-[11px] text-slate-500 truncate">
-                              {sub}
-                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500 truncate">{sub}</div>
 
                             <div className="mt-2 flex items-center gap-2">
                               <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-white text-slate-600">
@@ -571,15 +509,9 @@ export default function NotebookPage() {
                                     ? "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
                                     : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
                                 )}
-                                title={
-                                  excludedSourceIds.has(s.id)
-                                    ? "Excluded from chat context"
-                                    : "Included in chat context"
-                                }
+                                title={excludedSourceIds.has(s.id) ? "Excluded from chat context" : "Included in chat context"}
                               >
-                                {excludedSourceIds.has(s.id)
-                                  ? "Excluded"
-                                  : "Included"}
+                                {excludedSourceIds.has(s.id) ? "Excluded" : "Included"}
                               </button>
                             </div>
                           </div>
@@ -613,17 +545,16 @@ export default function NotebookPage() {
           {/* Center (Chat) */}
           <div
             className={clsx(
-              "rounded-2xl border border-emerald-300/70 bg-transparent flex flex-col overflow-hidden min-h-0 backdrop-blur-sm",
+              "rounded-2xl border border-slate-200/70 bg-white/60 shadow-[0_10px_30px_rgba(15,23,42,0.08)] flex flex-col overflow-hidden min-h-0 backdrop-blur-sm",
               mobileTab === "chat" ? "flex" : "hidden",
               "md:flex"
             )}
           >
-            <div className="border-b border-emerald-300/70 px-5 py-3 flex items-center gap-3 bg-white/75 backdrop-blur supports-[backdrop-filter]:bg-white/55 sticky top-0 z-10 shadow-[0_1px_0_rgba(16,185,129,0.15)]">
+            <div className="border-b border-slate-200/70 px-5 py-3 flex items-center gap-3 bg-white/75 backdrop-blur supports-[backdrop-filter]:bg-white/55 sticky top-0 z-10 shadow-[0_1px_0_rgba(15,23,42,0.06)]">
               <input
                 value={detailQ.data?.notebook?.title || ""}
                 onChange={(e) =>
-                  activeId &&
-                  updateTitle.mutate({ id: activeId, title: e.target.value })
+                  activeId && updateTitle.mutate({ id: activeId, title: e.target.value })
                 }
                 disabled={!active}
                 className="text-xl font-semibold w-full bg-transparent border-none outline-none placeholder:text-slate-400 text-slate-900 focus:ring-2 focus:ring-emerald-400/40 focus:ring-offset-0 rounded-md px-1 -mx-1"
@@ -638,6 +569,7 @@ export default function NotebookPage() {
                   : ""}
               </div>
             </div>
+
             <ChatPanel
               notebookId={activeId}
               sourceIds={includedSourceIds}
@@ -649,13 +581,13 @@ export default function NotebookPage() {
           <SmartCard
             as="section"
             className={clsx(
-              "rounded-2xl border border-emerald-200/80 bg-emerald-50/70 shadow-[0_10px_30px_rgba(15,23,42,0.16)] flex flex-col overflow-hidden backdrop-blur-sm",
+              "rounded-2xl border border-slate-200/70 bg-white/70 shadow-[0_10px_30px_rgba(15,23,42,0.10)] flex flex-col overflow-hidden min-h-0 backdrop-blur-sm",
               mobileTab === "notes" ? "flex" : "hidden",
               "md:flex"
             )}
           >
             <NotesEditor notebookId={activeId} />
-            <div className="border-t border-emerald-300/70" />
+            <div className="border-t border-slate-200/70" />
             <RightPanel
               notebookId={activeId}
               sourceStats={{

@@ -23,6 +23,16 @@ body,
   overflow-x: hidden;
 }
 
+/* =========================
+   Notebook: lock page scroll
+   ========================= */
+.nb-lock-scroll,
+.nb-lock-scroll body {
+  height: 100%;
+  overflow: hidden;          /* prevent page-level scroll */
+  overscroll-behavior: none; /* stop browser bounce */
+}
+
 /* Also ensure the aside never introduces horizontal scroll */
 .app-sidebar {
   overflow-x: hidden;

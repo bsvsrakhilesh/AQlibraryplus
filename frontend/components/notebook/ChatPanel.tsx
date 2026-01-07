@@ -262,7 +262,7 @@ export default function ChatPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 
   return (
-    <div className="flex-1 flex flex-col bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_rgba(59,130,246,0.06),_rgba(15,23,42,0.03))]">
+    <div className="flex-1 flex flex-col bg-white/10">
       <div className="px-4 md:px-6 py-3 border-b border-emerald-200/70 bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/40">
         <div className="flex items-center gap-2">
           <span className="text-[11px] px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-700">
@@ -294,280 +294,298 @@ export default function ChatPanel({
         ref={scrollRef}
         className="flex-1 overflow-auto px-4 md:px-6 py-5 relative"
       >
-        {/* Jump to bottom */}
-        {showJump && (
-          <button
-            onClick={jumpToBottom}
-            className="fixed md:absolute right-6 bottom-28 md:bottom-24 z-20 px-3 py-2 rounded-full border border-slate-200 bg-white/90 backdrop-blur shadow-[0_16px_40px_rgba(15,23,42,0.18)] text-xs font-semibold text-slate-700 hover:bg-white"
-            aria-label="Jump to latest"
-            title="Jump to latest"
-          >
-            ↓ New messages
-          </button>
-        )}
+        <div className="mx-auto w-full max-w-[760px]">
+          {/* Jump to bottom */}
+          {showJump && (
+            <button
+              onClick={jumpToBottom}
+              className="fixed md:absolute right-6 bottom-28 md:bottom-24 z-20 px-3 py-2 rounded-full border border-slate-200 bg-white/90 backdrop-blur shadow-[0_16px_40px_rgba(15,23,42,0.18)] text-xs font-semibold text-slate-700 hover:bg-white"
+              aria-label="Jump to latest"
+              title="Jump to latest"
+            >
+              ↓ New messages
+            </button>
+          )}
 
-        {/* Empty state */}
-        {messages.length === 0 && (
-          <div className="h-full w-full grid place-items-center">
-            <div className="max-w-xl w-full">
-              <div className="rounded-3xl border border-white/30 bg-white/70 backdrop-blur shadow-[0_24px_80px_rgba(15,23,42,0.18)] p-6 md:p-7">
-                <div className="flex items-start gap-4">
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-b from-emerald-500 to-emerald-700 text-white grid place-items-center shadow-[0_18px_44px_rgba(16,185,129,0.35)]">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 2l2.5 5 5.5.8-4 3.9.9 5.6L12 15.9 7.1 17.3l.9-5.6-4-3.9 5.5-.8L12 2z"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                      />
-                    </svg>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-[18px] md:text-[20px] font-semibold text-slate-900 tracking-tight">
-                      Ask about your sources
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-600 leading-relaxed">
-                      Get summaries, extract insights, and turn sources into
-                      clean notes.
-                    </p>
-
-                    {!notebookId && (
-                      <div className="mt-4 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-                        Create/select a notebook first to start chatting.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Messages list */}
-        <div className="space-y-3">
-          {messages.map((m, i) => {
-            const prev = messages[i - 1];
-            const next = messages[i + 1];
-            const isUser = m.role === "user";
-            const isFirstInGroup = !prev || prev.role !== m.role;
-            const isLastInGroup = !next || next.role !== m.role;
-
-            const bubbleRound = clsx(
-              "rounded-2xl",
-              isFirstInGroup && isLastInGroup && "rounded-2xl",
-              isFirstInGroup &&
-                !isLastInGroup &&
-                (isUser ? "rounded-br-lg" : "rounded-bl-lg"),
-              !isFirstInGroup &&
-                isLastInGroup &&
-                (isUser ? "rounded-tr-lg" : "rounded-tl-lg"),
-              !isFirstInGroup &&
-                !isLastInGroup &&
-                (isUser ? "rounded-r-lg" : "rounded-l-lg")
-            );
-
-            return (
-              <div
-                key={m.id}
-                className={clsx(
-                  "flex gap-3",
-                  isUser ? "justify-end" : "justify-start"
-                )}
-              >
-                {/* Avatar column */}
-                {!isUser ? (
-                  <div
-                    className={clsx(
-                      "w-9 shrink-0",
-                      isFirstInGroup ? "opacity-100" : "opacity-0"
-                    )}
-                  >
-                    <div className="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.25)]">
-                      <span className="text-[12px] font-bold tracking-tight">
-                        AI
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    className={clsx(
-                      "w-9 shrink-0",
-                      isFirstInGroup ? "opacity-100" : "opacity-0"
-                    )}
-                  >
-                    <div className="w-9 h-9 rounded-2xl bg-gradient-to-b from-slate-600 to-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.22)]">
-                      <span className="text-[12px] font-bold tracking-tight">
-                        You
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Bubble */}
-                <div
-                  className={clsx(
-                    "max-w-[720px] w-full",
-                    isUser ? "items-end" : "items-start"
-                  )}
-                >
-                  {isFirstInGroup && (
-                    <div
-                      className={clsx(
-                        "mb-1 flex items-center gap-2",
-                        isUser ? "justify-end" : "justify-start"
-                      )}
-                    >
-                      <div className="text-[11px] font-semibold text-slate-700">
-                        {isUser ? "You" : "Assistant"}
-                      </div>
-                      <div className="text-[11px] text-slate-500 tabular-nums">
-                        {fmtTime(m.ts)}
-                      </div>
-                    </div>
-                  )}
-
-                  <div
-                    className={clsx(
-                      "border shadow-[0_18px_60px_rgba(15,23,42,0.08)] px-4 py-3 text-sm leading-[1.65]",
-                      bubbleRound,
-                      isUser
-                        ? "bg-white border-slate-200 text-slate-900"
-                        : "bg-white/80 backdrop-blur border-white/40 text-slate-900"
-                    )}
-                    {...(m.role === "assistant"
-                      ? { dangerouslySetInnerHTML: { __html: m.html } }
-                      : { children: m.html })}
-                  />
-
-                  {/* Citations */}
-                  {m.role === "assistant" && m.citations?.length ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {m.citations.map((c, idx) => (
-                        <CitationBadge
-                          key={c.chunkId}
-                          index={idx + 1}
-                          chunkId={c.chunkId}
-                          onOpenSource={openSource}
+          {/* Empty state */}
+          {messages.length === 0 && (
+            <div className="h-full w-full grid place-items-center">
+              <div className="max-w-xl w-full">
+                <div className="rounded-3xl border border-white/30 bg-white/70 backdrop-blur shadow-[0_24px_80px_rgba(15,23,42,0.18)] p-6 md:p-7">
+                  <div className="flex items-start gap-4">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-b from-emerald-500 to-emerald-700 text-white grid place-items-center shadow-[0_18px_44px_rgba(16,185,129,0.35)]">
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <path
+                          d="M12 2l2.5 5 5.5.8-4 3.9.9 5.6L12 15.9 7.1 17.3l.9-5.6-4-3.9 5.5-.8L12 2z"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
                         />
-                      ))}
+                      </svg>
                     </div>
-                  ) : null}
 
-                  {/* Actions */}
-                  {m.role === "assistant" ? (
-                    <MessageActions
-                      content={m.html}
-                      onRegenerate={() => onRegenerate(i)}
-                      onAddToNotes={addToNotes}
-                    />
-                  ) : null}
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-[18px] md:text-[20px] font-semibold text-slate-900 tracking-tight">
+                        Ask about your sources
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-600 leading-relaxed">
+                        Get summaries, extract insights, and turn sources into
+                        clean notes.
+                      </p>
 
-                  {/* Suggested follow-ups */}
-                  {m.role === "assistant" && m.suggested?.length ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {m.suggested.map((s, sIdx) => (
-                        <button
-                          key={`${m.id}_s_${sIdx}`}
-                          onClick={() => setInput(s)}
-                          className="text-[12px] px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 shadow-sm text-slate-700"
-                        >
-                          {s}
-                        </button>
-                      ))}
+                      {!notebookId && (
+                        <div className="mt-4 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                          Create/select a notebook first to start chatting.
+                        </div>
+                      )}
                     </div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Typing indicator bubble */}
-          {pending && (
-            <div className="flex gap-3 justify-start">
-              <div className="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.25)]">
-                <span className="text-[12px] font-bold tracking-tight">AI</span>
-              </div>
-
-              <div className="max-w-[720px] w-full">
-                <div className="text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-2">
-                  Assistant{" "}
-                  <span className="text-slate-500 font-normal">thinking</span>
-                </div>
-                <div className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/40 bg-white/80 backdrop-blur shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
-                  <span className="text-sm text-slate-600">Generating…</span>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          <div ref={bottomRef} />
+          {/* Messages list */}
+          <div className="space-y-4">
+            {messages.map((m, i) => {
+              const prev = messages[i - 1];
+              const next = messages[i + 1];
+              const isUser = m.role === "user";
+              const isFirstInGroup = !prev || prev.role !== m.role;
+              const isLastInGroup = !next || next.role !== m.role;
+
+              const bubbleRound = clsx(
+                "rounded-2xl",
+                isFirstInGroup && isLastInGroup && "rounded-2xl",
+                isFirstInGroup &&
+                  !isLastInGroup &&
+                  (isUser ? "rounded-br-lg" : "rounded-bl-lg"),
+                !isFirstInGroup &&
+                  isLastInGroup &&
+                  (isUser ? "rounded-tr-lg" : "rounded-tl-lg"),
+                !isFirstInGroup &&
+                  !isLastInGroup &&
+                  (isUser ? "rounded-r-lg" : "rounded-l-lg")
+              );
+
+              return (
+                <div
+                  key={m.id}
+                  className={clsx(
+                    "flex gap-3",
+                    isUser ? "justify-end" : "justify-start"
+                  )}
+                >
+                  {/* Avatar column */}
+                  {!isUser ? (
+                    <div
+                      className={clsx(
+                        "w-9 shrink-0",
+                        isFirstInGroup ? "opacity-100" : "opacity-0"
+                      )}
+                    >
+                      <div className="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.25)]">
+                        <span className="text-[12px] font-bold tracking-tight">
+                          AI
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className={clsx(
+                        "w-9 shrink-0",
+                        isFirstInGroup ? "opacity-100" : "opacity-0"
+                      )}
+                    >
+                      <div className="w-9 h-9 rounded-2xl bg-gradient-to-b from-slate-600 to-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.22)]">
+                        <span className="text-[12px] font-bold tracking-tight">
+                          You
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bubble */}
+                  <div
+                    className={clsx(
+                      isUser ? "max-w-[520px] w-full" : "max-w-[720px] w-full",
+                      isUser ? "items-end" : "items-start"
+                    )}
+                  >
+                    {isFirstInGroup && (
+                      <div
+                        className={clsx(
+                          "mb-1 flex items-center gap-2",
+                          isUser ? "justify-end" : "justify-start"
+                        )}
+                      >
+                        <div className="text-[11px] font-semibold text-slate-700">
+                          {isUser ? "You" : "Assistant"}
+                        </div>
+                        <div className="text-[11px] text-slate-500 tabular-nums">
+                          {fmtTime(m.ts)}
+                        </div>
+                      </div>
+                    )}
+
+                    <div
+                      className={clsx(
+                        "border shadow-[0_18px_60px_rgba(15,23,42,0.08)] px-4 py-3 text-sm leading-[1.65]",
+                        bubbleRound,
+                        isUser
+                          ? "bg-white border-slate-200 text-slate-900"
+                          : "bg-white/80 backdrop-blur border-white/40 text-slate-900"
+                      )}
+                      {...(m.role === "assistant"
+                        ? { dangerouslySetInnerHTML: { __html: m.html } }
+                        : { children: m.html })}
+                    />
+
+                    {/* Citations */}
+                    {m.role === "assistant" && m.citations?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {m.citations.map((c, idx) => (
+                          <CitationBadge
+                            key={c.chunkId}
+                            index={idx + 1}
+                            chunkId={c.chunkId}
+                            onOpenSource={openSource}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {/* Actions */}
+                    {m.role === "assistant" ? (
+                      <MessageActions
+                        content={m.html}
+                        onRegenerate={() => onRegenerate(i)}
+                        onAddToNotes={addToNotes}
+                      />
+                    ) : null}
+
+                    {/* Suggested follow-ups */}
+                    {m.role === "assistant" && m.suggested?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {m.suggested.map((s, sIdx) => (
+                          <button
+                            key={`${m.id}_s_${sIdx}`}
+                            onClick={() => setInput(s)}
+                            className="text-[12px] px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 shadow-sm text-slate-700"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Typing indicator bubble */}
+            {pending && (
+              <div className="flex gap-3 justify-start">
+                <div className="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.25)]">
+                  <span className="text-[12px] font-bold tracking-tight">
+                    AI
+                  </span>
+                </div>
+
+                <div className="max-w-[720px] w-full">
+                  <div className="text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-2">
+                    Assistant{" "}
+                    <span className="text-slate-500 font-normal">thinking</span>
+                  </div>
+                  <div className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/40 bg-white/80 backdrop-blur shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
+                    <span className="text-sm text-slate-600">Generating…</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={bottomRef} />
+          </div>
         </div>
       </div>
 
       {/* Composer */}
-      <div className="border-t border-white/40 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/55 px-3 md:px-4 py-3">
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <div className="rounded-3xl border border-slate-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.10)] px-3 py-2">
-              <textarea
-                ref={composerRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder={
-                  notebookId
-                    ? "Ask about your sources…"
-                    : "Create/select a notebook to start"
-                }
-                disabled={!notebookId}
-                className="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-slate-400 disabled:text-slate-400"
-                rows={1}
-              />
+      <div className="border-t border-slate-200/70 bg-white/75 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-3 md:px-4 py-3">
+        <div className="mx-auto w-full max-w-[760px]">
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <div className="rounded-3xl border border-slate-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.10)] px-3 py-2">
+                <textarea
+                  ref={composerRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder={
+                    notebookId
+                      ? "Ask about your sources…"
+                      : "Create/select a notebook to start"
+                  }
+                  disabled={!notebookId}
+                  className="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-slate-400 disabled:text-slate-400"
+                  rows={1}
+                />
 
-              <div className="mt-2 flex items-center justify-between">
-                <div className="text-[11px] text-slate-500">
-                  Enter to send · Shift+Enter for newline
-                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-[11px] text-slate-500">
+                    Enter to send · Shift+Enter for newline
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="text-[11px] text-slate-500 tabular-nums">
-                    {input.trim().length ? `${input.trim().length} chars` : ""}
+                  <div className="flex items-center gap-2">
+                    <div className="text-[11px] text-slate-500 tabular-nums">
+                      {input.trim().length
+                        ? `${input.trim().length} chars`
+                        : ""}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <button
-            onClick={() => {
-              if (!notebookId || pending) return;
-              const q = input.trim();
-              if (!q) return;
-              setInput("");
-              send(q);
-            }}
-            disabled={!notebookId || pending || !input.trim()}
-            className={clsx(
-              "w-11 h-11 grid place-items-center rounded-2xl text-white shadow-[0_18px_50px_rgba(15,23,42,0.25)] transition-all",
-              !notebookId || pending || !input.trim()
-                ? "bg-slate-400 cursor-not-allowed opacity-70"
-                : "bg-slate-900 hover:bg-black active:scale-[0.98]"
-            )}
-            aria-label="Send"
-            title="Send"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M2 21l19-9L2 3l3 7 9 2-9 2-3 7z" />
-            </svg>
-          </button>
+            <button
+              onClick={() => {
+                if (!notebookId || pending) return;
+                const q = input.trim();
+                if (!q) return;
+                setInput("");
+                send(q);
+              }}
+              disabled={!notebookId || pending || !input.trim()}
+              className={clsx(
+                "w-11 h-11 grid place-items-center rounded-2xl text-white shadow-[0_18px_50px_rgba(15,23,42,0.25)] transition-all",
+                !notebookId || pending || !input.trim()
+                  ? "bg-slate-400 cursor-not-allowed opacity-70"
+                  : "bg-slate-900 hover:bg-black active:scale-[0.98]"
+              )}
+              aria-label="Send"
+              title="Send"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M2 21l19-9L2 3l3 7 9 2-9 2-3 7z" />
+              </svg>
+            </button>
+          </div>
         </div>
+        <SourceReaderDrawer
+          open={readerOpen}
+          chunkId={readerChunkId}
+          onClose={() => setReaderOpen(false)}
+        />
       </div>
-      <SourceReaderDrawer
-        open={readerOpen}
-        chunkId={readerChunkId}
-        onClose={() => setReaderOpen(false)}
-      />
     </div>
   );
 }
