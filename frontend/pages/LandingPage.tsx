@@ -1,18 +1,10 @@
 // frontend/pages/LandingPage.tsx
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  AnimatePresence,
   motion,
   useReducedMotion,
   useScroll,
-  useSpring,
   useTransform,
   type MotionProps,
   type Transition,
@@ -74,36 +66,6 @@ const MagneticButton: React.FC<
   );
 };
 
-function useActiveStep(
-  sectionRef: React.RefObject<HTMLDivElement | null>,
-  steps: number
-) {
-  const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start end", "end start"],
-  });
-
-  // Smooth the progress so we don't flicker on fast scroll
-  const p = useSpring(scrollYProgress, {
-    stiffness: reduce ? 999 : 180,
-    damping: reduce ? 60 : 30,
-    mass: 0.5,
-  });
-
-  const [active, setActive] = useState(0);
-  useEffect(() => {
-    const unsub = p.on("change", (v) => {
-      const clamped = Math.max(0, Math.min(0.999, v));
-      const idx = Math.floor(clamped * steps);
-      setActive(idx);
-    });
-    return () => unsub();
-  }, [p, steps]);
-
-  return { active, progress: p };
-}
-
 /* ========================
    Top navigation
    ======================== */
@@ -112,9 +74,6 @@ function LandingNav() {
 
   const items = [
     { label: "Features", href: "#features" },
-    { label: "Workflow", href: "#workflow" },
-    { label: "Keyboard", href: "#keyboard" },
-    { label: "Start", href: "#start" },
   ];
 
   return (
@@ -492,393 +451,24 @@ function FeatureGrid() {
 }
 
 /* ========================
-   Workflow: scrollytelling product tour
-   ======================== */
-
-type TourStep = {
-  title: string;
-  subtitle: string;
-  pageHash: Feature["key"];
-  icon: React.ReactNode;
-};
-
-const TOUR: TourStep[] = [
-  {
-    title: "Collect",
-    subtitle: "Search broadly, then narrow quickly. Save only what matters.",
-    pageHash: "url-collector",
-    icon: <LinkIcon className="h-4 w-4" />,
-  },
-  {
-    title: "Enrich",
-    subtitle:
-      "Auto-tags + collections turn a messy list into an indexable library.",
-    pageHash: "saved-urls",
-    icon: <Sparkles className="h-4 w-4" />,
-  },
-  {
-    title: "Organize",
-    subtitle:
-      "Treat PDFs & datasets like first-class citizens — preview, folder, and version.",
-    pageHash: "file-manager",
-    icon: <FolderOpen className="h-4 w-4" />,
-  },
-  {
-    title: "Synthesize",
-    subtitle:
-      "Attach sources to notebooks and generate structured outputs without losing context.",
-    pageHash: "notebook",
-    icon: <BookOpen className="h-4 w-4" />,
-  },
-];
-
-function AppPreview({ step }: { step: number }) {
-  const s = TOUR[step];
-
-  const content = useMemo(() => {
-    if (s.pageHash === "url-collector") {
-      return (
-        <div className="space-y-3">
-          <div className="landing-frame-bar">
-            <div className="landing-frame-pill">site:example.com</div>
-            <div className="landing-frame-pill">"emissions policy"</div>
-            <div className="landing-frame-pill landing-frame-pill--cta">
-              Search
-            </div>
-          </div>
-
-          <div className="landing-table">
-            <div className="landing-table-head">
-              <span>Title</span>
-              <span>Domain</span>
-              <span>Action</span>
-            </div>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="landing-table-row">
-                <div className="landing-table-cell">
-                  <div className="landing-line w-[92%]" />
-                </div>
-                <div className="landing-table-cell">
-                  <div className="landing-line w-[70%]" />
-                </div>
-                <div className="landing-table-cell">
-                  <div className="landing-mini-btn">Save</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (s.pageHash === "saved-urls") {
-      return (
-        <div className="space-y-3">
-          <div className="landing-frame-bar">
-            <div className="landing-frame-pill">Favorites</div>
-            <div className="landing-frame-pill">collection: Methods</div>
-            <div className="landing-frame-pill">tag: dataset</div>
-            <div className="landing-frame-pill landing-frame-pill--cta">
-              Filter
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="landing-url-card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="landing-line w-[86%]" />
-                    <div className="mt-2 landing-line w-[72%]" />
-                  </div>
-                  <div className="landing-mini-btn">⋯</div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="landing-chip">policy</span>
-                  <span className="landing-chip">health</span>
-                  <span className="landing-chip">method</span>
-                  <span className="landing-chip">dataset</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (s.pageHash === "file-manager") {
-      return (
-        <div className="space-y-3">
-          <div className="landing-frame-bar">
-            <div className="landing-frame-pill">/Research</div>
-            <div className="landing-frame-pill">Delhi-2025</div>
-            <div className="landing-frame-pill landing-frame-pill--cta">
-              Upload
-            </div>
-          </div>
-
-          <div className="landing-table">
-            <div className="landing-table-head">
-              <span>Name</span>
-              <span>Type</span>
-              <span>Size</span>
-            </div>
-            {[
-              "report.pdf",
-              "dataset.csv",
-              "notes.txt",
-              "slides.pptx",
-              "raw.zip",
-            ].map((name, i) => (
-              <div key={name} className="landing-table-row">
-                <div className="landing-table-cell flex items-center gap-2">
-                  <span className="h-7 w-7 rounded-lg bg-white/70 ring-1 ring-black/5 grid place-items-center text-[11px] font-semibold">
-                    {name.split(".").pop()?.toUpperCase().slice(0, 3)}
-                  </span>
-                  <span className="text-sm font-medium text-slate-800 truncate">
-                    {name}
-                  </span>
-                </div>
-                <div className="landing-table-cell text-sm text-slate-600">
-                  {name.split(".").pop()}
-                </div>
-                <div className="landing-table-cell text-sm text-slate-600">
-                  {(i + 2) * 1.4} MB
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-3">
-        <div className="landing-frame-bar">
-          <div className="landing-frame-pill">Notebook</div>
-          <div className="landing-frame-pill">+ Add sources</div>
-          <div className="landing-frame-pill landing-frame-pill--cta">
-            Generate
-          </div>
-        </div>
-
-        <div className="landing-url-card">
-          <div className="text-xs font-semibold text-slate-700">Outline</div>
-          <div className="mt-2 space-y-2">
-            <div className="landing-line w-[85%]" />
-            <div className="landing-line w-[78%]" />
-            <div className="landing-line w-[62%]" />
-          </div>
-        </div>
-
-        <div className="landing-url-card">
-          <div className="text-xs font-semibold text-slate-700">Draft</div>
-          <div className="mt-2 space-y-2">
-            <div className="landing-line w-[92%]" />
-            <div className="landing-line w-[88%]" />
-            <div className="landing-line w-[70%]" />
-            <div className="landing-line w-[58%]" />
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="landing-chip">Citations</span>
-            <span className="landing-chip">Sources attached</span>
-          </div>
-        </div>
-      </div>
-    );
-  }, [s.pageHash]);
-
-  return (
-    <div className="landing-frame">
-      <div className="landing-frame-top">
-        <div className="flex items-center gap-2">
-          <span className="dot bg-rose-400" />
-          <span className="dot bg-amber-400" />
-          <span className="dot bg-emerald-400" />
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-600">
-          <span className="px-2 py-1 rounded-md bg-white/70 ring-1 ring-black/5">
-            /app
-          </span>
-          <span className="px-2 py-1 rounded-md bg-white/70 ring-1 ring-black/5">
-            #{s.pageHash}
-          </span>
-        </div>
-      </div>
-
-      <div className="landing-frame-body">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={s.pageHash}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.35, ease: EASE }}
-          >
-            {content}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-function WorkflowTour() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const { active, progress } = useActiveStep(sectionRef, TOUR.length);
-  const barScale = useTransform(progress, [0, 1], [0, 1]);
-
-  return (
-    <section
-      id="workflow"
-      ref={sectionRef}
-      className="relative mx-auto max-w-7xl px-6 py-20 md:py-24"
-    >
-      <div className="mx-auto max-w-2xl text-center">
-        <motion.h2
-          className="text-3xl font-bold tracking-tight md:text-4xl"
-          {...fadeUp(0)}
-        >
-          One workflow. Four pages.
-        </motion.h2>
-        <motion.p className="mt-3 text-slate-600" {...fadeUp(0.08)}>
-          Scroll this section — the preview updates to show exactly how each
-          page contributes.
-        </motion.p>
-      </div>
-
-      <div className="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-[0.95fr_1.05fr]">
-        {/* Left: steps */}
-        <div className="relative">
-          <div className="progress-rail" />
-          <motion.div className="progress-bar" style={{ scaleY: barScale }} />
-
-          <div className="space-y-4">
-            {TOUR.map((s, idx) => {
-              const isActive = idx === active;
-              return (
-                <a
-                  key={s.pageHash}
-                  href={`/app#${s.pageHash}`}
-                  className={
-                    "landing-step group " +
-                    (isActive ? "landing-step--active" : "landing-step--idle")
-                  }
-                >
-                  <div
-                    className={
-                      "landing-step-badge " +
-                      (isActive ? "landing-step-badge--active" : "")
-                    }
-                  >
-                    {s.icon}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-base font-semibold text-slate-900">
-                        {s.title}
-                      </div>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-700 transition">
-                        #{s.pageHash}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-sm text-slate-600">
-                      {s.subtitle}
-                    </div>
-                  </div>
-                </a>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right: sticky preview */}
-        <div className="lg:sticky lg:top-24 h-fit">
-          <AppPreview step={active} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ========================
-   Keyboard-first proof
-   ======================== */
-function KeyboardSection() {
-  return (
-    <section
-      id="keyboard"
-      className="relative mx-auto max-w-7xl px-6 py-20 md:py-24"
-    >
-      <div className="grid grid-cols-1 gap-10 items-center">
-        <div>
-          <motion.h2
-            className="text-3xl font-bold tracking-tight md:text-4xl"
-            {...fadeUp(0)}
-          >
-            Built for speed (not clicks).
-          </motion.h2>
-          <motion.p className="mt-3 text-slate-600" {...fadeUp(0.08)}>
-            The UI is designed to reward power-users: state restore, bulk
-            actions, and clean information hierarchy.
-          </motion.p>
-
-          <motion.div
-            className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2"
-            {...fadeUp(0.16)}
-          >
-            <div className="landing-kbd-card">
-              <div className="landing-kbd-title">
-                <Sparkles className="h-4 w-4" /> AI tagging
-              </div>
-              <div className="mt-2 text-sm text-slate-600">
-                Tag jobs + retries so your library stays organized.
-              </div>
-            </div>
-            <div className="landing-kbd-card">
-              <div className="landing-kbd-title">
-                <Star className="h-4 w-4" /> Bulk actions
-              </div>
-              <div className="mt-2 text-sm text-slate-600">
-                Move/copy/cut, favorites, collections — at scale.
-              </div>
-            </div>
-            <div className="landing-kbd-card">
-              <div className="landing-kbd-title">
-                <FileText className="h-4 w-4" /> Capture & preview
-              </div>
-              <div className="mt-2 text-sm text-slate-600">
-                Save PDFs/text snapshots for reliable referencing.
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ========================
    Bottom CTA
    ======================== */
 function BottomCTA() {
   return (
-    <section id="start" className="relative overflow-hidden">
-      <div className="landing-cta-bg">
-        <div aria-hidden className="landing-noise" />
-        <div className="mx-auto max-w-7xl px-6 py-16 md:py-20 text-center">
-          <motion.h3
-            className="text-2xl font-bold text-white md:text-3xl"
-            {...fadeUp(0)}
-          >
-            Ready to make your research workflow look premium?
-          </motion.h3>
-          <motion.p className="mt-2 text-white/90" {...fadeUp(0.08)}>
-            Open the workspace and start collecting sources in seconds.
-          </motion.p>
-        </div>
+    <div className="landing-cta-bg">
+      <div aria-hidden className="landing-noise" />
+      <div className="mx-auto max-w-7xl px-6 py-16 md:py-20 text-center">
+        <motion.h3
+          className="text-2xl font-bold text-white md:text-3xl"
+          {...fadeUp(0)}
+        >
+          Ready to make your research workflow look premium?
+        </motion.h3>
+        <motion.p className="mt-2 text-white/90" {...fadeUp(0.08)}>
+          Open the workspace and start collecting sources in seconds.
+        </motion.p>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -892,8 +482,6 @@ export default function LandingPage() {
       <div className="h-16" />
       <Hero />
       <FeatureGrid />
-      <WorkflowTour />
-      <KeyboardSection />
       <BottomCTA />
       <footer className="py-10 text-center text-xs text-slate-500">
         <div className="mx-auto max-w-7xl px-6">
