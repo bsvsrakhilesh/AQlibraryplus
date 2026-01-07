@@ -238,7 +238,7 @@ export default function NotebookPage() {
   }, []);
 
   return (
-    <div className="p-5 md:p-6 space-y-4">
+    <div className="p-5 md:p-6 space-y-4 min-h-[calc(100vh-var(--header-h)-2rem)] flex flex-col">
       <header className="page-header">
         <div className="page-header-main">
           <p className="page-header-kicker">Notebook</p>
@@ -267,7 +267,7 @@ export default function NotebookPage() {
         </div>
       </header>
 
-      <div className="min-h-full rounded-[28px] border border-emerald-200/70 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.07),_rgba(59,130,246,0.06),_rgba(15,23,42,0.03))] shadow-[0_40px_120px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
+      <div className="flex-1 min-h-0 rounded-[28px] border border-emerald-200/70 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.07),_rgba(59,130,246,0.06),_rgba(15,23,42,0.03))] shadow-[0_40px_120px_rgba(15,23,42,0.32)] px-4 md:px-6 py-4 md:py-5 flex flex-col">
         {/* Step 1: Mobile panel switcher */}
         <div className="md:hidden mb-3">
           <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-2xl border border-emerald-200/80 bg-white/75 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur supports-[backdrop-filter]:bg-white/60">
@@ -314,7 +314,7 @@ export default function NotebookPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_420px] items-stretch h-full gap-4 md:gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_420px] items-stretch flex-1 min-h-0 gap-4 md:gap-5">
           {/* Left rail */}
           <div
             className={clsx(
@@ -613,7 +613,7 @@ export default function NotebookPage() {
           {/* Center (Chat) */}
           <div
             className={clsx(
-              "rounded-2xl border border-emerald-300/70 bg-transparent flex flex-col overflow-hidden min-h-[70vh] backdrop-blur-sm",
+              "rounded-2xl border border-emerald-300/70 bg-transparent flex flex-col overflow-hidden min-h-0 backdrop-blur-sm",
               mobileTab === "chat" ? "flex" : "hidden",
               "md:flex"
             )}

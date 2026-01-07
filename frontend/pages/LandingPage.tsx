@@ -72,9 +72,7 @@ const MagneticButton: React.FC<
 function LandingNav() {
   const navigate = useNavigate();
 
-  const items = [
-    { label: "Features", href: "#features" },
-  ];
+  const items = [{ label: "Features", href: "#features" }];
 
   return (
     <div className="fixed inset-x-0 top-0 z-50">
@@ -119,6 +117,16 @@ function LandingNav() {
                 className="landing-primary-btn inline-flex items-center gap-2"
               >
                 Open App <ArrowRight className="h-4 w-4" />
+              </MagneticButton>
+              <MagneticButton
+                onClick={() => navigate("/notebook")}
+                className="landing-primary-btn inline-flex items-center gap-2 h-9 px-3 py-2"
+                title="Open Notebook"
+                aria-label="Open Notebook"
+                type="button"
+              >
+                <span className="hidden sm:inline">Open Notebook</span>
+                <BookOpen className="h-4 w-4" />
               </MagneticButton>
             </div>
           </div>
@@ -208,6 +216,12 @@ function Hero() {
                   className="landing-primary-btn inline-flex items-center gap-2"
                 >
                   Open App <ArrowRight className="h-4 w-4" />
+                </MagneticButton>
+                <MagneticButton
+                  onClick={() => navigate("/notebook")}
+                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-slate-800 bg-white/40 ring-1 ring-white/60 hover:bg-white/55 transition"
+                >
+                  Open Notebook <BookOpen className="h-4 w-4" />
                 </MagneticButton>
                 <a
                   href="#features"

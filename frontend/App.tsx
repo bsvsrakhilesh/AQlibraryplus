@@ -1,4 +1,6 @@
+// frontend/App.tsx
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import AppShell from "./layouts/AppShell";
 import Sidebar from "./components/common/Sidebar";
@@ -6,7 +8,6 @@ import Sidebar from "./components/common/Sidebar";
 import UrlCollectorPage from "./pages/UrlCollectorPage";
 import SavedUrlsPage from "./pages/SavedUrlsPage";
 import FileManagerPage from "./pages/FileManagerPage";
-import NotebookPage from "./pages/NotebookPage";
 
 import { Page } from "./types";
 import { ToastProvider } from "./components/providers/Toast";
@@ -15,17 +16,17 @@ import { ConfirmProvider } from "./components/providers/Confirm";
 const STORAGE_KEY = "sidebar.expanded";
 
 const App: React.FC = () => {
+  const navigate = useNavigate();
+
   const [currentPage, setCurrentPage] = useState<Page>(() => {
     const h =
       typeof window !== "undefined"
         ? window.location.hash.replace("#", "")
         : "";
-    const allowed = new Set<Page>([
-      "url-collector",
-      "saved-urls",
-      "file-manager",
-      "notebook",
-    ]);
+
+    // /app contains only workspace pages
+    const allowed = new Set<Page>(["url-collector", "saved-urls", "file-manager"]);
+
     return allowed.has(h as Page) ? (h as Page) : "url-collector";
   });
 
@@ -36,6 +37,7 @@ const App: React.FC = () => {
     return raw === null ? true : raw === "true";
   });
 
+  // Keep hash in sync for workspace tabs
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -45,21 +47,6 @@ const App: React.FC = () => {
     }
   }, [currentPage]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (currentPage !== "notebook") return;
-
-    // Ensure notebook always opens with its page header visible.
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      // Second tick beats late layout shifts (fonts, async content)
-      setTimeout(
-        () => window.scrollTo({ top: 0, left: 0, behavior: "auto" }),
-        0
-      );
-    });
-  }, [currentPage]);
-
   // Persist sidebar state
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -67,6 +54,7 @@ const App: React.FC = () => {
     }
   }, [isSidebarOpen]);
 
+  // Keyboard toggle for sidebar
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
@@ -86,24 +74,17 @@ const App: React.FC = () => {
 
   const renderPages = () => (
     <>
-      <div
-        style={{ display: currentPage === "url-collector" ? "block" : "none" }}
-      >
+      <div style={{ display: currentPage === "url-collector" ? "block" : "none" }}>
         <UrlCollectorPage />
       </div>
 
       {currentPage === "saved-urls" && <SavedUrlsPage />}
       {currentPage === "file-manager" && <FileManagerPage />}
-      {currentPage === "notebook" && <NotebookPage />}
     </>
   );
-  const workspacePages: Page[] = [
-    "url-collector",
-    "saved-urls",
-    "file-manager",
-  ];
+
+  const workspacePages: Page[] = ["url-collector", "saved-urls", "file-manager"];
   const isWorkspacePage = workspacePages.includes(currentPage);
-  const isNotebookPage = currentPage === "notebook";
 
   return (
     <ToastProvider>
@@ -119,9 +100,10 @@ const App: React.FC = () => {
           }
           sidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
-          onNavigateHome={() => setCurrentPage("url-collector")}
+          // Home from /app should go to Landing page
+          onNavigateHome={() => navigate("/")}
           hideAmbient={isWorkspacePage}
-          variant={isNotebookPage ? "notebook" : "workspace"}
+          variant="workspace"
         >
           {renderPages()}
         </AppShell>

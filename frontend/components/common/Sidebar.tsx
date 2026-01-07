@@ -9,7 +9,6 @@ import { Page } from "../../types";
 import UrlIcon from "../icons/UrlIcon";
 import BookmarkIcon from "../icons/BookmarkIcon";
 import FolderIcon from "../icons/FolderIcon";
-import BookIcon from "../icons/BookIcon";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -27,7 +26,6 @@ const NAV: Array<{
   { key: "url-collector", label: "URL Collector", Icon: UrlIcon },
   { key: "saved-urls", label: "Saved URLs", Icon: BookmarkIcon },
   { key: "file-manager", label: "File Manager", Icon: FolderIcon },
-  { key: "notebook", label: "Notebook", Icon: BookIcon },
 ];
 
 /* --------------------------------- MOTION ---------------------------------- */
