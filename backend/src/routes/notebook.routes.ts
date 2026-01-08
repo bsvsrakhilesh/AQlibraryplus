@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  getNotebooksHandler, postNotebookHandler, getNotebookDetailHandler, patchNotebookHandler,
+  getNotebooksHandler, postNotebookHandler, getNotebookDetailHandler, patchNotebookHandler, deleteNotebookHandler,
   getNotebookSourcesHandler, postNotebookSourceUrlHandler, postNotebookSourceFileHandler, deleteNotebookSourceHandler,
   postNotebookChatHandler, postNotebookNoteHandler, patchNotebookNoteHandler
 } from '../controllers/notebook.controller';
@@ -30,6 +30,12 @@ r.patch(
     body: z.object({ title: z.string().min(1).optional(), description: z.string().max(2000).optional() })
   }),
   patchNotebookHandler
+);
+
+r.delete(
+  "/notebooks/:id",
+  validate({ params: z.object({ id: z.string().min(1) }) }),
+  deleteNotebookHandler
 );
 
 r.get(

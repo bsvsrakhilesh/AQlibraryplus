@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import {
   listNotebooks, createNotebook, getNotebook, updateNotebook,
+  deleteNotebook,
   listSources, attachUrlSource, attachFileSource, deleteSource,
   createNote, updateNote, pickNotebookCitations
 } from '../services/notebook.service';
@@ -20,6 +21,15 @@ export async function getNotebookDetailHandler(req: Request, res: Response, next
 }
 export async function patchNotebookHandler(req: Request, res: Response, next: NextFunction) {
   try { res.json(await updateNotebook(req.params.id, req.body || {})); } catch (e) { next(e); }
+}
+export async function deleteNotebookHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const ok = await deleteNotebook(req.params.id);
+    if (!ok) return res.status(404).json({ message: "Notebook not found" });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
 }
 export async function getNotebookSourcesHandler(req: Request, res: Response, next: NextFunction) {
   try { res.json(await listSources(req.params.id)); } catch (e) { next(e); }

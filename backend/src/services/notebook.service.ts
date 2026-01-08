@@ -33,6 +33,17 @@ export async function updateNotebook(id: string, p: { title?: string; descriptio
   return prisma.notebook.update({ where: { id }, data: p });
 }
 
+export async function deleteNotebook(id: string) {
+  try {
+    await prisma.notebook.delete({ where: { id } });
+    return true;
+  } catch (e: any) {
+    // Prisma "record not found"
+    if (e?.code === "P2025") return false;
+    throw e;
+  }
+}
+
 export async function listSources(notebookId: string) {
   return prisma.notebookSource.findMany({
     where: { notebookId },
