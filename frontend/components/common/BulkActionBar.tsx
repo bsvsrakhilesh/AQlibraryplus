@@ -28,10 +28,10 @@ function BulkActionBar<T extends Selectable>({
 }: BulkActionBarProps<T>) {
   if (!selected.length) return null;
 
-  const selectedIds = selected.map(s => s.id);
+  const selectedIds = selected.map((s) => s.id);
 
   const addTag = () => {
-    const tag = prompt('Add tag');
+    const tag = prompt("Add tag");
     if (tag && tag.trim()) onAddTag(selectedIds, tag.trim());
   };
 

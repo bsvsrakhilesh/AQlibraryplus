@@ -45,10 +45,13 @@ const ContextMenu: React.FC<Props> = ({ open, x, y, items, onClose }) => {
     let left = position.left;
     let top = position.top;
 
-    if (left + rect.width > innerWidth) left = Math.max(4, innerWidth - rect.width - 4);
-    if (top + rect.height > innerHeight) top = Math.max(4, innerHeight - rect.height - 4);
+    if (left + rect.width > innerWidth)
+      left = Math.max(4, innerWidth - rect.width - 4);
+    if (top + rect.height > innerHeight)
+      top = Math.max(4, innerHeight - rect.height - 4);
 
-    if (left !== position.left || top !== position.top) setPosition({ left, top });
+    if (left !== position.left || top !== position.top)
+      setPosition({ left, top });
   }, [open, position.left, position.top]);
 
   // ESC / scroll / resize close
@@ -134,7 +137,9 @@ const ContextMenu: React.FC<Props> = ({ open, x, y, items, onClose }) => {
                   disabled
                     ? "opacity-50 cursor-not-allowed"
                     : "hover:bg-neutral-50 dark:hover:bg-neutral-800",
-                  it.danger ? "text-red-600" : "text-neutral-800 dark:text-neutral-100",
+                  it.danger
+                    ? "text-red-600"
+                    : "text-neutral-800 dark:text-neutral-100",
                 ].join(" ")}
               >
                 <span className="truncate">{it.label}</span>

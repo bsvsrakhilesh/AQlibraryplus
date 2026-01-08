@@ -48,10 +48,9 @@ export default function FavoriteButton({
   const pad = size === "sm" ? "px-1.5 py-1" : "px-2 py-1.5";
   const ghost =
     "border border-transparent hover:bg-neutral-100 dark:hover:bg-neutral-800";
-  const solid =
-    isOn
-      ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300"
-      : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-200";
+  const solid = isOn
+    ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300"
+    : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-200";
   const cls =
     base +
     " " +

@@ -162,7 +162,7 @@ export default function SourcePicker({
           </button>
         </div>
 
-        <div className="p-2 overflow-auto">
+        <div className="flex-1 min-h-0 p-2 overflow-y-auto">
           {err && (
             <div className="p-3 mb-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm">
               <div className="font-semibold mb-1">Something went wrong</div>

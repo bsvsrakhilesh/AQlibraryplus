@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   value: string[];
@@ -8,7 +8,10 @@ type Props = {
   maxVisible?: number;
 };
 
-const TagChip: React.FC<{ text: string; onRemove?: () => void }> = ({ text, onRemove }) => (
+const TagChip: React.FC<{ text: string; onRemove?: () => void }> = ({
+  text,
+  onRemove,
+}) => (
   <span
     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-800 border dark:border-gray-700"
     // Make sure container chips don't leak events upward
@@ -23,8 +26,12 @@ const TagChip: React.FC<{ text: string; onRemove?: () => void }> = ({ text, onRe
         aria-label={`Remove tag ${text}`}
         title="Remove"
         // Stop *both* pointer and mouse before they reach document capture listeners
-        onPointerDown={(e) => { e.stopPropagation(); }}
-        onMouseDown={(e) => { e.stopPropagation(); }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
         onClick={(e) => {
           e.stopPropagation();
           onRemove();
@@ -36,11 +43,18 @@ const TagChip: React.FC<{ text: string; onRemove?: () => void }> = ({ text, onRe
   </span>
 );
 
-const match = (q: string, s: string) => s.toLowerCase().includes(q.trim().toLowerCase());
+const match = (q: string, s: string) =>
+  s.toLowerCase().includes(q.trim().toLowerCase());
 
-const TagEditor: React.FC<Props> = ({ value, suggestions = [], onChange, onClose, maxVisible = 6 }) => {
+const TagEditor: React.FC<Props> = ({
+  value,
+  suggestions = [],
+  onChange,
+  onClose,
+  maxVisible = 6,
+}) => {
   const [tags, setTags] = useState<string[]>(value || []);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const ref = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -58,16 +72,18 @@ const TagEditor: React.FC<Props> = ({ value, suggestions = [], onChange, onClose
       onClose?.();
     };
 
-    document.addEventListener('pointerdown', handler, true);
-    document.addEventListener('mousedown', handler, true);
+    document.addEventListener("pointerdown", handler, true);
+    document.addEventListener("mousedown", handler, true);
     return () => {
-      document.removeEventListener('pointerdown', handler, true);
-      document.removeEventListener('mousedown', handler, true);
+      document.removeEventListener("pointerdown", handler, true);
+      document.removeEventListener("mousedown", handler, true);
     };
   }, [onClose]);
 
   const filtered = useMemo(() => {
-    const base = q ? suggestions.filter((s) => match(q, s)) : suggestions.slice();
+    const base = q
+      ? suggestions.filter((s) => match(q, s))
+      : suggestions.slice();
     return base.filter((s) => !tags.includes(s)).slice(0, 50);
   }, [q, suggestions, tags]);
 
@@ -82,7 +98,7 @@ const TagEditor: React.FC<Props> = ({ value, suggestions = [], onChange, onClose
     const tag = t.trim();
     if (!tag || tags.includes(tag)) return;
     commit([...tags, tag]);
-    setQ('');
+    setQ("");
     setActive(0);
   };
 
@@ -91,23 +107,23 @@ const TagEditor: React.FC<Props> = ({ value, suggestions = [], onChange, onClose
   };
 
   const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       if (q && q.trim()) return add(q);
       if (filtered[active]) return add(filtered[active]);
     }
-    if (e.key === 'Backspace' && !q && tags.length) {
+    if (e.key === "Backspace" && !q && tags.length) {
       remove(tags[tags.length - 1]);
     }
-    if (e.key === 'ArrowDown') {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((i) => Math.min(filtered.length - 1, i + 1));
     }
-    if (e.key === 'ArrowUp') {
+    if (e.key === "ArrowUp") {
       e.preventDefault();
       setActive((i) => Math.max(0, i - 1));
     }
-    if (e.key === 'Escape') onClose?.();
+    if (e.key === "Escape") onClose?.();
   };
 
   return (
@@ -124,7 +140,9 @@ const TagEditor: React.FC<Props> = ({ value, suggestions = [], onChange, onClose
           <TagChip key={t} text={t} onRemove={() => remove(t)} />
         ))}
         {tags.length > maxVisible && (
-          <span className="text-xs text-gray-500">+{tags.length - maxVisible} more</span>
+          <span className="text-xs text-gray-500">
+            +{tags.length - maxVisible} more
+          </span>
         )}
       </div>
 
@@ -146,7 +164,11 @@ const TagEditor: React.FC<Props> = ({ value, suggestions = [], onChange, onClose
           <button
             key={s}
             type="button"
-            className={`w-full text-left px-2 py-1 rounded ${i === active ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            className={`w-full text-left px-2 py-1 rounded ${
+              i === active
+                ? "bg-gray-100 dark:bg-gray-800"
+                : "hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onMouseEnter={() => setActive(i)}
@@ -158,7 +180,9 @@ const TagEditor: React.FC<Props> = ({ value, suggestions = [], onChange, onClose
       </div>
 
       <div className="mt-2 text-right">
-        <button className="btn-ghost text-xs" onClick={() => onClose?.()}>Close</button>
+        <button className="btn-ghost text-xs" onClick={() => onClose?.()}>
+          Close
+        </button>
       </div>
     </div>
   );

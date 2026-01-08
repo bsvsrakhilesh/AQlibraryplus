@@ -116,7 +116,7 @@ r.post(
     params: z.object({ id: z.string().min(1) }),
     body: z.object({
       title: z.string().optional(),
-      content: z.string().min(1),
+      content: z.string().optional().default(""),
       citations: z.any().optional(),
     }),
   }),
@@ -130,7 +130,7 @@ r.patch(
     body: z
       .object({
         title: z.string().optional(),
-        content: z.string().min(1).optional(),
+        content: z.string().optional(),
         citations: z.any().optional(),
       })
       .refine(

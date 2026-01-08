@@ -8,7 +8,12 @@ type Props = {
   onMerge?: (tags: string[]) => void; // merge into UI or refetch
 };
 
-export default function AITagButton({ kind, id, className = "", onMerge }: Props) {
+export default function AITagButton({
+  kind,
+  id,
+  className = "",
+  onMerge,
+}: Props) {
   const [msg, setMsg] = useState("");
   const { running, progress, start } = useAITagger();
 
@@ -16,8 +21,12 @@ export default function AITagButton({ kind, id, className = "", onMerge }: Props
     setMsg("");
     const res = await start({
       timeoutSec: 90,
-      attachId: kind === "file" ? { fileId: String(id) } : { urlId: Number(id) },
-      onSuccess: (tags) => { setMsg(`+${tags.length}`); onMerge?.(tags); },
+      attachId:
+        kind === "file" ? { fileId: String(id) } : { urlId: Number(id) },
+      onSuccess: (tags) => {
+        setMsg(`+${tags.length}`);
+        onMerge?.(tags);
+      },
       onFailure: (m) => setMsg(m),
     });
     if (!res.ok) console.error(res.error);

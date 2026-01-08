@@ -1,5 +1,5 @@
 // frontend/components/HamburgerButton.tsx
-import { motion, type Transition } from 'framer-motion';
+import { motion, type Transition } from "framer-motion";
 
 type Props = {
   open: boolean;
@@ -9,13 +9,17 @@ type Props = {
 };
 
 // Strongly-typed spring for all three lines
-const LINE_TRANSITION: Transition = { type: 'spring', stiffness: 500, damping: 30 };
+const LINE_TRANSITION: Transition = {
+  type: "spring",
+  stiffness: 500,
+  damping: 30,
+};
 
 export default function HamburgerButton({
   open,
   onClick,
-  className = '',
-  label = 'Toggle navigation',
+  className = "",
+  label = "Toggle navigation",
 }: Props) {
   return (
     <button
@@ -36,7 +40,7 @@ export default function HamburgerButton({
         className="absolute left-2 right-2 top-[18px] h-[2px] bg-gray-800 dark:bg-gray-100"
         animate={open ? { opacity: 0, scaleX: 0.3 } : { opacity: 1, scaleX: 1 }}
         transition={LINE_TRANSITION}
-        style={{ transformOrigin: 'center' }}
+        style={{ transformOrigin: "center" }}
       />
       {/* Bottom line */}
       <motion.span

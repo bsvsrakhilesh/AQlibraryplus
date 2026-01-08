@@ -1,20 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
-import { getDocument, GlobalWorkerOptions, PDFDocumentProxy } from 'pdfjs-dist';
+import { useEffect, useRef, useState } from "react";
+import { getDocument, GlobalWorkerOptions, PDFDocumentProxy } from "pdfjs-dist";
 
 // Ensure a worker for pdf.js (Vite-compatible)
 let pdfWorkerPortReady: Promise<void> | null = null;
 async function ensurePdfWorker() {
-  if ((GlobalWorkerOptions as any).workerPort || (GlobalWorkerOptions as any).workerSrc) return;
+  if (
+    (GlobalWorkerOptions as any).workerPort ||
+    (GlobalWorkerOptions as any).workerSrc
+  )
+    return;
   if (pdfWorkerPortReady) return pdfWorkerPortReady;
 
   pdfWorkerPortReady = (async () => {
     try {
-      const url = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url);
-      const worker = new Worker(url, { type: 'module' });
+      const url = new URL(
+        "pdfjs-dist/build/pdf.worker.min.mjs",
+        import.meta.url
+      );
+      const worker = new Worker(url, { type: "module" });
       (GlobalWorkerOptions as any).workerPort = worker;
     } catch {
       (GlobalWorkerOptions as any).workerSrc =
-        'https://unpkg.com/pdfjs-dist@4/build/pdf.worker.min.mjs';
+        "https://unpkg.com/pdfjs-dist@4/build/pdf.worker.min.mjs";
     }
   })();
   return pdfWorkerPortReady;
@@ -56,10 +63,12 @@ export default function PdfCanvas({ url, page, onReady, onError }: Props) {
           return;
         }
       } catch (e: any) {
-        if (!cancelled) onError?.(e?.message || 'Failed to load PDF');
+        if (!cancelled) onError?.(e?.message || "Failed to load PDF");
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [url]);
 
   // Render requested page whenever pdf or page changes
@@ -72,14 +81,16 @@ export default function PdfCanvas({ url, page, onReady, onError }: Props) {
       if (cancelled) return;
       const viewport = pg.getViewport({ scale: 1.5 });
       const canvas = canvasRef.current!;
-      const ctx = canvas.getContext('2d')!;
+      const ctx = canvas.getContext("2d")!;
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
       const renderTask = pg.render({ canvasContext: ctx, viewport });
       await renderTask.promise;
-    })().catch((e) => onError?.(e?.message || 'Render failed'));
-    return () => { cancelled = true; };
+    })().catch((e) => onError?.(e?.message || "Render failed"));
+    return () => {
+      cancelled = true;
+    };
   }, [pdf, page, onError]);
 
   return (
