@@ -26,6 +26,7 @@ export default function NotebookPage() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [picker, setPicker] = useState<null | "url" | "file">(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // mobile panel switcher state
   const [mobileTab, setMobileTab] = useState<"sources" | "chat" | "notes">(
@@ -106,6 +107,10 @@ export default function NotebookPage() {
     if (activeId) setMobileTab("chat");
   }, [activeId]);
 
+  useEffect(() => {
+    setConfirmDeleteId(null);
+  }, [activeId]);
+
   // create / update
   const createM = useMutation({
     mutationFn: (p: { title: string; description?: string }) =>
@@ -122,6 +127,32 @@ export default function NotebookPage() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["nb:list"] });
       qc.invalidateQueries({ queryKey: ["nb:detail", vars.id] });
+    },
+  });
+
+  const deleteNotebookM = useMutation({
+    mutationFn: (id: string) => api.deleteNotebook(id),
+    onMutate: (id) => {
+      setConfirmDeleteId(null);
+
+      const prev = (qc.getQueryData(["nb:list"]) as Notebook[]) || [];
+      const nextList = prev.filter((n) => n.id !== id);
+      qc.setQueryData(["nb:list"], nextList);
+
+      qc.removeQueries({ queryKey: ["nb:detail", id] });
+      qc.removeQueries({ queryKey: ["nb:sources", id] });
+
+      if (activeId === id) {
+        setActiveId(nextList[0]?.id ?? null);
+      }
+
+      return { prev };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["nb:list"], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["nb:list"] });
     },
   });
 
@@ -237,7 +268,7 @@ export default function NotebookPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-    return (
+  return (
     <div className="h-full min-h-0 flex flex-col overflow-hidden">
       <div className="h-full min-h-0 flex flex-col p-3 md:p-4">
         {/* Mobile panel switcher */}
@@ -256,7 +287,11 @@ export default function NotebookPage() {
                   )}
                   aria-pressed={mobileTab === t}
                 >
-                  {t === "sources" ? "Sources" : t === "chat" ? "Chat" : "Notes"}
+                  {t === "sources"
+                    ? "Sources"
+                    : t === "chat"
+                    ? "Chat"
+                    : "Notes"}
                 </button>
               ))}
             </div>
@@ -294,7 +329,9 @@ export default function NotebookPage() {
           >
             {/* Notebooks */}
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-slate-800">Notebooks</h2>
+              <h2 className="text-sm font-semibold text-slate-800">
+                Notebooks
+              </h2>
               <button
                 onClick={() =>
                   createM.mutate({
@@ -312,27 +349,103 @@ export default function NotebookPage() {
                 <ListSkeleton rows={4} />
               ) : (
                 (listQ.data || []).map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => setActiveId(n.id)}
-                    className={clsx(
-                      "group relative w-full h-9 flex items-center text-left px-3 rounded-md text-sm transition-all duration-200 transform",
-                      "shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]",
-                      activeId === n.id
-                        ? "bg-slate-50 text-slate-900 shadow-[0_10px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]"
-                        : "bg-white/85 text-slate-700 hover:bg-slate-50 hover:shadow-[0_10px_24px_rgba(15,23,42,0.10)] hover:-translate-y-[1px]"
-                    )}
-                  >
-                    <span
+                  <div key={n.id} className="group relative">
+                    <button
+                      onClick={() => setActiveId(n.id)}
                       className={clsx(
-                        "absolute left-0 top-1/2 -translate-y-1/2 h-5 rounded-r transition-all duration-200",
+                        "group relative w-full h-9 flex items-center text-left px-3 pr-10 rounded-md text-sm transition-all duration-200 transform",
+                        "shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]",
                         activeId === n.id
-                          ? "w-1.5 bg-slate-900/70"
-                          : "w-[3px] bg-slate-300/80 opacity-0 group-hover:opacity-100 group-hover:translate-x-[1px]"
+                          ? "bg-slate-50 text-slate-900 shadow-[0_10px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]"
+                          : "bg-white/85 text-slate-700 hover:bg-slate-50 hover:shadow-[0_10px_24px_rgba(15,23,42,0.10)] hover:-translate-y-[1px]"
                       )}
-                    />
-                    <span className="truncate">{n.title}</span>
-                  </button>
+                    >
+                      <span
+                        className={clsx(
+                          "absolute left-0 top-1/2 -translate-y-1/2 h-5 rounded-r transition-all duration-200",
+                          activeId === n.id
+                            ? "w-1.5 bg-slate-900/70"
+                            : "w-[3px] bg-slate-300/80 opacity-0 group-hover:opacity-100 group-hover:translate-x-[1px]"
+                        )}
+                      />
+                      <span className="truncate">{n.title}</span>
+                    </button>
+
+                    {/* Delete affordance (ChatGPT-style hover) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteId((prev) =>
+                          prev === n.id ? null : n.id
+                        );
+                      }}
+                      className={clsx(
+                        "absolute right-1.5 top-1/2 -translate-y-1/2 z-10",
+                        "w-8 h-8 rounded-xl grid place-items-center",
+                        "border border-transparent",
+                        "text-slate-500 hover:text-rose-700 hover:bg-rose-50",
+                        "opacity-0 group-hover:opacity-100 transition-opacity"
+                      )}
+                      aria-label="Delete notebook"
+                      title="Delete"
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <path
+                          d="M9 3h6m-8 4h10m-1 0-1 16H8L7 7"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M10 11v7M14 11v7"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+
+                    {/* Inline confirm popover */}
+                    {confirmDeleteId === n.id ? (
+                      <div
+                        className={clsx(
+                          "absolute right-1 top-[calc(100%+6px)] z-20 w-[220px]",
+                          "rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.18)]",
+                          "p-3"
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="text-[12px] font-semibold text-slate-900">
+                          Delete notebook?
+                        </div>
+                        <div className="mt-1 text-[11px] text-slate-600 leading-relaxed">
+                          This will remove its sources, chunks and notes.
+                        </div>
+                        <div className="mt-3 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="h-8 px-3 rounded-xl text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteNotebookM.mutate(n.id)}
+                            className="h-8 px-3 rounded-xl text-[12px] font-semibold text-white bg-rose-600 hover:bg-rose-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 ))
               )}
             </div>
@@ -343,7 +456,9 @@ export default function NotebookPage() {
                 {/* Row 1: title + counts + add actions */}
                 <div className="px-2 pt-2 pb-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-xs font-semibold text-slate-800">Sources</h3>
+                    <h3 className="text-xs font-semibold text-slate-800">
+                      Sources
+                    </h3>
                     <span className="text-[11px] text-slate-600 bg-slate-100/80 border border-slate-200 rounded-full px-2 py-0.5 tabular-nums">
                       Using {includedCount}/{sources.length}
                     </span>
@@ -423,22 +538,33 @@ export default function NotebookPage() {
 
                   <button
                     type="button"
-                    onClick={() => setSourceSort((s) => (s === "recent" ? "name" : "recent"))}
+                    onClick={() =>
+                      setSourceSort((s) => (s === "recent" ? "name" : "recent"))
+                    }
                     className="h-7 px-2.5 rounded-full text-[11px] font-semibold border bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    title={sourceSort === "recent" ? "Sorting: Recent" : "Sorting: A→Z"}
+                    title={
+                      sourceSort === "recent"
+                        ? "Sorting: Recent"
+                        : "Sorting: A→Z"
+                    }
                   >
                     {sourceSort === "recent" ? "Recent" : "A→Z"}
                   </button>
                 </div>
               </div>
 
-              <StaggerList as="div" className="overflow-auto h-full space-y-2 pr-1 pb-1">
+              <StaggerList
+                as="div"
+                className="overflow-auto h-full space-y-2 pr-1 pb-1"
+              >
                 {sourcesQ.isLoading ? (
                   <ListSkeleton rows={6} />
                 ) : filteredSources.length === 0 ? (
                   <div className="p-3">
                     <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-                      <div className="text-sm font-semibold text-slate-800">No sources found</div>
+                      <div className="text-sm font-semibold text-slate-800">
+                        No sources found
+                      </div>
                       <div className="mt-1 text-[12px] text-slate-600 leading-relaxed">
                         {sources.length === 0
                           ? "Add a URL or file to start building your library."
@@ -458,10 +584,17 @@ export default function NotebookPage() {
                         <SmartCard
                           as="div"
                           ref={(el) => {
-                            if (el) cardRefs.current[s.id] = el as unknown as HTMLDivElement;
+                            if (el)
+                              cardRefs.current[s.id] =
+                                el as unknown as HTMLDivElement;
                           }}
                           onClick={() => {
-                            if (href) window.open(href, "_blank", "noopener,noreferrer");
+                            if (href)
+                              window.open(
+                                href,
+                                "_blank",
+                                "noopener,noreferrer"
+                              );
                           }}
                           className={clsx(
                             "group relative flex items-start gap-3 p-3 rounded-2xl border border-slate-200/80 bg-white/85",
@@ -478,12 +611,18 @@ export default function NotebookPage() {
                             )}
                             title={isUrl ? "URL" : "File"}
                           >
-                            {isUrl ? <UrlIcon className="w-4 h-4" /> : <FolderIcon className="w-4 h-4" />}
+                            {isUrl ? (
+                              <UrlIcon className="w-4 h-4" />
+                            ) : (
+                              <FolderIcon className="w-4 h-4" />
+                            )}
                           </div>
 
                           <div className="text-xs flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <div className="font-semibold truncate text-slate-900">{title}</div>
+                              <div className="font-semibold truncate text-slate-900">
+                                {title}
+                              </div>
                               {href ? (
                                 <span className="opacity-0 group-hover:opacity-100 transition text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-600">
                                   Open
@@ -491,7 +630,9 @@ export default function NotebookPage() {
                               ) : null}
                             </div>
 
-                            <div className="mt-1 text-[11px] text-slate-500 truncate">{sub}</div>
+                            <div className="mt-1 text-[11px] text-slate-500 truncate">
+                              {sub}
+                            </div>
 
                             <div className="mt-2 flex items-center gap-2">
                               <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-white text-slate-600">
@@ -509,9 +650,15 @@ export default function NotebookPage() {
                                     ? "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
                                     : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
                                 )}
-                                title={excludedSourceIds.has(s.id) ? "Excluded from chat context" : "Included in chat context"}
+                                title={
+                                  excludedSourceIds.has(s.id)
+                                    ? "Excluded from chat context"
+                                    : "Included in chat context"
+                                }
                               >
-                                {excludedSourceIds.has(s.id) ? "Excluded" : "Included"}
+                                {excludedSourceIds.has(s.id)
+                                  ? "Excluded"
+                                  : "Included"}
                               </button>
                             </div>
                           </div>
@@ -554,7 +701,8 @@ export default function NotebookPage() {
               <input
                 value={detailQ.data?.notebook?.title || ""}
                 onChange={(e) =>
-                  activeId && updateTitle.mutate({ id: activeId, title: e.target.value })
+                  activeId &&
+                  updateTitle.mutate({ id: activeId, title: e.target.value })
                 }
                 disabled={!active}
                 className="text-xl font-semibold w-full bg-transparent border-none outline-none placeholder:text-slate-400 text-slate-900 focus:ring-2 focus:ring-emerald-400/40 focus:ring-offset-0 rounded-md px-1 -mx-1"
