@@ -7,8 +7,10 @@ import { cn } from "../../lib/utils";
 /** Polymorphic helpers (same pattern as FadeIn/StaggerList) */
 type AsProp<E extends React.ElementType> = { as?: E };
 type PropsToOmit<E extends React.ElementType, P> = keyof (AsProp<E> & P);
-type PolymorphicComponentProps<E extends React.ElementType, P> =
-  React.PropsWithChildren<P & AsProp<E>> &
+type PolymorphicComponentProps<
+  E extends React.ElementType,
+  P
+> = React.PropsWithChildren<P & AsProp<E>> &
   Omit<React.ComponentPropsWithoutRef<E>, PropsToOmit<E, P>>;
 
 /** Own props */
@@ -30,13 +32,7 @@ type SmartCardComponent = <E extends React.ElementType = "div">(
 const SmartCard = React.forwardRef(function SmartCardInner<
   E extends React.ElementType = "div"
 >(
-  {
-    as,
-    className,
-    tabIndex = 0,
-    children,
-    ...rest
-  }: SmartCardProps<E>,
+  { as, className, tabIndex = 0, children, ...rest }: SmartCardProps<E>,
   ref: React.Ref<any>
 ) {
   const Element = (as || "div") as React.ElementType;
@@ -54,9 +50,11 @@ const SmartCard = React.forwardRef(function SmartCardInner<
         className
       )}
       tabIndex={tabIndex}
-      {...rest}  /* ← forward native handlers like onClick, onDoubleClick, onContextMenu, etc. */
+      {...rest} /* ← forward native handlers like onClick, onDoubleClick, onContextMenu, etc. */
     >
-      <div className="rounded-2xl">{children}</div>
+      <div className="rounded-2xl w-full h-full min-h-0 flex flex-col">
+        {children}
+      </div>
     </FadeIn>
   );
 }) as SmartCardComponent;

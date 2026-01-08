@@ -46,7 +46,7 @@ export default function RightPanel({
   const notes = q.data?.notes || [];
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* Tabs */}
       <div className="flex border-b bg-white/60 backdrop-blur">
         <TabButton active={tab === "guide"} onClick={() => setTab("guide")}>
@@ -60,13 +60,16 @@ export default function RightPanel({
         </TabButton>
       </div>
 
-      {tab === "guide" ? (
-        <NotebookGuide sourceStats={sourceStats} />
-      ) : tab === "studio" ? (
-        <NotebookStudio />
-      ) : (
-        <RecentNotes notes={notes} />
-      )}
+      {/* ✅ This is the scrollable region */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        {tab === "guide" ? (
+          <NotebookGuide sourceStats={sourceStats} />
+        ) : tab === "studio" ? (
+          <NotebookStudio />
+        ) : (
+          <RecentNotes notes={notes} />
+        )}
+      </div>
     </div>
   );
 }
