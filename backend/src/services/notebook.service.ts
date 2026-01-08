@@ -132,6 +132,14 @@ export async function updateNote(
   return prisma.note.update({ where: { id: noteId }, data: p });
 }
 
+export async function deleteNote(notebookId: string, noteId: string) {
+  const note = await prisma.note.findUnique({ where: { id: noteId } });
+  if (!note || note.notebookId !== notebookId) return false;
+
+  await prisma.note.delete({ where: { id: noteId } });
+  return true;
+}
+
 export async function getSourceChunk(chunkId: string) {
   return prisma.sourceChunk.findUnique({
     where: { id: chunkId },

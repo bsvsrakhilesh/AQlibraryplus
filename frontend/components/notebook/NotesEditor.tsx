@@ -70,16 +70,11 @@ export default function NotesEditor({
         localStorage.removeItem(`${base}:content`);
       }
 
-      if (vars.mode === "create") {
-        // Ready for next capture
-        setTitle("");
-        setContent("");
-        setLastDraftAt(null);
-        setActiveNoteId(null);
-      } else {
-        // Stay in edit mode
-        setActiveNoteId(note.id);
-      }
+      // After a successful save, keep the note open for editing.
+      setActiveNoteId(note.id);
+      setTitle(note.title || "");
+      setContent(note.content || "");
+      setLastDraftAt(null);
     },
     onError: (err: any) => {
       setSaveError(err?.message || "Save failed.");
@@ -170,7 +165,12 @@ export default function NotesEditor({
 
   // Cmd/Ctrl+S quick save
   useEffect(() => {
-    function onKey() {
+    function onKey(e: KeyboardEvent) {
+      const isSave = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s";
+      if (!isSave) return;
+
+      e.preventDefault();
+
       if (!notebookId) return;
       if (!title.trim() && !content.trim()) return;
       if (activeNoteId && !dirty) return;
@@ -180,6 +180,7 @@ export default function NotesEditor({
         noteId: activeNoteId || undefined,
       });
     }
+
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [notebookId, title, content, activeNoteId, dirty, saveM]);

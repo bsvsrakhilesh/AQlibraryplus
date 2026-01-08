@@ -12,6 +12,7 @@ import {
   postNotebookChatHandler,
   postNotebookNoteHandler,
   patchNotebookNoteHandler,
+  deleteNotebookNoteHandler,
 } from "../controllers/notebook.controller";
 import { z } from "zod";
 import { validate } from "../middlewares/validate";
@@ -142,6 +143,14 @@ r.patch(
       ),
   }),
   patchNotebookNoteHandler
+);
+
+r.delete(
+  "/notebooks/:id/notes/:noteId",
+  validate({
+    params: z.object({ id: z.string().min(1), noteId: z.string().min(1) }),
+  }),
+  deleteNotebookNoteHandler
 );
 
 export default r;

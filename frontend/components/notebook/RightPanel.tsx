@@ -67,7 +67,7 @@ export default function RightPanel({
         ) : tab === "studio" ? (
           <NotebookStudio />
         ) : (
-          <RecentNotes notes={notes} />
+          <RecentNotes notebookId={notebookId} notes={notes} />
         )}
       </div>
     </div>
@@ -288,17 +288,27 @@ function NotebookStudio() {
   );
 }
 
-function RecentNotes({ notes }: { notes: any[] }) {
+function RecentNotes({ notebookId, notes }: { notebookId: string; notes: any[] }) {
   return (
     <div className="p-3 space-y-2">
       {notes.map((n) => (
-        <div key={n.id} className="border rounded-xl p-3 bg-white shadow-sm">
-          <div className="text-xs font-semibold truncate">
-            {n.title || "Untitled"}
-          </div>
-          <div className="text-[11px] text-gray-500">
-            {prettyTime(n.updatedAt)}
-          </div>
+        <div
+          key={n.id}
+          role="button"
+          tabIndex={0}
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent("nb:open-note", { detail: n }))
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent("nb:open-note", { detail: n }));
+            }
+          }}
+          className="border rounded-xl p-3 bg-white shadow-sm cursor-pointer hover:bg-slate-50"
+        >
+          <div className="text-xs font-semibold truncate">{n.title || "Untitled"}</div>
+          <div className="text-[11px] text-gray-500">{prettyTime(n.updatedAt)}</div>
         </div>
       ))}
       {!notes.length && <p className="text-xs text-gray-500">No notes yet.</p>}

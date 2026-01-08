@@ -3,7 +3,7 @@ import {
   listNotebooks, createNotebook, getNotebook, updateNotebook,
   deleteNotebook,
   listSources, attachUrlSource, attachFileSource, deleteSource,
-  createNote, updateNote, pickNotebookCitations
+  createNote, updateNote, deleteNote, pickNotebookCitations
 } from '../services/notebook.service';
 
 export async function getNotebooksHandler(_req: Request, res: Response, next: NextFunction) {
@@ -65,4 +65,14 @@ export async function postNotebookNoteHandler(req: Request, res: Response, next:
 }
 export async function patchNotebookNoteHandler(req: Request, res: Response, next: NextFunction) {
   try { res.json(await updateNote(req.params.id, req.params.noteId, req.body || {})); } catch (e) { next(e); }
+}
+
+export async function deleteNotebookNoteHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const ok = await deleteNote(req.params.id, req.params.noteId);
+    if (!ok) return res.status(404).json({ message: "Note not found" });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
 }
