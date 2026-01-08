@@ -65,7 +65,10 @@ r.post(
   "/notebooks/:id/sources/url",
   validate({
     params: z.object({ id: z.string().min(1) }),
-    body: z.object({ urlId: z.coerce.number().int().positive() }),
+    body: z.object({
+      urlId: z.coerce.number().int().positive(),
+      title: z.string().min(1).optional(),
+    }),
   }),
   postNotebookSourceUrlHandler
 );
@@ -75,6 +78,9 @@ r.post(
   validate({
     params: z.object({ id: z.string().min(1) }),
     query: z.object({ folderId: z.string().optional() }).optional(),
+    body: z.object({
+      fileId: z.string().min(1),
+    }),
   }),
   postNotebookSourceFileHandler
 );
