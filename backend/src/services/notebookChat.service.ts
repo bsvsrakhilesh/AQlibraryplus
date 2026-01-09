@@ -29,6 +29,112 @@ function uniq<T>(arr: T[]) {
   return Array.from(new Set(arr));
 }
 
+function extractKeywords(q: string) {
+  const stop = new Set([
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "to",
+    "of",
+    "in",
+    "on",
+    "for",
+    "with",
+    "is",
+    "are",
+    "was",
+    "were",
+    "i",
+    "you",
+    "we",
+    "they",
+    "it",
+    "this",
+    "that",
+    "these",
+    "those",
+    "my",
+    "your",
+    "our",
+    "their",
+    "from",
+    "as",
+    "at",
+    "by",
+    "be",
+    "been",
+    "but",
+    "can",
+    "could",
+    "should",
+    "would",
+  ]);
+
+  return (q || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 3 && !stop.has(s))
+    .slice(0, 8);
+}
+
+async function retrieveRelevantChunkIds(p: {
+  notebookId: string;
+  query: string;
+  limit: number;
+  sourceIds?: string[];
+}) {
+  const kws = extractKeywords(p.query);
+
+  // Fallback: recent chunks if no good keywords
+  if (!kws.length) {
+    return pickRecentChunkIds(p.notebookId, p.limit, p.sourceIds);
+  }
+
+  const rows = await prisma.sourceChunk.findMany({
+    where: {
+      source: { notebookId: p.notebookId },
+      ...(p.sourceIds?.length ? { sourceId: { in: p.sourceIds } } : {}),
+      OR: kws.map((k) => ({
+        text: { contains: k, mode: "insensitive" as const },
+      })),
+    },
+    take: 60,
+    select: { id: true, text: true },
+  });
+
+  // Simple scoring by keyword hits
+  const scored = rows
+    .map((r) => {
+      const t = r.text.toLowerCase();
+      let score = 0;
+      for (const k of kws) {
+        const hits = t.split(k).length - 1;
+        score += hits * 3;
+        if (t.slice(0, 180).includes(k)) score += 2;
+      }
+      return { id: r.id, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .filter((x) => x.score > 0);
+
+  const top = uniq(scored.map((s) => s.id)).slice(0, p.limit);
+
+  // If not enough, fill with recents
+  if (top.length < p.limit) {
+    const fill = await pickRecentChunkIds(p.notebookId, p.limit, p.sourceIds);
+    for (const id of fill) {
+      if (!top.includes(id)) top.push(id);
+      if (top.length >= p.limit) break;
+    }
+  }
+
+  return top;
+}
+
 async function pickRecentChunkIds(
   notebookId: string,
   limit: number,
@@ -96,7 +202,12 @@ export async function runNotebookChat(p: {
   const sourceIds = p.sourceIds;
 
   // Always compute some citations to keep UI usable even if OpenAI disabled
-  const candidateChunkIds = await pickRecentChunkIds(notebookId, 6, sourceIds);
+  const candidateChunkIds = await retrieveRelevantChunkIds({
+    notebookId,
+    query: message,
+    limit: 8,
+    sourceIds,
+  });
 
   // If OpenAI is not enabled, keep behavior close to Phase 1 stub (safe fallback)
   if (!env.OPENAI_ENABLED) {
