@@ -10,6 +10,8 @@ import multer from 'multer';
 
 dotenv.config();
 
+import { env } from './config/env';
+
 import notebookRoutes from './routes/notebook.routes';
 import urlRoutes from './routes/url.routes';
 import searchRoutes from './routes/search.routes';
@@ -19,6 +21,12 @@ import aiTagRoutes from "./routes/aiTag.routes";
 import chunkRoutes from './routes/chunk.routes';
 
 const app = express();
+
+log.info("startup_config", {
+  nodeEnv: process.env.NODE_ENV,
+  openaiEnabled: env.OPENAI_ENABLED,
+  openaiModel: env.OPENAI_MODEL,
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
