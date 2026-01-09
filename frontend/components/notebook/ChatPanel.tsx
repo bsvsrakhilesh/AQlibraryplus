@@ -84,6 +84,49 @@ export default function ChatPanel({
   const includedCount = sourceIds?.length ?? 0;
   const totalCount = totalSources ?? includedCount;
 
+  // Persist chat history per notebook (so refresh doesn't wipe the conversation)
+  const historyKey = notebookId ? `nb:chatHistory:${notebookId}` : null;
+
+  // Load saved history when notebook changes
+  useEffect(() => {
+    if (!historyKey) {
+      setMessages([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(historyKey);
+      if (!raw) {
+        setMessages([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setMessages(parsed as Msg[]);
+      else setMessages([]);
+    } catch {
+      setMessages([]);
+    }
+  }, [historyKey]);
+
+  // Ensure we flush the latest messages before refresh/navigation.
+  useEffect(() => {
+    if (!historyKey) return;
+
+    const saveNow = () => {
+      try {
+        localStorage.setItem(historyKey, JSON.stringify(messages.slice(-200)));
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener("beforeunload", saveNow);
+    window.addEventListener("pagehide", saveNow);
+    return () => {
+      window.removeEventListener("beforeunload", saveNow);
+      window.removeEventListener("pagehide", saveNow);
+    };
+  }, [historyKey, messages]);
+
   // Persist composer draft per notebook
   const draftKey = notebookId ? `nb:chatDraft:${notebookId}` : null;
   useEffect(() => {
@@ -262,7 +305,7 @@ export default function ChatPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 
   return (
-    <div className="flex-1 flex flex-col bg-white/10">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white/10">
       <div className="px-4 md:px-6 py-3 border-b border-emerald-200/70 bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/40">
         <div className="flex items-center gap-2">
           <span className="text-[11px] px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-700">
@@ -292,7 +335,7 @@ export default function ChatPanel({
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-auto px-4 md:px-6 py-5 relative"
+        className="flex-1 min-h-0 overflow-auto overscroll-contain px-4 md:px-6 py-5 relative"
       >
         <div className="mx-auto w-full max-w-[760px]">
           {/* Jump to bottom */}
