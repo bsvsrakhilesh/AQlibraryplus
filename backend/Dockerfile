@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package*.json ./
 
 # Install deps (use lock if present, otherwise fallback)
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN if [ -f package-lock.json ]; then npm ci || (echo "npm ci failed, running npm install" && npm install); else npm install; fi
 
 # Prisma client generation (needs schema + deps)
 COPY prisma ./prisma
