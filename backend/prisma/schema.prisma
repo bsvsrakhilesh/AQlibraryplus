@@ -117,6 +117,11 @@ model SourceChunk {
   idx       Int
   text      String
   tokens    Int
+
+  embedding      Unsupported("vector(1536)")?
+  embeddingModel String?
+  embeddedAt     DateTime?
+
   createdAt DateTime       @default(now())
 
   @@unique([sourceId, idx])

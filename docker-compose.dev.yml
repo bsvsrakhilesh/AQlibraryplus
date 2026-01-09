@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: smartscrape_db
     environment:
       POSTGRES_USER: postgres
@@ -29,7 +29,7 @@ services:
       dockerfile: Dockerfile
       target: base   # use the base image (chromium + deps)
     container_name: smartscrape_backend
-    command: sh -c "([ -f package-lock.json ] && npm ci || npm install) && npx prisma generate && npm run dev"
+    command: sh -c "echo 'Waiting for db:5432…' && i=0; until node -e \"const net=require('net'); const s=net.createConnection({host:'db',port:5432}); s.on('connect',()=>process.exit(0)); s.on('error',()=>process.exit(1)); setTimeout(()=>process.exit(1),1000);\"; do i=$$((i+1)); if [ $$i -ge 30 ]; then echo 'Postgres not ready after ~60s'; exit 1; fi; echo \"  still waiting ($$i/30)\"; sleep 2; done && echo 'Postgres is up' && ([ -f package-lock.json ] && npm ci || npm install) && npx prisma generate && npx prisma migrate deploy && npm run dev"
     working_dir: /app
     env_file:
       - ./backend/.env
