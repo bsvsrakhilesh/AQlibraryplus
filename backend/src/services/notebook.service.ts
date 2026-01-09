@@ -1,6 +1,11 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/database";
+import { env } from "../config/env";
 import { extractTextFromUrl, extractTextFromFile } from "./extract.service";
-const prisma = new PrismaClient();
+import {
+  DEFAULT_EMBEDDING_MODEL,
+  embedTexts,
+  toPgVectorLiteral,
+} from "./embeddings.service";
 
 export async function listNotebooks() {
   return prisma.notebook.findMany({ orderBy: { updatedAt: "desc" } });
@@ -251,11 +256,37 @@ async function createChunksForSource(sourceId: string, text: string) {
   // Re-ingestion safe: wipe old chunks then re-create
   await prisma.sourceChunk.deleteMany({ where: { sourceId } });
 
-  await prisma.$transaction(
+  // Create chunks and keep their IDs in the same order as `chunks`
+  const created = await prisma.$transaction(
     chunks.map((t, idx) =>
       prisma.sourceChunk.create({
         data: { sourceId, idx, text: t, tokens: roughTokens(t) },
+        select: { id: true },
       })
     )
+  );
+
+  // If OpenAI disabled, skip embeddings cleanly
+  if (!env.OPENAI_ENABLED) return;
+
+  // Generate embeddings in the same order as `chunks`
+  const embeddings = await embedTexts(chunks, DEFAULT_EMBEDDING_MODEL);
+  if (!embeddings.length || embeddings.length !== created.length) return;
+
+  const now = new Date();
+
+  // Persist embeddings via SQL casts (pgvector)
+  await prisma.$transaction(
+    created.map((row, i) => {
+      const v = toPgVectorLiteral(embeddings[i]);
+      return prisma.$executeRaw`
+        UPDATE "SourceChunk"
+        SET
+          "embedding" = ${v}::vector,
+          "embeddingModel" = ${DEFAULT_EMBEDDING_MODEL},
+          "embeddedAt" = ${now}
+        WHERE "id" = ${row.id}
+      `;
+    })
   );
 }
