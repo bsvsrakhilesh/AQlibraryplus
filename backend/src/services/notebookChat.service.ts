@@ -115,63 +115,78 @@ async function retrieveRelevantChunkIdsVector(p: {
   return rows.map((r) => r.id);
 }
 
-async function retrieveRelevantChunkIds(p: {
+async function retrieveRelevantChunkIdsKeywordFTS(p: {
   notebookId: string;
   query: string;
   limit: number;
   sourceIds?: string[];
 }) {
-  // Try vector retrieval first 
-  const vecTop = await retrieveRelevantChunkIdsVector(p);
-  if (vecTop.length) return vecTop;
+  const q = (p.query ?? "").trim();
+  if (!q) return [];
 
-  // Fallback to keyword retrieval (for older chunks not yet embedded)
-  const kws = extractKeywords(p.query);
+  const rows = await prisma.$queryRaw<{ id: string; rank: number }[]>`
+    SELECT sc.id, ts_rank_cd(sc."fts", q) AS rank
+    FROM "SourceChunk" sc
+    JOIN "NotebookSource" ns ON ns.id = sc."sourceId"
+    CROSS JOIN plainto_tsquery('english', ${q}) AS q
+    WHERE ns."notebookId" = ${p.notebookId}
+      ${p.sourceIds?.length ? Prisma.sql`AND sc."sourceId" IN (${Prisma.join(p.sourceIds)})` : Prisma.empty}
+      AND sc."fts" @@ q
+    ORDER BY rank DESC
+    LIMIT ${p.limit}
+  `;
 
-  // Final fallback: recent chunks if no good keywords
-  if (!kws.length) {
+  return rows.map((r) => r.id);
+}
+
+async function retrieveRelevantChunkIdsHybrid(p: {
+  notebookId: string;
+  query: string;
+  limit: number;
+  sourceIds?: string[];
+}) {
+  // Pull more candidates than final context window
+  const vecK = Math.max(20, p.limit * 4);
+  const kwK = Math.max(20, p.limit * 4);
+
+  const [vecTop, kwTop] = await Promise.all([
+    retrieveRelevantChunkIdsVector({
+      notebookId: p.notebookId,
+      query: p.query,
+      limit: vecK,
+      sourceIds: p.sourceIds,
+    }),
+    retrieveRelevantChunkIdsKeywordFTS({
+      notebookId: p.notebookId,
+      query: p.query,
+      limit: kwK,
+      sourceIds: p.sourceIds,
+    }),
+  ]);
+
+  const merged = uniq([...vecTop, ...kwTop]);
+
+  if (!merged.length) {
     return pickRecentChunkIds(p.notebookId, p.limit, p.sourceIds);
   }
 
-  const rows = await prisma.sourceChunk.findMany({
-    where: {
-      source: { notebookId: p.notebookId },
-      ...(p.sourceIds?.length ? { sourceId: { in: p.sourceIds } } : {}),
-      OR: kws.map((k) => ({
-        text: { contains: k, mode: "insensitive" as const },
-      })),
-    },
-    take: 60,
-    select: { id: true, text: true },
+  // Rerank merged candidates (Phase 1 requirement)
+  const reranked = await rerankChunkIds({
+    query: p.query,
+    candidateChunkIds: merged,
+    finalLimit: p.limit,
   });
 
-  // Simple scoring by keyword hits
-  const scored = rows
-    .map((r) => {
-      const t = r.text.toLowerCase();
-      let score = 0;
-      for (const k of kws) {
-        const hits = t.split(k).length - 1;
-        score += hits * 3;
-        if (t.slice(0, 180).includes(k)) score += 2;
-      }
-      return { id: r.id, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .filter((x) => x.score > 0);
-
-  const top = uniq(scored.map((s) => s.id)).slice(0, p.limit);
-
-  // If not enough, fill with recents
-  if (top.length < p.limit) {
+  // If reranker returns too few, fill with recents
+  if (reranked.length < p.limit) {
     const fill = await pickRecentChunkIds(p.notebookId, p.limit, p.sourceIds);
     for (const id of fill) {
-      if (!top.includes(id)) top.push(id);
-      if (top.length >= p.limit) break;
+      if (!reranked.includes(id)) reranked.push(id);
+      if (reranked.length >= p.limit) break;
     }
   }
 
-  return top;
+  return reranked.slice(0, p.limit);
 }
 
 async function pickRecentChunkIds(
