@@ -1,9 +1,8 @@
 // backend/src/services/tag.service.ts
-import { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
+import prisma from "../config/database";
 import { runAiTagForFile, scheduleAiTagForFile } from "./aiTagAuto.service";
 import { runAiTagForUrl, scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
-
-const prisma = new PrismaClient();
 
 export async function tagUrlRecord(id: number, _url: string) {
   const out = await runAiTagForUrl(id, { force: true });

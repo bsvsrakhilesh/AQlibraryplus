@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/database";
 import * as cheerio from "cheerio";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
@@ -15,7 +15,6 @@ import robotsParser from "robots-parser";
 import { log, requestMeta } from '../utils/logger';
 import { setReadableContentOnPage, hardenLivePage } from "../utils/reader";
 
-const prisma = new PrismaClient();
 
 function isPrivateIp(ip: string) {
   const a = ipaddr.parse(ip);

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { PrismaClient} from '@prisma/client';
+import prisma from "../config/database";
 import archiver from 'archiver';
 import crypto from 'crypto';
 import unzipper from 'unzipper';
@@ -18,8 +18,6 @@ const chunkUpload = multer({
   // per-chunk cap; your frontend chunk size is 1MB, so 2MB is safe headroom
   limits: { fileSize: 2 * 1024 * 1024 },
 });
-
-const prisma = new PrismaClient();
 
 // Stream a file with Range + HEAD + cache validators.
 // Usage: await streamFileWithRange({ req, res, filePath, fileName, contentType, disposition: 'inline'|'attachment' });

@@ -1,8 +1,6 @@
 // backend/src/services/aiTagAuto.service.ts
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/database";
 import { createJobFromFile, getJob } from "./pyTaggerClient";
-
-const prisma = new PrismaClient();
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "false").toLowerCase() === "true";

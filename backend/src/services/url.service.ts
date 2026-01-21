@@ -1,7 +1,7 @@
-import { PrismaClient, Prisma, TaggingStatus } from '@prisma/client';
+// backend/src/services/url.service.ts
+import { Prisma, TaggingStatus } from "@prisma/client";
+import prisma from "../config/database";
 import { scheduleAiTagForUrl } from './aiTagUrlAuto.service';
-
-const prisma = new PrismaClient();
 
 /** Payload used to create URLs from the URL Collector */
 export type CreateUrlInput = {

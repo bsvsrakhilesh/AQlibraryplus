@@ -1,8 +1,7 @@
 // backend/src/services/aiTagUrlAuto.service.ts
-import { PrismaClient, TaggingStatus } from "@prisma/client";
+import { TaggingStatus } from "@prisma/client";
+import prisma from "../config/database";
 import { createJobFromUrl, getJob } from "./pyTaggerClient";
-
-const prisma = new PrismaClient();
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "false").toLowerCase() === "true";

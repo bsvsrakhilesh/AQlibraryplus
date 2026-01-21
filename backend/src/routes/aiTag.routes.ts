@@ -1,8 +1,7 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/database";
 import { createJobFromFile, createJobFromUrl, getJob, healthCheck } from "../services/pyTaggerClient";
 
-const prisma = new PrismaClient();
 const r = Router();
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
