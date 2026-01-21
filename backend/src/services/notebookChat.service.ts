@@ -12,15 +12,18 @@ export type ChatHistoryItem = {
   content: string;
 };
 
+const CitationSchema = z.object({
+  chunkId: z.string().min(1),
+  quote: z.string().min(5).max(240),
+});
+
 const ChatAnswerSchema = z.object({
   answer: z.string().describe("Markdown answer for the user."),
   citations: z
-    .array(
-      z.object({
-        chunkId: z.string().min(1),
-      }),
-    )
-    .describe("List of cited chunk IDs used to answer."),
+    .array(CitationSchema)
+    .describe(
+      "List of citations used to answer. Each citation must include a verbatim quote substring from the chunk text.",
+    ),
   suggested: z
     .array(z.string().min(1))
     .max(6)
@@ -57,30 +60,38 @@ function extractKeywords(q: string) {
     "that",
     "these",
     "those",
-    "my",
-    "your",
-    "our",
-    "their",
-    "from",
     "as",
     "at",
     "by",
+    "from",
     "be",
     "been",
-    "but",
+    "being",
     "can",
     "could",
     "should",
     "would",
+    "will",
+    "may",
+    "might",
+    "do",
+    "does",
+    "did",
+    "not",
+    "no",
+    "yes",
+    "your",
+    "my",
+    "our",
+    "their",
   ]);
 
-  return (q || "")
+  return q
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
+    .split(/[^a-z0-9]+/g)
     .map((s) => s.trim())
     .filter((s) => s.length >= 3 && !stop.has(s))
-    .slice(0, 8);
+    .slice(0, 12);
 }
 
 async function retrieveRelevantChunkIdsVector(p: {
@@ -89,18 +100,17 @@ async function retrieveRelevantChunkIdsVector(p: {
   limit: number;
   sourceIds?: string[];
 }) {
-  if (!env.OPENAI_ENABLED) return [];
+  const qEmbedding = await embedQuery(p.query);
+  if (!qEmbedding || !Array.isArray(qEmbedding) || qEmbedding.length === 0) {
+    // If embeddings unavailable, skip vector retrieval gracefully
+    return [];
+  }
+  const qVec = toPgVectorLiteral(qEmbedding);
 
-  const qEmb = await embedQuery(p.query);
-  if (!qEmb) return [];
-
-  const qVec = toPgVectorLiteral(qEmb);
-
-  // Vector search only over embedded chunks
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT sc.id
+    SELECT sc."id"
     FROM "SourceChunk" sc
-    JOIN "NotebookSource" ns ON ns.id = sc."sourceId"
+    JOIN "NotebookSource" ns ON ns."id" = sc."sourceId"
     WHERE ns."notebookId" = ${p.notebookId}
       AND sc."embedding" IS NOT NULL
       ${
@@ -124,121 +134,39 @@ async function retrieveRelevantChunkIdsKeywordFTS(p: {
   const q = (p.query ?? "").trim();
   if (!q) return [];
 
-  const rows = await prisma.$queryRaw<{ id: string; rank: number }[]>`
-    SELECT sc.id, ts_rank_cd(sc."fts", q) AS rank
-    FROM "SourceChunk" sc
-    JOIN "NotebookSource" ns ON ns.id = sc."sourceId"
-    CROSS JOIN plainto_tsquery('english', ${q}) AS q
-    WHERE ns."notebookId" = ${p.notebookId}
-      ${p.sourceIds?.length ? Prisma.sql`AND sc."sourceId" IN (${Prisma.join(p.sourceIds)})` : Prisma.empty}
-      AND sc."fts" @@ q
-    ORDER BY rank DESC
-    LIMIT ${p.limit}
-  `;
+  // Prefer FTS if column exists; otherwise fallback to basic substring scoring
+  try {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT sc."id"
+      FROM "SourceChunk" sc
+      JOIN "NotebookSource" ns ON ns."id" = sc."sourceId"
+      WHERE ns."notebookId" = ${p.notebookId}
+        ${
+          p.sourceIds?.length
+            ? Prisma.sql`AND sc."sourceId" IN (${Prisma.join(p.sourceIds)})`
+            : Prisma.empty
+        }
+        AND sc."fts" @@ plainto_tsquery('english', ${q})
+      ORDER BY ts_rank(sc."fts", plainto_tsquery('english', ${q})) DESC
+      LIMIT ${p.limit}
+    `;
+    return rows.map((r) => r.id);
+  } catch {
+    // Fallback: naive substring scoring on a small window
+    const rows = await prisma.sourceChunk.findMany({
+      where: {
+        source: {
+          notebookId: p.notebookId,
+          ...(p.sourceIds?.length ? { id: { in: p.sourceIds } } : {}),
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: { id: true, text: true },
+    });
 
-  return rows.map((r) => r.id);
-}
-
-async function retrieveRelevantChunkIdsHybrid(p: {
-  notebookId: string;
-  query: string;
-  limit: number;
-  sourceIds?: string[];
-}) {
-  // Pull more candidates than final context window
-  const vecK = Math.max(20, p.limit * 4);
-  const kwK = Math.max(20, p.limit * 4);
-
-  const [vecTop, kwTop] = await Promise.all([
-    retrieveRelevantChunkIdsVector({
-      notebookId: p.notebookId,
-      query: p.query,
-      limit: vecK,
-      sourceIds: p.sourceIds,
-    }),
-    retrieveRelevantChunkIdsKeywordFTS({
-      notebookId: p.notebookId,
-      query: p.query,
-      limit: kwK,
-      sourceIds: p.sourceIds,
-    }),
-  ]);
-
-  const merged = uniq([...vecTop, ...kwTop]);
-
-  if (!merged.length) {
-    return pickRecentChunkIds(p.notebookId, p.limit, p.sourceIds);
-  }
-
-  // Rerank merged candidates (Phase 1 requirement)
-  const reranked = await rerankChunkIds({
-    query: p.query,
-    candidateChunkIds: merged,
-    finalLimit: p.limit,
-  });
-
-  // If reranker returns too few, fill with recents
-  if (reranked.length < p.limit) {
-    const fill = await pickRecentChunkIds(p.notebookId, p.limit, p.sourceIds);
-    for (const id of fill) {
-      if (!reranked.includes(id)) reranked.push(id);
-      if (reranked.length >= p.limit) break;
-    }
-  }
-
-  return reranked.slice(0, p.limit);
-}
-
-async function pickRecentChunkIds(
-  notebookId: string,
-  limit: number,
-  sourceIds?: string[],
-): Promise<string[]> {
-  const rows = await prisma.sourceChunk.findMany({
-    where: {
-      source: { notebookId },
-      ...(sourceIds?.length ? { sourceId: { in: sourceIds } } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: Math.max(0, Math.min(20, limit)),
-    select: { id: true },
-  });
-  return rows.map((r) => r.id);
-}
-
-const RerankSchema = z.object({
-  ranked: z.array(
-    z.object({
-      chunkId: z.string().min(1),
-      score: z.number().min(0).max(100),
-    }),
-  ),
-});
-
-async function rerankChunkIds(p: {
-  query: string;
-  candidateChunkIds: string[];
-  finalLimit: number;
-}) {
-  const candidateIds = p.candidateChunkIds.slice(0, 40); // cap cost
-  if (!candidateIds.length) return [];
-
-  // Load chunk text for reranking
-  const rows = await prisma.sourceChunk.findMany({
-    where: { id: { in: candidateIds } },
-    select: { id: true, text: true },
-  });
-
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const ordered = candidateIds.map((id) => byId.get(id)).filter(Boolean) as {
-    id: string;
-    text: string;
-  }[];
-
-  // If OpenAI disabled, do a simple lexical overlap scoring (fallback)
-  if (!env.OPENAI_ENABLED) {
-    const kws = extractKeywords(p.query);
-    const scored = ordered
+    const kws = extractKeywords(q);
+    const scored = rows
       .map((c) => {
         const t = c.text.toLowerCase();
         let s = 0;
@@ -252,24 +180,72 @@ async function rerankChunkIds(p: {
       .sort((a, b) => b.score - a.score)
       .map((x) => x.id);
 
-    return scored.slice(0, p.finalLimit);
+    return scored.slice(0, p.limit);
   }
+}
 
-  // LLM rerank (cross-check)
-  const system = [
-    "You are a strict reranker for retrieval chunks.",
-    "Your job: rank chunks by how well they answer the user query.",
-    "Prefer chunks with direct, explicit evidence (exact names, numbers, definitions).",
-    "Do NOT hallucinate. You must only score based on provided chunk text.",
-    "Return JSON only.",
-  ].join("\n");
+async function retrieveRelevantChunkIdsHybrid(p: {
+  notebookId: string;
+  query: string;
+  limit: number;
+  sourceIds?: string[];
+}) {
+  // Pull a bit extra from each side, merge, then optionally rerank later
+  const vecTop = await retrieveRelevantChunkIdsVector({
+    notebookId: p.notebookId,
+    query: p.query,
+    limit: Math.max(6, p.limit),
+    sourceIds: p.sourceIds,
+  });
 
-  const items = ordered
+  const kwTop = await retrieveRelevantChunkIdsKeywordFTS({
+    notebookId: p.notebookId,
+    query: p.query,
+    limit: Math.max(6, p.limit),
+    sourceIds: p.sourceIds,
+  });
+
+  const merged = uniq([...vecTop, ...kwTop]);
+
+  // Keep it bounded (context window)
+  return merged.slice(0, Math.max(p.limit, 8));
+}
+
+const RerankSchema = z.object({
+  ranked: z.array(
+    z.object({
+      chunkId: z.string(),
+      score: z.number().min(0).max(100),
+    }),
+  ),
+});
+
+async function rerankWithLLM(p: {
+  query: string;
+  candidates: { chunkId: string; text: string; sourceLabel: string }[];
+  finalLimit: number;
+  temperature?: number;
+}) {
+  if (!p.candidates.length) return [];
+
+  const items = p.candidates
     .map((c, i) => {
-      const trimmed = (c.text ?? "").slice(0, 900);
-      return `ITEM ${i + 1}\nCHUNK_ID: ${c.id}\nTEXT:\n${trimmed}\n----`;
+      const t = (c.text ?? "").slice(0, 800).replace(/\s+/g, " ").trim();
+      return [
+        `#${i + 1}`,
+        `CHUNK_ID: ${c.chunkId}`,
+        `SOURCE: ${c.sourceLabel}`,
+        `TEXT: ${t}`,
+      ].join("\n");
     })
-    .join("\n");
+    .join("\n\n");
+
+  const system = [
+    "You are a strict reranker for retrieval candidates.",
+    "Given a user query and candidate chunks, output a ranked list of chunk IDs with relevance scores.",
+    "Prioritize exact evidence that answers the question over semantically-related but non-evidentiary text.",
+    "Return only JSON matching the schema.",
+  ].join("\n");
 
   const user = [
     `QUERY:\n${p.query}`,
@@ -290,17 +266,21 @@ async function rerankChunkIds(p: {
   });
 
   const out = resp.output_parsed;
-  if (!out) return ordered.map((c) => c.id).slice(0, p.finalLimit);
+  if (!out) return [];
 
-  const allowed = new Set(candidateIds);
-  const ranked = out.ranked
+  const allowed = new Set(p.candidates.map((c) => c.chunkId));
+  const ordered = out.ranked
     .filter((r) => allowed.has(r.chunkId))
     .sort((a, b) => b.score - a.score)
     .map((r) => r.chunkId);
 
-  // Ensure we don’t drop everything if model behaves oddly
-  const merged = uniq([...ranked, ...ordered.map((c) => c.id)]);
-  return merged.slice(0, p.finalLimit);
+  // If model returns too few, fall back to original order
+  const final = uniq([...ordered, ...p.candidates.map((c) => c.chunkId)]).slice(
+    0,
+    p.finalLimit,
+  );
+
+  return final;
 }
 
 async function loadChunksForContext(chunkIds: string[]) {
@@ -334,11 +314,45 @@ function formatContext(
         `SOURCE: ${sourceLabel}`,
         `CHUNK_INDEX: ${c.idx}`,
         "TEXT:",
-        c.text,
-        "-----",
+        (c.text ?? "").trim(),
       ].join("\n");
     })
-    .join("\n");
+    .join("\n\n---\n\n");
+}
+
+async function buildFallbackCitations(chunkIds: string[], limit = 4) {
+  const ids = uniq(chunkIds).slice(0, limit);
+  if (!ids.length) return [];
+
+  const rows = await prisma.sourceChunk.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      text: true,
+      pageStart: true,
+      pageEnd: true,
+      charStart: true,
+      charEnd: true,
+    } as any,
+  });
+
+  const byId = new Map(rows.map((r: any) => [r.id, r]));
+  return ids
+    .map((id) => {
+      const r: any = byId.get(id);
+      if (!r) return null;
+      const quote = (r.text || "").slice(0, 200).replace(/\s+/g, " ").trim();
+      return {
+        chunkId: id,
+        quote:
+          quote.length >= 20 ? quote : (quote + " ").padEnd(20, " ").trim(),
+        pageStart: r.pageStart ?? null,
+        pageEnd: r.pageEnd ?? null,
+        charStart: r.charStart ?? null,
+        charEnd: r.charEnd ?? null,
+      };
+    })
+    .filter(Boolean) as any[];
 }
 
 export async function runNotebookChat(p: {
@@ -364,25 +378,59 @@ export async function runNotebookChat(p: {
   if (!env.OPENAI_ENABLED) {
     return {
       answer: `**Draft answer (backend)**\n\nYou asked: _${message}_`,
-      citations: candidateChunkIds.slice(0, 2).map((id) => ({ chunkId: id })),
+      citations: await buildFallbackCitations(candidateChunkIds, 2),
       suggested: [],
     };
   }
 
   const chunks = await loadChunksForContext(candidateChunkIds);
   const context = formatContext(chunks);
-  const allowed = new Set(candidateChunkIds);
+
+  // Optional LLM rerank step for reliability
+  const rerankCandidates = chunks.map((c) => {
+    const sourceLabel =
+      c.source?.kind === "URL"
+        ? `URL: ${c.source.url?.title ?? c.source.url?.url ?? "unknown"}`
+        : `FILE: ${c.source.file?.fileName ?? "unknown"}`;
+    return {
+      chunkId: c.id,
+      text: c.text ?? "",
+      sourceLabel,
+    };
+  });
+
+  let finalChunkIds = candidateChunkIds;
+  try {
+    finalChunkIds = await rerankWithLLM({
+      query: message,
+      candidates: rerankCandidates,
+      finalLimit: 8,
+      temperature: 0,
+    });
+  } catch {
+    // If rerank fails, proceed with hybrid order
+    finalChunkIds = candidateChunkIds;
+  }
+
+  const allowed = new Set(finalChunkIds);
+  const finalChunks = await loadChunksForContext(finalChunkIds);
+  const finalContext = formatContext(finalChunks);
 
   const system = [
-    "You are a notebook assistant.",
-    "Answer the user in Markdown.",
-    "Use ONLY the provided SOURCE CHUNKS as evidence.",
-    "If the chunks do not contain enough information, say you don't have enough information from the provided sources.",
+    "You are a helpful assistant for a Notebook-like product.",
+    "Answer using ONLY the provided SOURCE_CHUNKS as evidence.",
+    "If the sources do not contain the answer, say you cannot verify it from the sources.",
+    "",
+    "OUTPUT FORMAT:",
+    "Return a JSON object that matches the required schema.",
     "",
     "CITATIONS RULES:",
-    "- You may only cite chunk IDs that appear in the provided chunks.",
-    "- Return citations as an array of { chunkId } objects.",
-    "- Cite the chunks you actually relied on.",
+    "- Every non-trivial claim MUST have citations.",
+    "- citations MUST be an array of objects: { chunkId, quote }.",
+    "- quote MUST be copied EXACTLY from the cited chunk text (verbatim substring).",
+    "- quote length must be 20–240 characters.",
+    "- Only cite chunks from SOURCE_CHUNKS (IDs provided). Never invent IDs.",
+    "- If you cannot find a verbatim quote supporting a claim, say you cannot verify it from the sources.",
     "",
     "SUGGESTED:",
     "- Return 3–6 suggested follow-up questions as plain strings.",
@@ -392,7 +440,7 @@ export async function runNotebookChat(p: {
     `USER_QUESTION:\n${message}`,
     "",
     "SOURCE_CHUNKS:",
-    context,
+    finalContext,
     "",
     "Return a JSON object that matches the required schema.",
   ].join("\n");
@@ -421,15 +469,36 @@ export async function runNotebookChat(p: {
     );
   }
 
-  // Safety: never allow hallucinated citations
-  const filteredCitations = uniq(out.citations.map((c) => c.chunkId))
-    .filter((id) => allowed.has(id))
-    .slice(0, 10)
-    .map((chunkId) => ({ chunkId }));
+  // Safety: never allow hallucinated citations (IDs) and require verbatim quotes
+  const byChunkId = new Map(finalChunks.map((c: any) => [c.id, c]));
+
+  const validatedCitations = (out.citations ?? [])
+    .filter((c: any) => allowed.has(c.chunkId))
+    .map((c: any) => {
+      const chunk: any = byChunkId.get(c.chunkId);
+      if (!chunk) return null;
+
+      const quote = (c.quote || "").replace(/\s+/g, " ").trim();
+
+      // Must be a verbatim substring of the chunk text
+      const idx = (chunk.text || "").indexOf(quote);
+      if (idx < 0) return null;
+
+      return {
+        chunkId: c.chunkId,
+        quote,
+        pageStart: (chunk as any).pageStart ?? null,
+        pageEnd: (chunk as any).pageEnd ?? null,
+        charStart: (chunk as any).charStart ?? null,
+        charEnd: (chunk as any).charEnd ?? null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 10) as any[];
 
   return {
     answer: out.answer,
-    citations: filteredCitations,
+    citations: validatedCitations,
     suggested: out.suggested ?? [],
   };
 }
