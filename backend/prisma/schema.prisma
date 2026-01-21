@@ -103,6 +103,7 @@ model NotebookSource {
   fileId String?
 
   chunks    SourceChunk[]
+  embeddingJob EmbeddingJob?
   createdAt DateTime      @default(now())
 
   @@unique([notebookId, urlId])
