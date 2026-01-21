@@ -54,9 +54,18 @@ export type NBNote = {
   updatedAt: string;
 };
 
+export type Citation = {
+  chunkId: string;
+  quote: string;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  charStart?: number | null;
+  charEnd?: number | null;
+};
+
 export type ChatAnswer = {
   answer: string; // markdown
-  citations: { chunkId: string }[];
+  citations: Citation[];
   suggested: string[];
 };
 
