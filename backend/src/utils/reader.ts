@@ -1,5 +1,5 @@
 import type { Page } from "puppeteer";
-import { JSDOM } from "jsdom";
+import { createDom } from "./dom";
 import { Readability } from "@mozilla/readability";
 
 // NOTE: This version skips sanitize-html to avoid changing your lock file.
@@ -25,7 +25,7 @@ export async function setReadableContentOnPage(page: Page, url: string) {
   });
   const html = await res.text();
 
-  const dom = new JSDOM(html, { url });
+  const dom = createDom(html, url);
   const reader = new Readability(dom.window.document);
   const article = reader.parse();
   if (!article || !article.content) throw new Error("Readability failed");

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
-import { JSDOM } from 'jsdom';
+import { createDom } from '../utils/dom';
 import { Readability } from '@mozilla/readability';
 import pdf from 'pdf-parse';
 import dns from 'dns/promises';
@@ -94,7 +94,7 @@ export async function extractTextFromUrl(url: string): Promise<string> {
     validateStatus: (s) => s >= 200 && s < 300,
   });
 
-  const dom = new JSDOM(html, { url });
+  const dom = createDom(html, url);
   const reader = new Readability(dom.window.document);
   const article = reader.parse();
   const title = article?.title || dom.window.document.title || '';
@@ -114,7 +114,7 @@ export async function extractPreviewFromUrl(url: string): Promise<{ title: strin
     validateStatus: (s) => s >= 200 && s < 300,
   });
 
-  const dom = new JSDOM(html, { url });
+  const dom = createDom(html, url);
 
   const ogTitle =
     dom.window.document.querySelector('meta[property="og:title"]')?.getAttribute('content') ||

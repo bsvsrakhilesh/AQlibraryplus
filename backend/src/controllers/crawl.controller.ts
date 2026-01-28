@@ -5,7 +5,7 @@ import path from "path";
 import crypto from "crypto";
 import prisma from "../config/database";
 import * as cheerio from "cheerio";
-import { JSDOM } from "jsdom";
+import { createDom } from "../utils/dom";
 import { Readability } from "@mozilla/readability";
 import puppeteer, { Browser, LaunchOptions, Page } from "puppeteer";
 import { scheduleAiTagForFile } from "../services/aiTagAuto.service"; 
@@ -243,7 +243,7 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
     }
 
     // 2) Extract readable text
-    const dom = new JSDOM(html, { url });
+    const dom = createDom(html, url);
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
