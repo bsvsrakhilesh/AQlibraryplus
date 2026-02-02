@@ -10,7 +10,9 @@ const crawlTextBody = z.object({
   url: z.string().url(),
   folderId: z.string().optional().nullable(),
   fileName: z.string().optional().nullable(),
+  urlId: z.number().int().optional().nullable(),
 });
+
 r.post('/crawl/text', validate({ body: crawlTextBody }), crawlTextHandler);
 
 const crawlPdfBody = z.object({
@@ -18,7 +20,10 @@ const crawlPdfBody = z.object({
   folderId: z.string().optional().nullable(),
   fileName: z.string().optional().nullable(),
   fullPage: z.boolean().optional(),
+  reader: z.boolean().optional(),
+  urlId: z.number().int().optional().nullable(),
 });
+
 r.post('/crawl/pdf', validate({ body: crawlPdfBody }), crawlPdfHandler);
 
 export default r;
