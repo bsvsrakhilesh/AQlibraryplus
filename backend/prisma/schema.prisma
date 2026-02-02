@@ -80,8 +80,9 @@ model StoredFile {
 
   notebookSources NotebookSource[] @relation("FileNotebookSources")
 
-  @@index([deletedAt])
   @@index([urlId])
+  @@index([deletedAt])
+  
 }
 
 model Folder {

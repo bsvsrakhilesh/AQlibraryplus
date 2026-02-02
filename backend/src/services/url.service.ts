@@ -1,7 +1,7 @@
 // backend/src/services/url.service.ts
 import { Prisma, TaggingStatus } from "@prisma/client";
 import prisma from "../config/database";
-import { scheduleAiTagForUrl } from './aiTagUrlAuto.service';
+import { scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
 
 /** Payload used to create URLs from the URL Collector */
 export type CreateUrlInput = {
@@ -11,7 +11,9 @@ export type CreateUrlInput = {
 };
 
 /** Update payload */
-export type UpdateUrlInput = Partial<Pick<CreateUrlInput, 'title' | 'snippet'>> & {
+export type UpdateUrlInput = Partial<
+  Pick<CreateUrlInput, "title" | "snippet">
+> & {
   tags?: string[];
   notes?: string | null;
   isFavorited?: boolean;
@@ -20,20 +22,20 @@ export type UpdateUrlInput = Partial<Pick<CreateUrlInput, 'title' | 'snippet'>> 
 /** Query options for listing URLs */
 export type GetAllOpts = {
   year?: string;
-  sortKey?: 'createdAt' | 'updatedAt' | 'title';
-  sortOrder?: 'asc' | 'desc';
+  sortKey?: "createdAt" | "updatedAt" | "title";
+  sortOrder?: "asc" | "desc";
   /** Require that results contain ALL these tags */
   tags?: string[];
 };
 
 function buildOrderBy(
-  sortKey: GetAllOpts['sortKey'] = 'createdAt',
-  sortOrder: GetAllOpts['sortOrder'] = 'desc'
+  sortKey: GetAllOpts["sortKey"] = "createdAt",
+  sortOrder: GetAllOpts["sortOrder"] = "desc",
 ): Prisma.Enumerable<Prisma.UrlOrderByWithRelationInput> {
-  const key = sortKey ?? 'createdAt';
-  const dir = sortOrder ?? 'desc';
-  if (key === 'title') return [{ title: dir }];
-  if (key === 'updatedAt') return [{ updatedAt: dir }];
+  const key = sortKey ?? "createdAt";
+  const dir = sortOrder ?? "desc";
+  if (key === "title") return [{ title: dir }];
+  if (key === "updatedAt") return [{ updatedAt: dir }];
   return [{ createdAt: dir }];
 }
 
@@ -64,17 +66,47 @@ export async function getAllUrls(opts: GetAllOpts) {
 
   const orderBy = buildOrderBy(opts.sortKey, opts.sortOrder);
 
-  return prisma.url.findMany({
+  const urls = await prisma.url.findMany({
     where,
     orderBy,
   });
+
+  // Attach latest snapshot info (if any)
+  const ids = urls.map((u) => u.id);
+  if (ids.length === 0) return urls as any;
+
+  const snaps = await prisma.storedFile.findMany({
+    where: { urlId: { in: ids } },
+    select: {
+      id: true,
+      urlId: true,
+      fileName: true,
+      captureType: true,
+      createdAt: true,
+      sha256: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const latestByUrl = new Map<number, any>();
+  for (const s of snaps) {
+    if (!latestByUrl.has(s.urlId as number))
+      latestByUrl.set(s.urlId as number, s);
+  }
+
+  return urls.map((u) => ({
+    ...u,
+    latestSnapshot: latestByUrl.get(u.id) ?? null,
+  })) as any;
 }
 
 /** Get one URL by id */
 export async function getUrlById(id: number) {
   const rec = await prisma.url.findUnique({ where: { id } });
   if (!rec) {
-    const err = Object.assign(new Error(`URL with id ${id} not found`), { status: 404 });
+    const err = Object.assign(new Error(`URL with id ${id} not found`), {
+      status: 404,
+    });
     throw err;
   }
   return rec;
@@ -98,7 +130,7 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
       created.push({ id: rec.id, url: rec.url });
       added++;
     } catch (e: any) {
-      if (e?.code === 'P2002') {
+      if (e?.code === "P2002") {
         skipped++;
         skippedUrls.push(data.url);
       } else {
@@ -121,11 +153,15 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
 /** Update title/snippet/tags of a URL (does NOT re-run tagger) */
 export async function updateUrlById(id: number, data: UpdateUrlInput) {
   const patch: Prisma.UrlUpdateInput = {};
-  if (typeof data.title === 'string') patch.title = data.title.trim();
-  if (typeof data.snippet === 'string' || data.snippet === null) patch.snippet = data.snippet ?? null;
-  if (Array.isArray(data.tags)) patch.tags = data.tags.map((t) => t.trim()).filter(Boolean);
-  if (typeof data.isFavorited === 'boolean') patch.isFavorited = data.isFavorited;
-  if (typeof data.notes === 'string' || data.notes === null) patch.notes = data.notes ?? null;
+  if (typeof data.title === "string") patch.title = data.title.trim();
+  if (typeof data.snippet === "string" || data.snippet === null)
+    patch.snippet = data.snippet ?? null;
+  if (Array.isArray(data.tags))
+    patch.tags = data.tags.map((t) => t.trim()).filter(Boolean);
+  if (typeof data.isFavorited === "boolean")
+    patch.isFavorited = data.isFavorited;
+  if (typeof data.notes === "string" || data.notes === null)
+    patch.notes = data.notes ?? null;
 
   try {
     const updated = await prisma.url.update({
@@ -134,8 +170,10 @@ export async function updateUrlById(id: number, data: UpdateUrlInput) {
     });
     return updated;
   } catch (error: any) {
-    if (error?.code === 'P2025') {
-      const err = Object.assign(new Error(`URL with id ${id} not found`), { status: 404 });
+    if (error?.code === "P2025") {
+      const err = Object.assign(new Error(`URL with id ${id} not found`), {
+        status: 404,
+      });
       throw err;
     }
     throw error;
@@ -147,8 +185,10 @@ export async function deleteUrlById(id: number) {
   try {
     await prisma.url.delete({ where: { id } });
   } catch (error: any) {
-    if (error?.code === 'P2025') {
-      const err = Object.assign(new Error(`URL with id ${id} not found`), { status: 404 });
+    if (error?.code === "P2025") {
+      const err = Object.assign(new Error(`URL with id ${id} not found`), {
+        status: 404,
+      });
       throw err;
     }
     throw error;
@@ -166,7 +206,7 @@ export async function deleteUrlsBulk(ids: number[]) {
       await deleteUrlById(id);
       deleted.push(id);
     } catch (e: any) {
-      failures.push({ id, error: e?.message || 'delete failed' });
+      failures.push({ id, error: e?.message || "delete failed" });
     }
   }
   return { deleted, failures };
@@ -194,13 +234,19 @@ export async function getUrlTaggingSummary(): Promise<UrlTaggingSummary> {
     prisma.url.count(),
     prisma.url.count({ where: { tags: { isEmpty: true } } }),
     prisma.url.groupBy({
-      by: ['taggingStatus'],
+      by: ["taggingStatus"],
       _count: { _all: true },
     }),
     prisma.url.findMany({
       where: { taggingStatus: TaggingStatus.FAILED },
-      select: { id: true, url: true, title: true, taggingError: true, updatedAt: true },
-      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        url: true,
+        title: true,
+        taggingError: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
       take: 5,
     }),
   ]);
@@ -218,13 +264,17 @@ export async function getUrlTaggingSummary(): Promise<UrlTaggingSummary> {
     byStatus[key] = g._count._all;
   }
 
-  const inProgress = (byStatus[TaggingStatus.PENDING] || 0) + (byStatus[TaggingStatus.RUNNING] || 0);
+  const inProgress =
+    (byStatus[TaggingStatus.PENDING] || 0) +
+    (byStatus[TaggingStatus.RUNNING] || 0);
   const failed = byStatus[TaggingStatus.FAILED] || 0;
 
   return { total, untagged, byStatus, inProgress, failed, failedSample };
 }
 
-export async function retryFailedUrlTagging(opts: { ids?: number[]; limit?: number } = {}) {
+export async function retryFailedUrlTagging(
+  opts: { ids?: number[]; limit?: number } = {},
+) {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
 
   let targetIds: number[] = [];
@@ -234,7 +284,7 @@ export async function retryFailedUrlTagging(opts: { ids?: number[]; limit?: numb
     const rows = await prisma.url.findMany({
       where: { taggingStatus: TaggingStatus.FAILED },
       select: { id: true },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
       take: limit,
     });
     targetIds = rows.map((r) => r.id);
@@ -262,7 +312,7 @@ export async function retryFailedUrlTagging(opts: { ids?: number[]; limit?: numb
       scheduleAiTagForUrl(id, { force: true });
       scheduled.push(id);
     } catch (e: any) {
-      failures.push({ id, error: e?.message || 'schedule failed' });
+      failures.push({ id, error: e?.message || "schedule failed" });
     }
   }
 
@@ -273,7 +323,7 @@ export async function retryFailedUrlTagging(opts: { ids?: number[]; limit?: numb
 export function canonicalUrl(raw: string): string {
   try {
     const u = new URL(String(raw).trim());
-    u.hash = '';
+    u.hash = "";
     return u.toString();
   } catch {
     return String(raw).trim();
