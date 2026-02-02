@@ -53,6 +53,14 @@ export interface Folder {
   createdAt: string; // ISO
 }
 
+export interface SnapshotInfo {
+  id: string;
+  fileName: string;
+  captureType: 'UPLOAD' | 'URL_TEXT' | 'URL_PDF';
+  createdAt: string; // ISO
+  sha256?: string | null;
+}
+
 export interface SavedUrl {
   id: string;
   url: string;
@@ -71,6 +79,7 @@ export interface SavedUrl {
   updatedAt: string; // ISO
   lastVisitedAt?: string; // ISO
   visitCount: number;
+  latestSnapshot?: SnapshotInfo | null;
 }
 
 export interface Collection {
