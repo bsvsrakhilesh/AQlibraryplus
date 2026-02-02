@@ -8,13 +8,12 @@ import * as cheerio from "cheerio";
 import { createDom } from "../utils/dom";
 import { Readability } from "@mozilla/readability";
 import puppeteer, { Browser, LaunchOptions, Page } from "puppeteer";
-import { scheduleAiTagForFile } from "../services/aiTagAuto.service"; 
+import { scheduleAiTagForFile } from "../services/aiTagAuto.service";
 import dns from "node:dns/promises";
 import * as ipaddr from "ipaddr.js";
 import robotsParser from "robots-parser";
-import { log, requestMeta } from '../utils/logger';
+import { log, requestMeta } from "../utils/logger";
 import { setReadableContentOnPage, hardenLivePage } from "../utils/reader";
-
 
 function isPrivateIp(ip: string) {
   const a = ipaddr.parse(ip);
@@ -36,7 +35,11 @@ async function resolveAndGuard(hostname: string) {
   }
 }
 
-async function fetchWithTimeout(url: string, ms = 10000, headers: Record<string, string> = {}) {
+async function fetchWithTimeout(
+  url: string,
+  ms = 10000,
+  headers: Record<string, string> = {},
+) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -67,11 +70,13 @@ async function isRobotsAllowed(targetUrl: string) {
 }
 
 // ===================== Storage helpers =====================
-const STORAGE_DIR = process.env.FILE_STORAGE_DIR || path.join(process.cwd(), "storage");
+const STORAGE_DIR =
+  process.env.FILE_STORAGE_DIR || path.join(process.cwd(), "storage");
 const FILES_DIR = path.join(STORAGE_DIR, "files");
 
 function ensureDirs() {
-  if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
+  if (!fs.existsSync(STORAGE_DIR))
+    fs.mkdirSync(STORAGE_DIR, { recursive: true });
   if (!fs.existsSync(FILES_DIR)) fs.mkdirSync(FILES_DIR, { recursive: true });
 }
 
@@ -90,31 +95,46 @@ function inferMime(fileName: string, fallback?: string) {
   return fallback || "application/octet-stream";
 }
 
-// Accept Buffer | Uint8Array (Puppeteer returns Uint8Array)
 async function persistFile(
   data: Buffer | Uint8Array,
   fileName: string,
   description: string,
-  folderId?: string | null
+  folderId?: string | null,
+  meta?: {
+    captureType?: "UPLOAD" | "URL_TEXT" | "URL_PDF";
+    sourceUrl?: string | null;
+    urlId?: number | null;
+  },
 ) {
   ensureDirs();
   const id = newId();
   const safeName = sanitizeName(fileName);
   const storagePath = path.join(FILES_DIR, `${id}__${safeName}`);
-  fs.writeFileSync(storagePath, data);
+
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  fs.writeFileSync(storagePath, buf);
+
+  const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
 
   const rec = await prisma.storedFile.create({
     data: {
-      id, // String id
+      id,
       fileName: safeName,
       description,
-      size: (data as Uint8Array).byteLength ?? Buffer.byteLength(data as Buffer),
+      size: buf.byteLength,
       mimeType: inferMime(safeName),
       storagePath,
       uploaderId: "self",
       uploaderName: "You",
       folderId: folderId ? String(folderId) : null,
       isFavorited: false,
+
+      // new fields
+      captureType: (meta?.captureType as any) ?? "UPLOAD",
+      sourceUrl: meta?.sourceUrl ?? null,
+      sha256,
+      contentHash: sha256,
+      urlId: meta?.urlId ?? null,
     } as any,
   });
 
@@ -158,7 +178,10 @@ async function navigateWithRetries(page: Page, url: string) {
   let tries = 0;
   while (tries < 3) {
     try {
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 60_000 } as any);
+      await page.goto(url, {
+        waitUntil: "networkidle2",
+        timeout: 60_000,
+      } as any);
       return;
     } catch (e) {
       if (!isRetryablePptrError(e)) throw e;
@@ -196,7 +219,11 @@ function mergeTags(a?: string[] | null, b?: string[] | null): string[] {
  * - Copies tags from the source URL (if urlId provided)
  * - Schedules background auto-tagging (scheduleFileAutoTag)
  */
-export async function crawlTextHandler(req: Request, res: Response, next: NextFunction) {
+export async function crawlTextHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const { url, folderId, fileName, urlId } = req.body || {};
     if (!url || typeof url !== "string") {
@@ -205,8 +232,11 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
 
     // --------- Guardrails START ---------
     let __u: URL;
-    try { __u = new URL(url); }
-    catch { return res.status(400).json({ message: "invalid url" }); }
+    try {
+      __u = new URL(url);
+    } catch {
+      return res.status(400).json({ message: "invalid url" });
+    }
 
     if (__u.protocol !== "http:" && __u.protocol !== "https:") {
       return res.status(400).json({ message: "unsupported protocol" });
@@ -227,7 +257,10 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
       html = await resp.text();
       log.info("crawl_text_fetch_ok", { ...requestMeta(req), url });
     } catch {
-      log.warn("crawl_text_fetch_failed_fallback_to_browser", { ...requestMeta(req), url });
+      log.warn("crawl_text_fetch_failed_fallback_to_browser", {
+        ...requestMeta(req),
+        url,
+      });
       const b = await launchBrowser();
       try {
         const page = await b.newPage();
@@ -247,19 +280,32 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
-    const title = (article?.title || cheerio.load(html)("title").first().text() || url).trim();
-    let textContent = (article?.textContent || cheerio.load(html)("body").text() || "").replace(/\n{3,}/g, "\n\n").trim();
+    const title = (
+      article?.title ||
+      cheerio.load(html)("title").first().text() ||
+      url
+    ).trim();
+    let textContent = (
+      article?.textContent ||
+      cheerio.load(html)("body").text() ||
+      ""
+    )
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
     log.info("crawl_text_extracted", {
       ...requestMeta(req),
       url,
       title,
-      textLength: textContent.length
+      textLength: textContent.length,
     });
 
     if (!textContent) {
       const $ = cheerio.load(html);
       $("script, style, noscript").remove();
-      textContent = $.root().text().replace(/\n{3,}/g, "\n\n").trim();
+      textContent = $.root()
+        .text()
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
     }
 
     const header = [
@@ -271,11 +317,23 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
     ].join("\n");
 
     const buffer = Buffer.from(header + textContent + "\n", "utf8");
-    const finalName = sanitizeName((fileName as string) || `${title || "page"}.txt`);
+    const finalName = sanitizeName(
+      (fileName as string) || `${title || "page"}.txt`,
+    );
     const desc = `Text capture from ${url}`;
 
     // 3) Persist file
-    const fileRec = await persistFile(buffer, finalName, desc, folderId || null);
+    const fileRec = await persistFile(
+      buffer,
+      finalName,
+      desc,
+      folderId || null,
+      {
+        captureType: "URL_TEXT",
+        sourceUrl: url,
+        urlId: typeof urlId === "number" ? urlId : null,
+      },
+    );
 
     // 4) Copy tags from the source URL if provided
     if (urlId !== undefined && urlId !== null) {
@@ -294,7 +352,11 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
             });
           }
         } catch (e) {
-          log.error('crawl_text_fetch_failed', { ...requestMeta(req), url, error: String(e) });
+          log.error("crawl_text_fetch_failed", {
+            ...requestMeta(req),
+            url,
+            error: String(e),
+          });
         }
       }
     }
@@ -303,11 +365,17 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
     scheduleAiTagForFile(String(fileRec.id));
 
     // 6) Return latest (after any tag copy)
-    const latest = await prisma.storedFile.findUnique({ where: { id: fileRec.id } });
+    const latest = await prisma.storedFile.findUnique({
+      where: { id: fileRec.id },
+    });
     log.info("crawl_text_done", { ...requestMeta(req), fileId: fileRec.id });
     return res.status(201).json(latest ?? fileRec);
   } catch (err) {
-    log.error("crawlTextHandler_error", { ...requestMeta(req), URL, error: String((err as any)?.message || err) });
+    log.error("crawlTextHandler_error", {
+      ...requestMeta(req),
+      URL,
+      error: String((err as any)?.message || err),
+    });
     next(err);
   }
 }
@@ -319,7 +387,11 @@ export async function crawlTextHandler(req: Request, res: Response, next: NextFu
  * - Copies tags from the source URL (if urlId provided)
  * - Schedules background auto-tagging (scheduleFileAutoTag)
  */
-export async function crawlPdfHandler(req: Request, res: Response, next: NextFunction) {
+export async function crawlPdfHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const { url, folderId, fileName, fullPage = true, urlId } = req.body || {};
     if (!url || typeof url !== "string") {
@@ -328,8 +400,11 @@ export async function crawlPdfHandler(req: Request, res: Response, next: NextFun
 
     // --------- Guardrails START ---------
     let __u: URL;
-    try { __u = new URL(url); }
-    catch { return res.status(400).json({ message: "invalid url" }); }
+    try {
+      __u = new URL(url);
+    } catch {
+      return res.status(400).json({ message: "invalid url" });
+    }
 
     if (__u.protocol !== "http:" && __u.protocol !== "https:") {
       return res.status(400).json({ message: "unsupported protocol" });
@@ -347,42 +422,46 @@ export async function crawlPdfHandler(req: Request, res: Response, next: NextFun
     // Puppeteer PDF capture
 
     // Puppeteer PDF capture (drop-in replacement)
-const tryMakePdf = async () => {
-  const b = await launchBrowser(); // keep your existing launcher if you have one
-  try {
-    const page = await b.newPage();
-    page.setDefaultTimeout(60_000);
-    page.setDefaultNavigationTimeout(60_000);
-    await page.emulateMediaType("screen");
+    const tryMakePdf = async () => {
+      const b = await launchBrowser(); // keep your existing launcher if you have one
+      try {
+        const page = await b.newPage();
+        page.setDefaultTimeout(60_000);
+        page.setDefaultNavigationTimeout(60_000);
+        await page.emulateMediaType("screen");
 
-    const { url, reader = true } = req.body || {};
+        const { url, reader = true } = req.body || {};
 
-    if (reader) {
-      await setReadableContentOnPage(page, url);
-    } else {
-      await hardenLivePage(page, url);
-      await navigateWithRetries(page, url); // keep your existing helper
-      await page.waitForSelector("body", { timeout: 30_000 } as any);
-      await new Promise(r => setTimeout(r, 700)); // small settle
-    }
+        if (reader) {
+          await setReadableContentOnPage(page, url);
+        } else {
+          await hardenLivePage(page, url);
+          await navigateWithRetries(page, url); // keep your existing helper
+          await page.waitForSelector("body", { timeout: 30_000 } as any);
+          await new Promise((r) => setTimeout(r, 700)); // small settle
+        }
 
-    log.info("crawl_pdf_browser_loaded", { ...requestMeta(req), url });
+        log.info("crawl_pdf_browser_loaded", { ...requestMeta(req), url });
 
-    const derived = (await page.title()) || new URL(url).hostname;
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: "16mm", right: "12mm", bottom: "16mm", left: "12mm" },
-      timeout: 60_000 as any,
-    } as any);
+        const derived = (await page.title()) || new URL(url).hostname;
+        const pdf = await page.pdf({
+          format: "A4",
+          printBackground: true,
+          preferCSSPageSize: true,
+          margin: { top: "16mm", right: "12mm", bottom: "16mm", left: "12mm" },
+          timeout: 60_000 as any,
+        } as any);
 
-    log.info("crawl_pdf_rendered", { ...requestMeta(req), url, bytes: pdf.length });
-    return { pdf, title: derived };
-  } finally {
-    await b.close().catch(() => {});
-  }
-};
+        log.info("crawl_pdf_rendered", {
+          ...requestMeta(req),
+          url,
+          bytes: pdf.length,
+        });
+        return { pdf, title: derived };
+      } finally {
+        await b.close().catch(() => {});
+      }
+    };
 
     // Retry logic
     let attempt = 0;
@@ -405,11 +484,23 @@ const tryMakePdf = async () => {
     }
     if (!pdfBuf) throw lastErr || new Error("PDF capture failed");
 
-    const finalName = sanitizeName((fileName as string) || `${title || "page"}.pdf`);
+    const finalName = sanitizeName(
+      (fileName as string) || `${title || "page"}.pdf`,
+    );
     const desc = `PDF snapshot from ${url}`;
 
     // 1) Persist file
-    const fileRec = await persistFile(pdfBuf, finalName, desc, folderId || null);
+    const fileRec = await persistFile(
+      pdfBuf,
+      finalName,
+      desc,
+      folderId || null,
+      {
+        captureType: "URL_PDF",
+        sourceUrl: url,
+        urlId: typeof urlId === "number" ? urlId : null,
+      },
+    );
 
     // 2) Copy tags from the source URL if provided
     if (urlId !== undefined && urlId !== null) {
@@ -428,7 +519,11 @@ const tryMakePdf = async () => {
             });
           }
         } catch (e) {
-          console.error("[crawlPdf] copy URL tags failed", { urlId, fileId: fileRec.id, e });
+          console.error("[crawlPdf] copy URL tags failed", {
+            urlId,
+            fileId: fileRec.id,
+            e,
+          });
         }
       }
     }
@@ -437,13 +532,18 @@ const tryMakePdf = async () => {
     scheduleAiTagForFile(String(fileRec.id));
 
     // 4) Return latest
-    const latest = await prisma.storedFile.findUnique({ where: { id: fileRec.id } });
+    const latest = await prisma.storedFile.findUnique({
+      where: { id: fileRec.id },
+    });
     log.info("crawl_pdf_done", { ...requestMeta(req), fileId: fileRec.id });
     if (res.headersSent || (req as any).timedout) return;
     return res.status(201).json(latest ?? fileRec);
   } catch (err) {
-    log.error("crawlPdfHandler_error", { ...requestMeta(req), URL, error: String((err as any)?.message || err) });
+    log.error("crawlPdfHandler_error", {
+      ...requestMeta(req),
+      URL,
+      error: String((err as any)?.message || err),
+    });
     next(err);
   }
 }
-
