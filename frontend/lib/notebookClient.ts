@@ -44,6 +44,14 @@ export type ChunkReader = {
   chunks: ReaderChunk[];
 };
 
+export type SourcePage = {
+  sourceId: ID;
+  pageNumber: number;
+  text: string;
+  globalStart: number;
+  globalEnd: number;
+};
+
 export type NBNote = {
   id: ID;
   notebookId: ID;
@@ -73,11 +81,11 @@ export interface NotebookClient {
   listNotebooks(): Promise<Notebook[]>;
   createNotebook(p: { title: string; description?: string }): Promise<Notebook>;
   getNotebook(
-    id: ID
+    id: ID,
   ): Promise<{ notebook: Notebook; sources: NBSource[]; notes: NBNote[] }>;
   updateNotebook(
     id: ID,
-    p: { title?: string; description?: string }
+    p: { title?: string; description?: string },
   ): Promise<Notebook>;
   deleteNotebook(id: ID): Promise<void>;
 
@@ -92,19 +100,20 @@ export interface NotebookClient {
     opts?: {
       sourceIds?: ID[];
       history?: { role: "user" | "assistant"; content: string }[];
-    }
+    },
   ): Promise<ChatAnswer>;
   getChunk(chunkId: ID): Promise<ChunkDetail>;
   getChunkReader(chunkId: ID, radius?: number): Promise<ChunkReader>;
+  getSourcePage(sourceId: ID, pageNumber: number): Promise<SourcePage>;
 
   createNote(
     notebookId: ID,
-    p: { title?: string; content: string; citations?: any }
+    p: { title?: string; content: string; citations?: any },
   ): Promise<NBNote>;
   updateNote(
     notebookId: ID,
     noteId: ID,
-    p: { title?: string; content?: string; citations?: any }
+    p: { title?: string; content?: string; citations?: any },
   ): Promise<NBNote>;
   deleteNote(notebookId: ID, noteId: ID): Promise<void>;
 
@@ -118,7 +127,7 @@ const BASE = "/api";
 async function j<T = any>(
   method: string,
   path: string,
-  body?: any
+  body?: any,
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -148,7 +157,7 @@ export const notebookClient: NotebookClient = {
   getNotebook(id) {
     return j<{ notebook: Notebook; sources: NBSource[]; notes: NBNote[] }>(
       "GET",
-      `/notebooks/${id}`
+      `/notebooks/${id}`,
     );
   },
   updateNotebook(id, p) {
@@ -192,8 +201,11 @@ export const notebookClient: NotebookClient = {
   getChunkReader(chunkId, radius = 3) {
     return j<ChunkReader>(
       "GET",
-      `/chunks/${chunkId}/reader?radius=${encodeURIComponent(String(radius))}`
+      `/chunks/${chunkId}/reader?radius=${encodeURIComponent(String(radius))}`,
     );
+  },
+  getSourcePage(sourceId, pageNumber) {
+    return j<SourcePage>("GET", `/sources/${sourceId}/pages/${pageNumber}`);
   },
 
   // notes
@@ -203,7 +215,7 @@ export const notebookClient: NotebookClient = {
   updateNote(notebookId, noteId, p) {
     return j<NBNote>("PATCH", `/notebooks/${notebookId}/notes/${noteId}`, p);
   },
-    deleteNote(notebookId, noteId) {
+  deleteNote(notebookId, noteId) {
     return j<void>("DELETE", `/notebooks/${notebookId}/notes/${noteId}`);
   },
 

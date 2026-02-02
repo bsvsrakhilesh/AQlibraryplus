@@ -34,6 +34,27 @@ function highlightQuote(text: string, quote?: string) {
   );
 }
 
+function highlightSpan(
+  text: string,
+  start?: number | null,
+  end?: number | null,
+) {
+  if (start == null || end == null) return text;
+  const s = Math.max(0, Math.min(start, text.length));
+  const e = Math.max(s, Math.min(end, text.length));
+  if (e <= s) return text;
+
+  return (
+    <>
+      {text.slice(0, s)}
+      <mark className="bg-yellow-200/70 rounded px-0.5">
+        {text.slice(s, e)}
+      </mark>
+      {text.slice(e)}
+    </>
+  );
+}
+
 // Quick heuristic "key points" extractor (replace with LLM later if needed)
 function extractKeyPoints(chunks: { text: string }[], max = 6) {
   const out: string[] = [];
@@ -71,6 +92,8 @@ export default function SourceReaderDrawer({
     quote?: string;
     pageStart?: number | null;
     pageEnd?: number | null;
+    charStart?: number | null;
+    charEnd?: number | null;
   } | null;
   onClose: () => void;
 }) {
@@ -81,6 +104,9 @@ export default function SourceReaderDrawer({
   const [query, setQuery] = useState("");
 
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const [pageText, setPageText] = useState<string | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
 
   // Lock background scroll while the drawer is open (prevents scroll bleed / jank)
   useEffect(() => {
@@ -141,6 +167,35 @@ export default function SourceReaderDrawer({
       cancelled = true;
     };
   }, [open, citation?.chunkId, radius]);
+
+  useEffect(() => {
+    if (!open || !reader?.sourceId) return;
+    if (citation?.pageStart == null) {
+      setPageText(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setPageLoading(true);
+        const page = await api.getSourcePage(
+          reader.sourceId,
+          Number(citation.pageStart),
+        );
+        if (!cancelled) setPageText(page.text || "");
+      } catch {
+        if (!cancelled) setPageText(null);
+      } finally {
+        if (!cancelled) setPageLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, reader?.sourceId, citation?.pageStart]);
 
   const title = useMemo(
     () => (reader ? sourceTitle(reader.source) : "Source"),
@@ -347,6 +402,38 @@ export default function SourceReaderDrawer({
                     </div>
                   )}
                 </div>
+
+                {/* Page view */}
+                {citation?.pageStart != null ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                      Evidence · Page {citation.pageStart}
+                      {citation.pageEnd &&
+                      citation.pageEnd !== citation.pageStart ? (
+                        <>–{citation.pageEnd}</>
+                      ) : null}
+                    </div>
+
+                    {pageLoading ? (
+                      <div className="mt-2 text-sm text-slate-600">
+                        Loading page…
+                      </div>
+                    ) : pageText == null ? (
+                      <div className="mt-2 text-sm text-rose-700">
+                        Page text unavailable (source has no per-page
+                        extraction).
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-sm leading-relaxed text-slate-900 whitespace-pre-wrap">
+                        {highlightSpan(
+                          pageText,
+                          citation.charStart,
+                          citation.charEnd,
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
 
                 {/* Chunks */}
                 <div className="space-y-3">
