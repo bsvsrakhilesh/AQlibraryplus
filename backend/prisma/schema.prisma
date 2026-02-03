@@ -25,6 +25,11 @@ enum CaptureType {
   URL_PDF
 }
 
+enum DocumentKind {
+  URL
+  FILE
+}
+
 model Url {
   id            Int      @id @default(autoincrement())
   url           String   @unique
@@ -38,6 +43,8 @@ model Url {
   contentHash   String?
   taggerVersion String?
   tagsMeta      Json?
+
+  document Document?
 
   taggingStatus TaggingStatus @default(NONE)
   taggingJobId  String?
@@ -71,6 +78,9 @@ model StoredFile {
   captureType CaptureType @default(UPLOAD)
   sha256      String?
   sourceUrl   String?
+
+  documentRevision    DocumentRevision?
+  primaryForDocuments Document[]
 
   urlId Int?
   url   Url? @relation("UrlSnapshots", fields: [urlId], references: [id], onDelete: SetNull)
@@ -148,10 +158,14 @@ model SourceRevision {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
+  documentRevisionId String?
+  documentRevision   DocumentRevision? @relation(fields: [documentRevisionId], references: [id], onDelete: SetNull)
+
   chunks SourceChunk[]
   pages  SourcePage[]
 
   @@unique([sourceId, ordinal])
+  @@index([documentRevisionId])
   @@index([sourceId, isActive])
 }
 
@@ -238,4 +252,43 @@ model Note {
   citations  Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model Document {
+  id        String       @id @default(cuid())
+  kind      DocumentKind
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // Canonical pointers (exactly one should be set depending on kind)
+  urlId Int? @unique
+  url   Url? @relation(fields: [urlId], references: [id], onDelete: Cascade)
+
+  primaryFileId String?     @unique
+  primaryFile   StoredFile? @relation(fields: [primaryFileId], references: [id], onDelete: Cascade)
+
+  revisions DocumentRevision[]
+}
+
+model DocumentRevision {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  // Monotonic per-document revision number
+  ordinal   Int
+  createdAt DateTime @default(now())
+
+  // This revision is always backed by a physical StoredFile snapshot/artifact
+  storedFileId String     @unique
+  storedFile   StoredFile @relation(fields: [storedFileId], references: [id], onDelete: Cascade)
+
+  // Capture metadata mirrored from StoredFile for traceability
+  captureType CaptureType
+  contentHash String?
+
+  sourceRevisions SourceRevision[]
+
+  @@unique([documentId, ordinal])
+  @@index([documentId])
 }
