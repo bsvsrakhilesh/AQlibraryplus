@@ -4,7 +4,8 @@ import { createPortal } from "react-dom";
 import { formatDate } from "../../utils/fileHelpers";
 import CloseIcon from "../icons/CloseIcon";
 import AITagButton from "../common/AITagButton";
-import { getUrlSnapshots } from "../../lib/api";
+import { getUrlSnapshots, getFileExtractedText } from "../../lib/api";
+import DiffViewer from "../common/DiffViewer";
 
 interface SavedUrlDetailModalProps {
   url: SavedUrl;
@@ -26,6 +27,21 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
   const [snapshotsError, setSnapshotsError] = useState<string | null>(null);
+
+  const [leftSnapId, setLeftSnapId] = useState<string>("");
+  const [rightSnapId, setRightSnapId] = useState<string>("");
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  const [leftPayload, setLeftPayload] = useState<{
+    fileName: string;
+    text: string;
+    truncated: boolean;
+  } | null>(null);
+  const [rightPayload, setRightPayload] = useState<{
+    fileName: string;
+    text: string;
+    truncated: boolean;
+  } | null>(null);
 
   // Local state for tags and new tag input
   const [localTags, setLocalTags] = useState<string[]>(url.tags);
@@ -52,6 +68,37 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
       }
     })();
   }, [isOpen, url.id]);
+
+  async function runCompare() {
+    if (!leftSnapId || !rightSnapId) return;
+
+    try {
+      setCompareLoading(true);
+      setCompareError(null);
+
+      const [L, R] = await Promise.all([
+        getFileExtractedText(leftSnapId, 200000),
+        getFileExtractedText(rightSnapId, 200000),
+      ]);
+
+      setLeftPayload({
+        fileName: L.fileName,
+        text: L.text,
+        truncated: L.truncated,
+      });
+      setRightPayload({
+        fileName: R.fileName,
+        text: R.text,
+        truncated: R.truncated,
+      });
+    } catch (e: any) {
+      setCompareError(
+        e?.response?.data?.message ?? e?.message ?? "Compare failed",
+      );
+    } finally {
+      setCompareLoading(false);
+    }
+  }
 
   // Prevent background scroll when modal is open
   useEffect(() => {
@@ -269,6 +316,65 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                 ))}
               </div>
             </div>
+            <div className="mt-3 space-y-2">
+              <div className="font-semibold text-sm">Compare snapshots</div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <select
+                  className="border rounded px-2 py-1 text-sm"
+                  value={leftSnapId}
+                  onChange={(e) => setLeftSnapId(e.target.value)}
+                >
+                  <option value="">Select snapshot A…</option>
+                  {snapshots.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.captureType} • {formatDate(s.createdAt)}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="border rounded px-2 py-1 text-sm"
+                  value={rightSnapId}
+                  onChange={(e) => setRightSnapId(e.target.value)}
+                >
+                  <option value="">Select snapshot B…</option>
+                  {snapshots.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.captureType} • {formatDate(s.createdAt)}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="px-3 py-2 border rounded text-sm"
+                  disabled={!leftSnapId || !rightSnapId || compareLoading}
+                  onClick={runCompare}
+                >
+                  {compareLoading ? "Comparing…" : "Compare"}
+                </button>
+
+                {compareError && (
+                  <div className="text-sm text-red-600">{compareError}</div>
+                )}
+              </div>
+
+              {leftPayload && rightPayload && (
+                <DiffViewer
+                  leftTitle={
+                    leftPayload.fileName +
+                    (leftPayload.truncated ? " (truncated)" : "")
+                  }
+                  rightTitle={
+                    rightPayload.fileName +
+                    (rightPayload.truncated ? " (truncated)" : "")
+                  }
+                  leftText={leftPayload.text}
+                  rightText={rightPayload.text}
+                />
+              )}
+            </div>
+
             <div>
               <div className="font-semibold mb-1">Collections</div>
               <div className="flex flex-wrap gap-2">
