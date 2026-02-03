@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 
 export interface UrlFilterState {
   query: string;
   domains: string[];
   tags: string[];
-  visibility: 'all' | 'public' | 'private' | 'shared';
+  visibility: "all" | "public" | "private" | "shared";
   dateFrom?: string;
   dateTo?: string;
   favoritesOnly: boolean;
+  snapshotStatus?: "all" | "missing" | "stale" | "fresh";
 }
 
 interface SearchFilterUrlsProps {
@@ -26,13 +27,14 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   isLoading = false,
 }) => {
   const [state, setState] = useState<UrlFilterState>({
-    query: initial.query || '',
+    query: initial.query || "",
     domains: initial.domains || [],
     tags: initial.tags || [],
-    visibility: initial.visibility || 'all',
+    visibility: initial.visibility || "all",
     dateFrom: initial.dateFrom,
     dateTo: initial.dateTo,
     favoritesOnly: initial.favoritesOnly || false,
+    snapshotStatus: (initial as any).snapshotStatus || "all",
   });
 
   useEffect(() => {
@@ -50,14 +52,12 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   const toggleTag = (t: string) =>
     setState((s) => ({
       ...s,
-      tags: s.tags.includes(t)
-        ? s.tags.filter((x) => x !== t)
-        : [...s.tags, t],
+      tags: s.tags.includes(t) ? s.tags.filter((x) => x !== t) : [...s.tags, t],
     }));
 
   // small helper for selected chip styles (keeps theme)
-  const chip = 'chip chip-gray cursor-pointer select-none';
-  const chipSelected = 'ring-2 ring-brand-primary/40';
+  const chip = "chip chip-gray cursor-pointer select-none";
+  const chipSelected = "ring-2 ring-brand-primary/40";
 
   return (
     <div className="space-y-4">
@@ -79,7 +79,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
             aria-label="Search"
             title="Search"
           >
-            {isLoading ? 'Searching…' : 'Search'}
+            {isLoading ? "Searching…" : "Search"}
           </button>
         </div>
       </div>
@@ -101,10 +101,12 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
                   title={d}
                   className={[
                     chip,
-                    'max-w-full truncate',
-                    selected ? 'chip-indigo text-indigo-800 dark:text-indigo-100' : '',
-                    selected ? chipSelected : '',
-                  ].join(' ')}
+                    "max-w-full truncate",
+                    selected
+                      ? "chip-indigo text-indigo-800 dark:text-indigo-100"
+                      : "",
+                    selected ? chipSelected : "",
+                  ].join(" ")}
                 >
                   {d}
                 </button>
@@ -128,10 +130,12 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
                   title={t}
                   className={[
                     chip,
-                    'max-w-full truncate',
-                    selected ? 'chip-emerald text-emerald-800 dark:text-emerald-100' : '',
-                    selected ? chipSelected : '',
-                  ].join(' ')}
+                    "max-w-full truncate",
+                    selected
+                      ? "chip-emerald text-emerald-800 dark:text-emerald-100"
+                      : "",
+                    selected ? chipSelected : "",
+                  ].join(" ")}
                 >
                   {t}
                 </button>
@@ -149,7 +153,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
                 <label className="block text-xs mb-1">From</label>
                 <input
                   type="date"
-                  value={state.dateFrom || ''}
+                  value={state.dateFrom || ""}
                   onChange={(e) =>
                     setState((s) => ({ ...s, dateFrom: e.target.value }))
                   }
@@ -160,7 +164,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
                 <label className="block text-xs mb-1">To</label>
                 <input
                   type="date"
-                  value={state.dateTo || ''}
+                  value={state.dateTo || ""}
                   onChange={(e) =>
                     setState((s) => ({ ...s, dateTo: e.target.value }))
                   }
@@ -181,13 +185,32 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
             </label>
 
             <div>
+              <label className="block text-xs mb-1">Snapshots</label>
+              <select
+                value={state.snapshotStatus || "all"}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    snapshotStatus: e.target.value as any,
+                  }))
+                }
+                className="input w-full rounded-lg px-3 py-2"
+              >
+                <option value="all">All</option>
+                <option value="missing">Missing</option>
+                <option value="stale">Stale</option>
+                <option value="fresh">Has snapshot</option>
+              </select>
+            </div>
+
+            <div>
               <label className="block text-xs mb-1">Visibility</label>
               <select
                 value={state.visibility}
                 onChange={(e) =>
                   setState((s) => ({
                     ...s,
-                    visibility: e.target.value as UrlFilterState['visibility'],
+                    visibility: e.target.value as UrlFilterState["visibility"],
                   }))
                 }
                 className="input w-full rounded-lg px-3 py-2"
