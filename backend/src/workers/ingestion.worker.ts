@@ -8,6 +8,7 @@ import {
   detectScannedPdf,
 } from "../services/extract.service";
 import { createChunksForSource } from "../services/notebook.service";
+import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
 
 function bullConnection(): ConnectionOptions {
   const u = new URL(env.REDIS_URL);
@@ -55,11 +56,40 @@ export const ingestionWorker = new Worker(
       const u = src.url?.url;
       if (!u) throw new Error("URL source missing url.url");
 
-      // Normalize URL text to reduce newline/whitespace quote issues
-      const fullTextRaw = await extractTextFromUrl(u);
+      let fullTextRaw = "";
+      let documentRevisionId: string | null = null;
+
+      // Prefer latest URL_TEXT snapshot for traceability (avoids link rot/version drift)
+      if (src.urlId) {
+        const snap = await prisma.storedFile.findFirst({
+          where: {
+            urlId: src.urlId,
+            captureType: "URL_TEXT",
+            deletedAt: null,
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (snap?.storagePath) {
+          // Snapshot text is stored as a file; extract from disk (traceable)
+          fullTextRaw = await extractTextFromFile(
+            snap.storagePath,
+            snap.mimeType,
+          );
+
+          const rev = await ensureDocumentRevisionForStoredFile(snap.id);
+          documentRevisionId = rev.id;
+        }
+      }
+
+      // Fallback: live fetch (still works, but not “paper standard”)
+      if (!fullTextRaw) {
+        fullTextRaw = await extractTextFromUrl(u);
+      }
+
       const fullText = (fullTextRaw || "").replace(/\s+/g, " ").trim();
 
-      await createChunksForSource(sourceId, { fullText });
+      await createChunksForSource(sourceId, { fullText, documentRevisionId });
       await prisma.ingestionJob.update({
         where: { sourceId },
         data: { status: "SUCCESS", error: null },
@@ -70,6 +100,9 @@ export const ingestionWorker = new Worker(
     // ---------- FILE ingestion ----------
     const f = src.file;
     if (!f) throw new Error("FILE source missing stored file");
+
+    const docRev = await ensureDocumentRevisionForStoredFile(f.id);
+    const documentRevisionId = docRev.id;
 
     if (isPdf(f.mimeType, f.fileName)) {
       const pages = await extractPdfPagesFromFile(f.storagePath);
@@ -99,7 +132,7 @@ export const ingestionWorker = new Worker(
         .join("\n\n")
         .trim();
 
-      await createChunksForSource(sourceId, { fullText, pages });
+      await createChunksForSource(sourceId, { fullText, pages, documentRevisionId });
       await prisma.ingestionJob.update({
         where: { sourceId },
         data: { status: "SUCCESS", error: null },
@@ -112,7 +145,7 @@ export const ingestionWorker = new Worker(
     const header = `FILE: ${f.fileName}\nMIME: ${f.mimeType}\n\n`;
     const fullText = (header + (bodyRaw || "")).replace(/\s+/g, " ").trim();
 
-    await createChunksForSource(sourceId, { fullText });
+    await createChunksForSource(sourceId, { fullText, documentRevisionId });
     await prisma.ingestionJob.update({
       where: { sourceId },
       data: { status: "SUCCESS", error: null },

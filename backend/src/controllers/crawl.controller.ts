@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import prisma from "../config/database";
+import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
 import * as cheerio from "cheerio";
 import { createDom } from "../utils/dom";
 import { Readability } from "@mozilla/readability";
@@ -137,6 +138,19 @@ async function persistFile(
       urlId: meta?.urlId ?? null,
     } as any,
   });
+  // every StoredFile must map to a canonical DocumentRevision
+  try {
+    await ensureDocumentRevisionForStoredFile(rec.id);
+  } catch (e) {
+    // Hard fail + cleanup. We must not leave "orphan snapshots" without provenance.
+    try {
+      await prisma.storedFile.delete({ where: { id: rec.id } });
+    } catch {}
+    try {
+      fs.unlinkSync(storagePath);
+    } catch {}
+    throw e;
+  }
 
   return rec;
 }

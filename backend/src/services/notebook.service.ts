@@ -272,7 +272,11 @@ function roughTokens(s: string) {
 
 export async function createChunksForSource(
   sourceId: string,
-  payload: { fullText: string; pages?: { pageNumber: number; text: string }[] },
+  payload: {
+    fullText: string;
+    pages?: { pageNumber: number; text: string }[];
+    documentRevisionId?: string | null;
+  },
 ) {
   const fullText = payload.fullText || "";
   const chunks = splitTextWithOffsets(fullText, 1400, 220);
@@ -302,6 +306,7 @@ export async function createChunksForSource(
       ordinal: nextOrdinal,
       contentHash,
       isActive: true,
+      documentRevisionId: payload.documentRevisionId ?? null,
     },
     select: { id: true },
   });

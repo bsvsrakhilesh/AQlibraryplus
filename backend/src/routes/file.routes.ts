@@ -3,6 +3,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import prisma from "../config/database";
+import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
 import archiver from "archiver";
 import crypto from "crypto";
 import unzipper from "unzipper";
@@ -210,6 +211,16 @@ function newStoragePathLike(srcPath: string, fileName: string) {
 }
 // --- end helpers ---
 
+async function sha256File(filePath: string) {
+  return await new Promise<string>((resolve, reject) => {
+    const h = crypto.createHash("sha256");
+    const s = fs.createReadStream(filePath);
+    s.on("data", (d) => h.update(d));
+    s.on("error", reject);
+    s.on("end", () => resolve(h.digest("hex")));
+  });
+}
+
 // POST /api/files/upload/chunk
 // Fields: chunk (blob), fingerprint, chunkIndex, totalChunks, fileName
 r.post(
@@ -278,12 +289,10 @@ r.post(
           try {
             fs.rmdirSync(dir);
           } catch {}
-          return res
-            .status(415)
-            .json({
-              code: "UNSUPPORTED_MEDIA",
-              message: "Unsupported file type",
-            });
+          return res.status(415).json({
+            code: "UNSUPPORTED_MEDIA",
+            message: "Unsupported file type",
+          });
         }
 
         // 3) Cleanup chunks on success
@@ -298,6 +307,8 @@ r.post(
 
         // Continue with stat + DB upsert ...
         const stat = fs.statSync(finalPath);
+        const sha256 = await sha256File(finalPath);
+
         const updateData: any = {
           fileName,
           mimeType: inferMimeType(
@@ -308,6 +319,8 @@ r.post(
           uploaderId: "self",
           uploaderName: "You",
           storagePath: finalPath,
+          sha256,
+          contentHash: sha256,
         };
         const createData: any = {
           id: fingerprint,
@@ -334,6 +347,7 @@ r.post(
           update: updateData,
           create: createData,
         });
+        await ensureDocumentRevisionForStoredFile(String(rec.id));
 
         // Kick async tagging via Python ai-tagger (does not block API)
         try {
@@ -434,6 +448,7 @@ r.post("/files/finalize", async (req, res, next) => {
     // persist metadata in DB (upsert in case finalize called multiple times)
     // Determine final size
     const stat = fs.statSync(finalPath);
+    const sha256 = await sha256File(finalPath);
 
     const updateData: any = {
       fileName,
@@ -443,6 +458,8 @@ r.post("/files/finalize", async (req, res, next) => {
       uploaderId,
       uploaderName,
       storagePath: finalPath,
+      sha256,
+      contentHash: sha256,
     };
     const createData: any = {
       id: fingerprint,
@@ -453,6 +470,8 @@ r.post("/files/finalize", async (req, res, next) => {
       uploaderId,
       uploaderName,
       storagePath: finalPath,
+      sha256,
+      contentHash: sha256,
     };
     if (prismaSupportsFolders()) {
       updateData.folderId =
@@ -470,6 +489,7 @@ r.post("/files/finalize", async (req, res, next) => {
       update: updateData,
       create: createData,
     });
+    await ensureDocumentRevisionForStoredFile(String(record.id));
 
     res.json(record);
 
@@ -822,12 +842,10 @@ r.post("/folders", async (req, res, next) => {
 r.get("/folders", async (req, res, next) => {
   try {
     if (!prismaSupportsFolders()) {
-      return res
-        .status(501)
-        .json({
-          message:
-            "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
-        });
+      return res.status(501).json({
+        message:
+          "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
+      });
     }
     const { parentId } = req.query as Record<string, string>;
     const where: any = {};
@@ -851,12 +869,10 @@ r.get("/folders", async (req, res, next) => {
 r.get("/folders/:id", async (req, res, next) => {
   try {
     if (!prismaSupportsFolders()) {
-      return res
-        .status(501)
-        .json({
-          message:
-            "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
-        });
+      return res.status(501).json({
+        message:
+          "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
+      });
     }
     const id = req.params.id;
     const folder = await prisma.folder.findUnique({ where: { id } });
@@ -871,12 +887,10 @@ r.get("/folders/:id", async (req, res, next) => {
 r.patch("/folders/:id", async (req, res, next) => {
   try {
     if (!prismaSupportsFolders()) {
-      return res
-        .status(501)
-        .json({
-          message:
-            "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
-        });
+      return res.status(501).json({
+        message:
+          "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
+      });
     }
     const id = req.params.id;
     const { name, parentId } = req.body || {};
@@ -1019,6 +1033,7 @@ r.post("/files/:id/duplicate", async (req, res, next) => {
         folderId: prismaSupportsFolders() ? targetFolderId : undefined,
       } as any,
     });
+    await ensureDocumentRevisionForStoredFile(String(record.id));
 
     res.status(201).json(record);
   } catch (err) {
@@ -1260,12 +1275,10 @@ r.put("/files/:id/move", async (req, res, next) => {
 r.delete("/folders/:id", async (req, res, next) => {
   try {
     if (!prismaSupportsFolders()) {
-      return res
-        .status(501)
-        .json({
-          message:
-            "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
-        });
+      return res.status(501).json({
+        message:
+          "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
+      });
     }
 
     const id = req.params.id;
