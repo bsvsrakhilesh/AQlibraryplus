@@ -112,6 +112,41 @@ export async function getUrlById(id: number) {
   return rec;
 }
 
+// NEW: List snapshots for a URL (timeline)
+export async function getUrlSnapshots(urlId: number, limit = 50) {
+  // Ensure URL exists (clean 404)
+  const url = await prisma.url.findUnique({ where: { id: urlId } });
+  if (!url) {
+    const err = Object.assign(new Error(`URL with id ${urlId} not found`), {
+      status: 404,
+    });
+    throw err;
+  }
+
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+
+  return prisma.storedFile.findMany({
+    where: {
+      urlId,
+      deletedAt: null,
+      captureType: { in: ["URL_TEXT", "URL_PDF"] },
+    },
+    select: {
+      id: true,
+      fileName: true,
+      captureType: true,
+      createdAt: true,
+      sha256: true,
+      mimeType: true,
+      size: true,
+      sourceUrl: true,
+      urlId: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: safeLimit,
+  });
+}
+
 /** Create MANY URLs; skips duplicates; triggers async tagging for each created row */
 export async function createManyUrls(rows: CreateUrlInput[]) {
   let added = 0;
