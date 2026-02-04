@@ -1,5 +1,5 @@
 // backend/src/services/url.service.ts
-import { Prisma, TaggingStatus } from "@prisma/client";
+import { Prisma, TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
 

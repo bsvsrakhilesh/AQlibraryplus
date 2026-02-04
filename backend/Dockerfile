@@ -22,10 +22,6 @@ COPY package*.json ./
 # Install deps (use lock if present, otherwise fallback)
 RUN if [ -f package-lock.json ]; then npm ci || (echo "npm ci failed, running npm install" && npm install); else npm install; fi
 
-# Prisma client generation (needs schema + deps)
-COPY prisma ./prisma
-RUN npx prisma generate
-
 # ---------- build ----------
 FROM base AS build
 COPY tsconfig.json ./
@@ -54,7 +50,7 @@ ENV FILE_STORAGE_DIR=/data
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json package-lock.json ./
-COPY prisma ./prisma
+
 
 VOLUME ["/data"]
 EXPOSE 4000

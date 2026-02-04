@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../generated/prisma/client";
 import { mergeTags, mergeTagsMeta, TagMeta } from "../utils/tags";
 import type { StoredFileId, UrlId } from "../types/prisma-ids";
 

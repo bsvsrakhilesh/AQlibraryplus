@@ -1,5 +1,5 @@
 // backend/src/services/aiTagUrlAuto.service.ts
-import { TaggingStatus } from "@prisma/client";
+import { TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { createJobFromUrl, getJob } from "./pyTaggerClient";
 

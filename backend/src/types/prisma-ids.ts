@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../generated/prisma/client";
 
 /**
  * These aliases read the id types from your generated Prisma types,

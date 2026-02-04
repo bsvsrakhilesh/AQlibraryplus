@@ -1,5 +1,5 @@
 // backend/src/services/tag.service.ts
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { runAiTagForFile, scheduleAiTagForFile } from "./aiTagAuto.service";
 import { runAiTagForUrl, scheduleAiTagForUrl } from "./aiTagUrlAuto.service";

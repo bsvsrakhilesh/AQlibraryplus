@@ -4,7 +4,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import prisma from "../config/database";
 import { env } from "../config/env";
 import { openaiClient, defaultModel } from "./openaiClient";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../generated/prisma/client";
 import { embedQuery, toPgVectorLiteral } from "./embeddings.service";
 
 export type ChatHistoryItem = {
