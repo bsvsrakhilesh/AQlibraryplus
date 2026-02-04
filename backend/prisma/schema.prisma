@@ -53,6 +53,7 @@ model Url {
   snapshots StoredFile[] @relation("UrlSnapshots")
 
   notebookSources NotebookSource[] @relation("UrlNotebookSources")
+  captureEvents   CaptureEvent[]
 }
 
 model StoredFile {
@@ -81,7 +82,7 @@ model StoredFile {
 
   documentRevision    DocumentRevision?
   primaryForDocuments Document[]
-  captureEvent CaptureEvent?
+  captureEvent        CaptureEvent?
 
   urlId Int?
   url   Url? @relation("UrlSnapshots", fields: [urlId], references: [id], onDelete: SetNull)
@@ -293,7 +294,7 @@ model DocumentRevision {
   contentHash String?
 
   sourceRevisions SourceRevision[]
-  captureEvent CaptureEvent?
+  captureEvent    CaptureEvent?
 
   @@unique([documentId, ordinal])
   @@index([documentId])
@@ -308,7 +309,7 @@ model PipelineConfig {
   codeSha    String?
   createdAt  DateTime @default(now())
 
-  captureEvents  CaptureEvent[]
+  captureEvents   CaptureEvent[]
   sourceRevisions SourceRevision[]
 
   @@unique([name, version, configHash])
@@ -334,13 +335,13 @@ model CaptureEvent {
   captureType CaptureType
   sourceUrl   String?
   urlId       Int?
-  url         Url? @relation(fields: [urlId], references: [id], onDelete: SetNull)
+  url         Url?        @relation(fields: [urlId], references: [id], onDelete: SetNull)
 
   // physical artifact + canonical revision (both pinned)
-  storedFileId      String  @unique
-  storedFile        StoredFile @relation(fields: [storedFileId], references: [id], onDelete: Cascade)
+  storedFileId String     @unique
+  storedFile   StoredFile @relation(fields: [storedFileId], references: [id], onDelete: Cascade)
 
-  documentRevisionId String @unique
+  documentRevisionId String           @unique
   documentRevision   DocumentRevision @relation(fields: [documentRevisionId], references: [id], onDelete: Cascade)
 
   @@index([urlId])
