@@ -99,6 +99,63 @@ export async function getUrlSnapshots(urlId: number, limit = 50) {
 export async function deleteUrlsBulk(ids: number[]): Promise<void> {
   await api.delete("/api/urls", { data: { ids } });
 }
+
+// ---------- Collections API ----------
+export type BackendCollection = {
+  id: string;
+  name: string;
+  description?: string | null;
+  ownerId?: string | null;
+  visibility?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchCollections(): Promise<BackendCollection[]> {
+  const res = await api.get("/api/collections");
+  return res.data as BackendCollection[];
+}
+
+export async function createCollectionApi(body: {
+  id?: string;
+  name: string;
+  description?: string;
+  ownerId?: string;
+  visibility?: string;
+}): Promise<BackendCollection> {
+  const res = await api.post("/api/collections", body);
+  return res.data as BackendCollection;
+}
+
+export async function renameCollectionApi(id: string, name: string): Promise<BackendCollection> {
+  const res = await api.patch(`/api/collections/${id}`, { name });
+  return res.data as BackendCollection;
+}
+
+export async function deleteCollectionApi(id: string): Promise<void> {
+  await api.delete(`/api/collections/${id}`);
+}
+
+export async function setCollectionsForUrlApi(body: {
+  url: string;
+  title?: string;
+  snippet?: string;
+  collectionIds: string[];
+}): Promise<{ ok: true; url: string; collectionIds: string[] }> {
+  const res = await api.put("/api/collections/assign", body);
+  return res.data;
+}
+
+export async function fetchCollectionsUrlMap(): Promise<{ map: Record<string, string[]> }> {
+  const res = await api.get("/api/collections/url-map");
+  return res.data as { map: Record<string, string[]> };
+}
+
+export async function fetchCollectionsUrlMapFor(urls: string[]): Promise<{ map: Record<string, string[]> }> {
+  const res = await api.post("/api/collections/url-map", { urls });
+  return res.data as { map: Record<string, string[]> };
+}
+
 export type UrlTaggingSummary = {
   total: number;
   untagged: number;

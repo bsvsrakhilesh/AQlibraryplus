@@ -12,6 +12,7 @@ import FileManagerPage from "./pages/FileManagerPage";
 import { Page } from "./lib/types";
 import { ToastProvider } from "./components/providers/Toast";
 import { ConfirmProvider } from "./components/providers/Confirm";
+import { hydrateCollectionsFromBackend } from "./utils/collections";
 
 const STORAGE_KEY = "sidebar.expanded";
 
@@ -25,7 +26,11 @@ const App: React.FC = () => {
         : "";
 
     // /app contains only workspace pages
-    const allowed = new Set<Page>(["url-collector", "saved-urls", "file-manager"]);
+    const allowed = new Set<Page>([
+      "url-collector",
+      "saved-urls",
+      "file-manager",
+    ]);
 
     return allowed.has(h as Page) ? (h as Page) : "url-collector";
   });
@@ -72,9 +77,16 @@ const App: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Hydrate category/collection state from backend once per app load
+  useEffect(() => {
+    hydrateCollectionsFromBackend();
+  }, []);
+
   const renderPages = () => (
     <>
-      <div style={{ display: currentPage === "url-collector" ? "block" : "none" }}>
+      <div
+        style={{ display: currentPage === "url-collector" ? "block" : "none" }}
+      >
         <UrlCollectorPage />
       </div>
 
@@ -83,7 +95,11 @@ const App: React.FC = () => {
     </>
   );
 
-  const workspacePages: Page[] = ["url-collector", "saved-urls", "file-manager"];
+  const workspacePages: Page[] = [
+    "url-collector",
+    "saved-urls",
+    "file-manager",
+  ];
   const isWorkspacePage = workspacePages.includes(currentPage);
 
   return (

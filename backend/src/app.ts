@@ -19,6 +19,7 @@ import fileRoutes from './routes/file.routes';
 import crawlRoutes from './routes/crawl.routes';
 import aiTagRoutes from "./routes/aiTag.routes";
 import chunkRoutes from './routes/chunk.routes';
+import collectionRoutes from './routes/collection.routes';
 
 const app = express();
 
@@ -89,6 +90,7 @@ app.use('/api/crawl',  crawlLimiter);
 app.use('/api/files',  uploadLimiter);
 
 app.use('/api', urlRoutes);
+app.use('/api', collectionRoutes);
 app.use('/api/search', searchLimiter, searchRoutes);
 app.use('/api', fileRoutes);
 app.use('/api', crawlRoutes);

@@ -55,6 +55,31 @@ model Url {
 
   notebookSources NotebookSource[] @relation("UrlNotebookSources")
   captureEvents   CaptureEvent[]
+  collections CollectionUrl[]
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String?  // optional until auth exists
+  visibility  String   @default("private")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  urls CollectionUrl[]
+}
+
+model CollectionUrl {
+  collectionId String
+  urlId        Int
+  createdAt    DateTime @default(now())
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  url        Url        @relation(fields: [urlId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, urlId])
+  @@index([urlId])
 }
 
 model StoredFile {
