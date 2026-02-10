@@ -1,14 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import CollectionPickerModal from '../savedurls/CollectionPickerModal';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import CollectionPickerModal from "../savedurls/CollectionPickerModal";
 import {
   addUrlToCollection,
   createCollection,
   getCollections,
   getUrlCollections,
+  reconcileUrlCollections,
   removeUrlFromCollection,
   setUrlCollections,
-} from '../../utils/collections';
-import { SearchResult } from '../../lib/types';
+} from "../../utils/collections";
+import { SearchResult } from "../../lib/types";
 import {
   fetchSavedUrls,
   saveUrls,
@@ -18,11 +19,15 @@ import {
   type BackendUrlRow,
   crawlSavePdf,
   crawlSaveText,
-} from '../../lib/api';
-import DownloadIcon from '../icons/DownloadIcon';
-import FolderPickerModal from '../savedurls/FolderPickerModal';
-import { StaggerList, StaggerItem } from '../motion/StaggerList';
-import { canonicalize as canonicalizeSaved, removeSaved, SAVED_KEY } from '../../utils/saved';
+} from "../../lib/api";
+import DownloadIcon from "../icons/DownloadIcon";
+import FolderPickerModal from "../savedurls/FolderPickerModal";
+import { StaggerList, StaggerItem } from "../motion/StaggerList";
+import {
+  canonicalize as canonicalizeSaved,
+  removeSaved,
+  SAVED_KEY,
+} from "../../utils/saved";
 
 interface ResultsTableProps {
   results: SearchResult[];
@@ -31,8 +36,8 @@ interface ResultsTableProps {
   onToggleRow?: (url: string) => void;
   onToggleAll?: () => void;
   onClear?: () => void;
-  sortKey?: 'original' | 'title' | 'domain';
-  onSortChange?: (k: 'original' | 'title' | 'domain') => void;
+  sortKey?: "original" | "title" | "domain";
+  onSortChange?: (k: "original" | "title" | "domain") => void;
 }
 
 /* ---------------- helpers ---------------- */
@@ -41,62 +46,66 @@ const host = (url: string) => {
   try {
     return new URL(url).host;
   } catch {
-    return '';
+    return "";
   }
 };
 
 const nicePath = (url: string) => {
   try {
     const u = new URL(url);
-    const p = decodeURIComponent(u.pathname || '/');
-    const short = p.length > 48 ? p.slice(0, 45) + '…' : p || '/';
-    return short + (u.search ? '…' : '');
+    const p = decodeURIComponent(u.pathname || "/");
+    const short = p.length > 48 ? p.slice(0, 45) + "…" : p || "/";
+    return short + (u.search ? "…" : "");
   } catch {
     return url;
   }
 };
 
-const favicon = (url: string) => `https://icons.duckduckgo.com/ip3/${host(url)}.ico`;
+const favicon = (url: string) =>
+  `https://icons.duckduckgo.com/ip3/${host(url)}.ico`;
 
 // Dedupe canonicalization (strip common tracking params)
 const TRACKING_PARAMS = new Set([
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_term',
-  'utm_content',
-  'utm_id',
-  'utm_name',
-  'utm_reader',
-  'utm_referrer',
-  'gclid',
-  'fbclid',
-  'igshid',
-  'msclkid',
-  'mc_cid',
-  'mc_eid',
-  'mkt_tok',
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "utm_id",
+  "utm_name",
+  "utm_reader",
+  "utm_referrer",
+  "gclid",
+  "fbclid",
+  "igshid",
+  "msclkid",
+  "mc_cid",
+  "mc_eid",
+  "mkt_tok",
 ]);
 
 const canonicalUrl = (raw: string) => {
   try {
     const u = new URL(raw);
 
-    u.hash = '';
+    u.hash = "";
     TRACKING_PARAMS.forEach((p) => u.searchParams.delete(p));
 
     u.hostname = u.hostname.toLowerCase();
-    if ((u.protocol === 'http:' && u.port === '80') || (u.protocol === 'https:' && u.port === '443')) {
-      u.port = '';
+    if (
+      (u.protocol === "http:" && u.port === "80") ||
+      (u.protocol === "https:" && u.port === "443")
+    ) {
+      u.port = "";
     }
 
-    if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+    if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
       u.pathname = u.pathname.slice(0, -1);
     }
 
     const params = Array.from(u.searchParams.entries());
     params.sort(([a], [b]) => a.localeCompare(b));
-    u.search = '';
+    u.search = "";
     params.forEach(([k, v]) => u.searchParams.append(k, v));
 
     return u.toString();
@@ -105,27 +114,29 @@ const canonicalUrl = (raw: string) => {
   }
 };
 
-function exportToCsv(rows: SearchResult[], filename = 'results') {
-  const headers = ['title', 'url', 'snippet'];
+function exportToCsv(rows: SearchResult[], filename = "results") {
+  const headers = ["title", "url", "snippet"];
   const esc = (v: any) => {
-    if (v == null) return '';
+    if (v == null) return "";
     const s = String(v).replace(/"/g, '""');
     return /[,"\n]/.test(s) ? `"${s}"` : s;
   };
-  const body = rows.map((r) => [r.title, r.url, r.snippet ?? ''].map(esc).join(',')).join('\r\n');
-  const csv = [headers.join(','), body].join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const body = rows
+    .map((r) => [r.title, r.url, r.snippet ?? ""].map(esc).join(","))
+    .join("\r\n");
+  const csv = [headers.join(","), body].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = `${filename}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-type SavedFilter = 'all' | 'saved' | 'unsaved';
-type SortKey = 'original' | 'title' | 'domain';
-type SortDir = 'asc' | 'desc';
+type SavedFilter = "all" | "saved" | "unsaved";
+type SortKey = "original" | "title" | "domain";
+type SortDir = "asc" | "desc";
 
 /* ---------------- component ---------------- */
 
@@ -147,15 +158,17 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   const [rowSaving, setRowSaving] = useState<string | null>(null);
   const [rowSaved, setRowSaved] = useState<Record<string, boolean>>({});
 
-  const [sortKeyLocal, setSortKeyLocal] = useState<SortKey>('original');
+  const [sortKeyLocal, setSortKeyLocal] = useState<SortKey>("original");
   const sortKey = (sortKeyProp ?? sortKeyLocal) as SortKey;
   const setSortKey = onSortChange ?? setSortKeyLocal;
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   // Collection picker state (Save)
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
   const [collections, setCollections] = useState(getCollections());
-  const [pendingRows, setPendingRows] = useState<SaveUrlsRequestRow[] | null>(null);
+  const [pendingRows, setPendingRows] = useState<SaveUrlsRequestRow[] | null>(
+    null,
+  );
 
   // Remove-from-collection picker state
   const [removePickerOpen, setRemovePickerOpen] = useState(false);
@@ -163,24 +176,30 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
   // capture modal state
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerMode, setPickerMode] = useState<'text' | 'pdf'>('text');
-  const [pickerTarget, setPickerTarget] = useState<{ url: string; title: string }>({ url: '', title: '' });
+  const [pickerMode, setPickerMode] = useState<"text" | "pdf">("text");
+  const [pickerTarget, setPickerTarget] = useState<{
+    url: string;
+    title: string;
+  }>({ url: "", title: "" });
   const [captureBusy, setCaptureBusy] = useState<string | null>(null);
 
   // Dedupe toggle
   const [hideDuplicates, setHideDuplicates] = useState(true);
 
   // Filtering UI
-  const [filterQuery, setFilterQuery] = useState('');
-  const [filterDomain, setFilterDomain] = useState<'all' | string>('all');
-  const [savedFilter, setSavedFilter] = useState<SavedFilter>('all');
+  const [filterQuery, setFilterQuery] = useState("");
+  const [filterDomain, setFilterDomain] = useState<"all" | string>("all");
+  const [savedFilter, setSavedFilter] = useState<SavedFilter>("all");
   const [selectedOnly, setSelectedOnly] = useState(false);
 
   // Non-blocking notifications
-  const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    type: "success" | "error" | "info";
+    message: string;
+  } | null>(null);
   const noticeTimer = useRef<number | null>(null);
 
-  const pushNotice = (type: 'success' | 'error' | 'info', message: string) => {
+  const pushNotice = (type: "success" | "error" | "info", message: string) => {
     setNotice({ type, message });
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setNotice(null), 4500);
@@ -190,7 +209,9 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   const backendIdsRef = useRef<Record<string, number>>({});
   const backendSetRef = useRef<Set<string>>(new Set());
 
-  const refreshBackendSavedIndex = async (rowsForRecalc: SearchResult[] = results) => {
+  const refreshBackendSavedIndex = async (
+    rowsForRecalc: SearchResult[] = results,
+  ) => {
     try {
       const saved: BackendUrlRow[] = await fetchSavedUrls();
       const idMap: Record<string, number> = {};
@@ -205,14 +226,16 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
       backendIdsRef.current = idMap;
       backendSetRef.current = set;
 
-      // Merge backend-saved OR locally categorized
+      // If backend is reachable, backend is the source of truth.
+      // Also reconcile local collections to avoid stale “Saved” badges.
+      reconcileUrlCollections(set);
+
       setRowSaved((prev) => {
         const next = { ...prev };
         for (const rr of rowsForRecalc) {
           const c = canonicalizeSaved(rr.url);
           const inBackend = set.has(c);
-          const inLocalCategory = getUrlCollections(rr.url).length > 0;
-          next[rr.url] = inBackend || inLocalCategory;
+          next[rr.url] = inBackend;
         }
         return next;
       });
@@ -231,63 +254,71 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
   // Initial sync + when results change
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     refreshBackendSavedIndex(results);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results]);
 
   // Recompute saved states if local storage changes (other tabs/pages)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
-      if (e.key === 'collections' || e.key === 'urlCollectionsByUrl' || e.key === SAVED_KEY) {
+      if (
+        e.key === "collections" ||
+        e.key === "urlCollectionsByUrl" ||
+        e.key === SAVED_KEY
+      ) {
         refreshBackendSavedIndex(results);
       }
     };
 
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results]);
 
   const sorted = useMemo(() => {
-    if (sortKey === 'original') return results;
-    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortKey === "original") return results;
+    const dir = sortDir === "asc" ? 1 : -1;
     const clone = [...results];
-  
-    if (sortKey === 'title') {
+
+    if (sortKey === "title") {
       // Stable-ish sort: tie-break by URL so ordering doesn't flicker
       clone.sort((a, b) => {
-        const tA = (a.title || '').toLowerCase();
-        const tB = (b.title || '').toLowerCase();
+        const tA = (a.title || "").toLowerCase();
+        const tB = (b.title || "").toLowerCase();
         if (tA === tB) return a.url.localeCompare(b.url) * dir;
         return tA.localeCompare(tB) * dir;
       });
     }
-  
-    if (sortKey === 'domain') {
+
+    if (sortKey === "domain") {
       clone.sort((a, b) => {
         const dA = host(a.url).toLowerCase();
         const dB = host(b.url).toLowerCase();
         if (dA === dB) {
-          const tA = (a.title || '').toLowerCase();
-          const tB = (b.title || '').toLowerCase();
+          const tA = (a.title || "").toLowerCase();
+          const tB = (b.title || "").toLowerCase();
           if (tA === tB) return a.url.localeCompare(b.url) * dir;
           return tA.localeCompare(tB) * dir;
         }
         return dA.localeCompare(dB) * dir;
       });
     }
-  
+
     return clone;
   }, [results, sortKey, sortDir]);
 
   // Dedupe + duplicate counters
   const { displayed, dupCountByUrl, duplicatesRemoved } = useMemo(() => {
     if (!hideDuplicates) {
-      return { displayed: sorted, dupCountByUrl: {} as Record<string, number>, duplicatesRemoved: 0 };
+      return {
+        displayed: sorted,
+        dupCountByUrl: {} as Record<string, number>,
+        duplicatesRemoved: 0,
+      };
     }
 
     const seen = new Map<string, string>(); // canonical -> first original url
@@ -317,7 +348,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   const domainOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of displayed) {
-      const d = host(r.url) || 'unknown';
+      const d = host(r.url) || "unknown";
       counts.set(d, (counts.get(d) ?? 0) + 1);
     }
     const arr = Array.from(counts.entries())
@@ -332,37 +363,61 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     const q = filterQuery.trim().toLowerCase();
 
     return displayed.filter((r) => {
-      const d = host(r.url) || 'unknown';
-      if (filterDomain !== 'all' && d !== filterDomain) return false;
+      const d = host(r.url) || "unknown";
+      if (filterDomain !== "all" && d !== filterDomain) return false;
 
       const isSaved = !!rowSaved[r.url];
-      if (savedFilter === 'saved' && !isSaved) return false;
-      if (savedFilter === 'unsaved' && isSaved) return false;
+      if (savedFilter === "saved" && !isSaved) return false;
+      if (savedFilter === "unsaved" && isSaved) return false;
 
       if (selectedOnly && !selected.has(r.url)) return false;
 
       if (q) {
-        const hay = `${r.title ?? ''}\n${r.snippet ?? ''}\n${r.url}`.toLowerCase();
+        const hay =
+          `${r.title ?? ""}\n${r.snippet ?? ""}\n${r.url}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
 
       return true;
     });
-  }, [displayed, filterQuery, filterDomain, savedFilter, selectedOnly, selected, rowSaved]);
+  }, [
+    displayed,
+    filterQuery,
+    filterDomain,
+    savedFilter,
+    selectedOnly,
+    selected,
+    rowSaved,
+  ]);
 
   // Pagination (10 per page)
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)), [filtered.length]);
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)),
+    [filtered.length],
+  );
   const safePage = Math.min(page, totalPages);
   const pageStart = (safePage - 1) * PAGE_SIZE;
   const pageEnd = Math.min(filtered.length, pageStart + PAGE_SIZE);
-  const pageRows = useMemo(() => filtered.slice(pageStart, pageStart + PAGE_SIZE), [filtered, pageStart]);
-  
+  const pageRows = useMemo(
+    () => filtered.slice(pageStart, pageStart + PAGE_SIZE),
+    [filtered, pageStart],
+  );
+
   // When filters/sort/dedupe change, jump back to page 1 so the user doesn't land on an empty page.
   useEffect(() => {
     setPage(1);
-  }, [filterQuery, filterDomain, savedFilter, selectedOnly, sortKey, sortDir, hideDuplicates, results.length]);
+  }, [
+    filterQuery,
+    filterDomain,
+    savedFilter,
+    selectedOnly,
+    sortKey,
+    sortDir,
+    hideDuplicates,
+    results.length,
+  ]);
 
   const allSelected = useMemo(() => {
     if (pageRows.length === 0) return false;
@@ -374,7 +429,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     // Parent-controlled selection: keep existing behavior.
     // Local selection: toggle only the current page to match pagination UX.
     if (onToggleAll) return onToggleAll();
-    
+
     if (allSelected) {
       const next = new Set(localSelected);
       pageRows.forEach((r) => next.delete(r.url));
@@ -398,10 +453,14 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
     const rows: SaveUrlsRequestRow[] = filtered
       .filter((r) => selected.has(r.url))
-      .map((r) => ({ url: r.url, title: r.title ?? r.url, snippet: r.snippet ?? '' }));
+      .map((r) => ({
+        url: r.url,
+        title: r.title ?? r.url,
+        snippet: r.snippet ?? "",
+      }));
 
     if (rows.length === 0) {
-      pushNotice('info', 'No selected rows match current filters.');
+      pushNotice("info", "No selected rows match current filters.");
       return;
     }
 
@@ -412,7 +471,9 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
   const saveSingle = async (r: SearchResult) => {
     if (rowSaved[r.url]) return;
-    const rows: SaveUrlsRequestRow[] = [{ url: r.url, title: r.title ?? r.url, snippet: r.snippet ?? '' }];
+    const rows: SaveUrlsRequestRow[] = [
+      { url: r.url, title: r.title ?? r.url, snippet: r.snippet ?? "" },
+    ];
     setPendingRows(rows);
     setCollections(getCollections());
     setCollectionPickerOpen(true);
@@ -444,12 +505,18 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
         return next;
       });
 
-      pushNotice('success', `Saved ${res.added} URL${res.added === 1 ? '' : 's'} (skipped ${res.skipped}).`);
+      pushNotice(
+        "success",
+        `Saved ${res.added} URL${res.added === 1 ? "" : "s"} (skipped ${res.skipped}).`,
+      );
 
       // refresh to get backend ids
       await refreshBackendSavedIndex(results);
     } catch (e: any) {
-      pushNotice('error', `Failed to save URLs: ${e?.message ?? 'Unknown error'}`);
+      pushNotice(
+        "error",
+        `Failed to save URLs: ${e?.message ?? "Unknown error"}`,
+      );
     } finally {
       setRowSaving(null);
       setIsSaving(false);
@@ -458,17 +525,26 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   };
 
   const exportSelected = () => {
-    const rows = selected.size > 0 ? filtered.filter((r) => selected.has(r.url)) : filtered;
-    exportToCsv(rows, selected.size > 0 ? 'results_selected' : 'results_filtered');
-    pushNotice('info', `Exported ${rows.length} row${rows.length === 1 ? '' : 's'} to CSV.`);
+    const rows =
+      selected.size > 0
+        ? filtered.filter((r) => selected.has(r.url))
+        : filtered;
+    exportToCsv(
+      rows,
+      selected.size > 0 ? "results_selected" : "results_filtered",
+    );
+    pushNotice(
+      "info",
+      `Exported ${rows.length} row${rows.length === 1 ? "" : "s"} to CSV.`,
+    );
   };
 
   const copyUrl = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      pushNotice('info', 'Copied URL to clipboard.');
+      pushNotice("info", "Copied URL to clipboard.");
     } catch {
-      pushNotice('error', 'Copy failed (clipboard not available).');
+      pushNotice("error", "Copy failed (clipboard not available).");
     }
   };
 
@@ -497,12 +573,12 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
       // 4) UI update
       setRowSaved((prev) => ({ ...prev, [rawUrl]: false }));
-      pushNotice('success', 'Removed from Saved.');
+      pushNotice("success", "Removed from Saved.");
 
       // 5) Refresh backend set/map (in case multiple rows share same canonical)
       await refreshBackendSavedIndex(results);
     } catch (e: any) {
-      pushNotice('error', `Could not remove: ${e?.message ?? 'Unknown error'}`);
+      pushNotice("error", `Could not remove: ${e?.message ?? "Unknown error"}`);
     } finally {
       setRowSaving(null);
     }
@@ -529,52 +605,62 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     const stillBackendSaved = backendSetRef.current.has(canon);
     const stillInAnyCategory = getUrlCollections(removeTargetUrl).length > 0;
 
-    setRowSaved((prev) => ({ ...prev, [removeTargetUrl]: stillBackendSaved || stillInAnyCategory }));
+    setRowSaved((prev) => ({
+      ...prev,
+      [removeTargetUrl]: stillBackendSaved || stillInAnyCategory,
+    }));
 
-    pushNotice('info', 'Removed from category.');
+    pushNotice("info", "Removed from category.");
     setRemovePickerOpen(false);
     setRemoveTargetUrl(null);
   };
 
   // open modal to choose destination + filename
-  const openCapture = (mode: 'text' | 'pdf', url: string, title: string) => {
+  const openCapture = (mode: "text" | "pdf", url: string, title: string) => {
     setPickerMode(mode);
     setPickerTarget({ url, title });
     setPickerOpen(true);
   };
 
   // confirm + call backend to persist capture
-  const onConfirmCapture = async (opts: { folderId?: string | null; fileName: string; mode: 'text' | 'pdf' }) => {
+  const onConfirmCapture = async (opts: {
+    folderId?: string | null;
+    fileName: string;
+    mode: "text" | "pdf";
+  }) => {
     setPickerOpen(false);
     const { folderId, fileName, mode } = opts;
     const url = pickerTarget.url;
 
     setCaptureBusy(url);
     try {
-      if (mode === 'text') {
+      if (mode === "text") {
         await crawlSaveText(url, folderId ?? undefined, fileName);
       } else {
         await crawlSavePdf(url, folderId ?? undefined, fileName, true, true);
       }
-      pushNotice('success', 'Captured and saved successfully.');
+      pushNotice("success", "Captured and saved successfully.");
     } catch (e) {
       console.error(e);
-      pushNotice('error', 'Capture failed. See console for details.');
+      pushNotice("error", "Capture failed. See console for details.");
     } finally {
       setCaptureBusy(null);
     }
   };
 
-  const padY = 'py-4';
-  const titleSize = 'text-[16px]';
+  const padY = "py-4";
+  const titleSize = "text-[16px]";
 
   const filtersActive =
-    filterQuery.trim() !== '' || filterDomain !== 'all' || savedFilter !== 'all' || selectedOnly;
+    filterQuery.trim() !== "" ||
+    filterDomain !== "all" ||
+    savedFilter !== "all" ||
+    selectedOnly;
 
   const clearFilters = () => {
-    setFilterQuery('');
-    setFilterDomain('all');
-    setSavedFilter('all');
+    setFilterQuery("");
+    setFilterDomain("all");
+    setSavedFilter("all");
     setSelectedOnly(false);
   };
 
@@ -591,13 +677,13 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           role="status"
           aria-live="polite"
           className={[
-            'mb-3 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm',
-            notice.type === 'success'
-              ? 'border-green-200 bg-green-50 text-green-800'
-              : notice.type === 'error'
-              ? 'border-red-200 bg-red-50 text-red-800'
-              : 'border-gray-200 bg-gray-50 text-gray-800',
-          ].join(' ')}
+            "mb-3 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm",
+            notice.type === "success"
+              ? "border-green-200 bg-green-50 text-green-800"
+              : notice.type === "error"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-gray-200 bg-gray-50 text-gray-800",
+          ].join(" ")}
         >
           <div className="min-w-0">{notice.message}</div>
           <button
@@ -616,14 +702,18 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           <div className="text-sm text-gray-600">
             {results.length ? (
               <>
-                Showing{' '}
+                Showing{" "}
                 <span className="font-medium text-gray-900">
                   {filtered.length === 0 ? 0 : pageStart + 1}-{pageEnd}
-                </span>{' '}
-                of <span className="font-medium text-gray-900">{filtered.length}</span>
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-gray-900">
+                  {filtered.length}
+                </span>
                 {hideDuplicates && duplicatesRemoved > 0 && (
                   <span className="ml-2 text-xs text-gray-500">
-                    ({duplicatesRemoved} duplicate{duplicatesRemoved === 1 ? '' : 's'} hidden)
+                    ({duplicatesRemoved} duplicate
+                    {duplicatesRemoved === 1 ? "" : "s"} hidden)
                   </span>
                 )}
                 {selectable && selected.size > 0 && (
@@ -633,7 +723,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                 )}
               </>
             ) : (
-              'No results'
+              "No results"
             )}
           </div>
 
@@ -724,7 +814,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                 onChange={(e) => {
                   const next = e.target.value as SortKey;
                   setSortKey(next);
-                  if (next === 'original') setSortDir('asc');
+                  if (next === "original") setSortDir("asc");
                 }}
                 className="rounded-md border border-gray-200 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
                 aria-label="Sort results"
@@ -733,24 +823,33 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                 <option value="title">Title</option>
                 <option value="domain">Domain</option>
               </select>
-              
-              {sortKey !== 'original' && (
+
+              {sortKey !== "original" && (
                 <button
                   type="button"
-                  onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                  onClick={() =>
+                    setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+                  }
                   className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-200"
-                  aria-label={sortDir === 'asc' ? 'Sort descending' : 'Sort ascending'}
-                  title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
+                  aria-label={
+                    sortDir === "asc" ? "Sort descending" : "Sort ascending"
+                  }
+                  title={sortDir === "asc" ? "Ascending" : "Descending"}
                 >
-                  {sortDir === 'asc' ? 'A→Z' : 'Z→A'}
+                  {sortDir === "asc" ? "A→Z" : "Z→A"}
                 </button>
               )}
             </div>
 
             {selectable && filtered.length > 0 && (
               <label className="ml-1 flex cursor-pointer select-none items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" className="h-4 w-4" checked={allSelected} onChange={toggleAll} />
-                Select all ({onToggleAll ? 'loaded' : 'page'})
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                />
+                Select all ({onToggleAll ? "loaded" : "page"})
               </label>
             )}
           </div>
@@ -763,7 +862,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
               disabled={selected.size === 0 || isSaving}
               className="btn-primary rounded-full px-4 py-2 disabled:opacity-60"
             >
-              {isSaving ? 'Saving…' : `Save selected (${selected.size || 0})`}
+              {isSaving ? "Saving…" : `Save selected (${selected.size || 0})`}
             </button>
           )}
 
@@ -778,10 +877,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
       {filtered.length > 0 && totalPages > 1 && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-100 bg-white/70 px-3 py-2 text-sm">
           <div className="text-gray-600">
-            Page <span className="font-medium text-gray-900">{safePage}</span> of{' '}
-            <span className="font-medium text-gray-900">{totalPages}</span>
+            Page <span className="font-medium text-gray-900">{safePage}</span>{" "}
+            of <span className="font-medium text-gray-900">{totalPages}</span>
           </div>
-      
+
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -838,29 +937,37 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
               key={r.url}
               onClick={(e: React.MouseEvent) => {
                 const t = e.target as HTMLElement;
-                if (t.closest('button, a, input, select, textarea, label')) return;
-                window.open(r.url, '_blank', 'noopener,noreferrer');
+                if (t.closest("button, a, input, select, textarea, label"))
+                  return;
+                window.open(r.url, "_blank", "noopener,noreferrer");
               }}
               onKeyDown={(e: React.KeyboardEvent) => {
                 if (
-                  (e.key === 'Enter' || e.key === ' ') &&
-                  !(e.target as HTMLElement).closest('button, a, input, select, textarea, label')
+                  (e.key === "Enter" || e.key === " ") &&
+                  !(e.target as HTMLElement).closest(
+                    "button, a, input, select, textarea, label",
+                  )
                 ) {
                   e.preventDefault();
-                  window.open(r.url, '_blank', 'noopener,noreferrer');
+                  window.open(r.url, "_blank", "noopener,noreferrer");
                 }
               }}
               role="link"
               tabIndex={0}
               className={[
-                'group relative rounded-xl border border-gray-100 bg-white/80 backdrop-blur-sm',
-                'hover:shadow-soft hover:-translate-y-[1px] hover:border-green-200/80 hover:bg-white',
-                'transition-all duration-200 ease-out cursor-pointer',
-              ].join(' ')}
+                "group relative rounded-xl border border-gray-100 bg-white/80 backdrop-blur-sm",
+                "hover:shadow-soft hover:-translate-y-[1px] hover:border-green-200/80 hover:bg-white",
+                "transition-all duration-200 ease-out cursor-pointer",
+              ].join(" ")}
             >
               <span className="absolute left-0 top-0 h-full w-[2px] rounded-l-xl bg-transparent group-hover:bg-green-400/90 group-hover:w-[3px] transition-all duration-200 ease-out" />
 
-              <div className={['grid grid-cols-[auto,1fr,auto] items-start gap-3 px-3 sm:px-4', padY].join(' ')}>
+              <div
+                className={[
+                  "grid grid-cols-[auto,1fr,auto] items-start gap-3 px-3 sm:px-4",
+                  padY,
+                ].join(" ")}
+              >
                 {selectable ? (
                   <div className="pt-1">
                     <input
@@ -899,10 +1006,12 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                         className="h-3.5 w-3.5 rounded-sm"
                         referrerPolicy="no-referrer"
                         onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+                          (
+                            e.currentTarget as HTMLImageElement
+                          ).style.visibility = "hidden";
                         }}
                       />
-                      {h || 'unknown'}
+                      {h || "unknown"}
                       <span className="text-gray-400">·</span>
                       <span className="text-gray-500">{nicePath(r.url)}</span>
                     </span>
@@ -912,7 +1021,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                         className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
                         title="Other results were the same page with tracking parameters"
                       >
-                        +{dupN} duplicate{dupN === 1 ? '' : 's'}
+                        +{dupN} duplicate{dupN === 1 ? "" : "s"}
                       </span>
                     )}
 
@@ -921,13 +1030,16 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                         className="ml-1 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
                         title="This URL is assigned to local categories"
                       >
-                        {categoryCount} categor{categoryCount === 1 ? 'y' : 'ies'}
+                        {categoryCount} categor
+                        {categoryCount === 1 ? "y" : "ies"}
                       </span>
                     )}
                   </div>
 
                   {r.snippet && (
-                    <p className="mt-2 text-[13.5px] leading-6 text-gray-700 line-clamp-3">{r.snippet}</p>
+                    <p className="mt-2 text-[13.5px] leading-6 text-gray-700 line-clamp-3">
+                      {r.snippet}
+                    </p>
                   )}
                 </div>
 
@@ -943,7 +1055,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                       title="Save URL"
                     >
                       {rowSaving === r.url ? (
-                        'Saving…'
+                        "Saving…"
                       ) : (
                         <>
                           <SaveIcon className="h-4 w-4" />
@@ -984,7 +1096,11 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                         className="btn-ghost px-3 py-1.5"
                         title="Remove from Saved"
                       >
-                        {rowSaving === r.url ? <SpinnerMini /> : <TrashIcon className="h-4 w-4" />}
+                        {rowSaving === r.url ? (
+                          <SpinnerMini />
+                        ) : (
+                          <TrashIcon className="h-4 w-4" />
+                        )}
                         <span className="hidden sm:inline">Unsave</span>
                       </button>
                     </div>
@@ -994,7 +1110,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        openCapture('text', r.url, r.title || h || 'page');
+                        openCapture("text", r.url, r.title || h || "page");
                       }}
                       className="btn-ghost px-3 py-1.5"
                       title="Capture as text"
@@ -1005,7 +1121,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        openCapture('pdf', r.url, r.title || h || 'page');
+                        openCapture("pdf", r.url, r.title || h || "page");
                       }}
                       className="btn-ghost px-3 py-1.5"
                       title="Capture as PDF"
@@ -1040,8 +1156,12 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
         {results.length > 0 && filtered.length === 0 && (
           <li className="rounded-xl border border-dashed border-gray-300 bg-white/60 p-10 text-center">
-            <div className="text-lg font-semibold text-gray-900">No matches</div>
-            <div className="text-gray-600">Your filters removed all results. Try clearing filters.</div>
+            <div className="text-lg font-semibold text-gray-900">
+              No matches
+            </div>
+            <div className="text-gray-600">
+              Your filters removed all results. Try clearing filters.
+            </div>
             <button
               type="button"
               className="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm hover:bg-gray-50"
@@ -1078,9 +1198,9 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
       <FolderPickerModal
         open={pickerOpen}
         suggestedName={
-          pickerMode === 'pdf'
-            ? `${(pickerTarget.title || host(pickerTarget.url) || 'page').slice(0, 60)}.pdf`
-            : `${(pickerTarget.title || host(pickerTarget.url) || 'page').slice(0, 60)}.txt`
+          pickerMode === "pdf"
+            ? `${(pickerTarget.title || host(pickerTarget.url) || "page").slice(0, 60)}.pdf`
+            : `${(pickerTarget.title || host(pickerTarget.url) || "page").slice(0, 60)}.txt`
         }
         mode={pickerMode}
         onCancel={() => setPickerOpen(false)}
@@ -1119,7 +1239,10 @@ function SaveIcon(props: React.SVGProps<SVGSVGElement>) {
 function CheckIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="m9 16.2-3.5-3.6L4 14l5 5 11-11-1.5-1.5L9 16.2Z" />
+      <path
+        fill="currentColor"
+        d="m9 16.2-3.5-3.6L4 14l5 5 11-11-1.5-1.5L9 16.2Z"
+      />
     </svg>
   );
 }
@@ -1161,16 +1284,36 @@ function TagOffIcon(props: React.SVGProps<SVGSVGElement>) {
 function ListFilterIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path fill="currentColor" d="M10 18v-2h10v2H10Zm-6-5v-2h16v2H4Zm3-5V6h13v2H7Z" />
+      <path
+        fill="currentColor"
+        d="M10 18v-2h10v2H10Zm-6-5v-2h16v2H4Zm3-5V6h13v2H7Z"
+      />
     </svg>
   );
 }
 
 function SpinnerMini() {
   return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity=".2" />
-      <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" fill="none" />
+    <svg
+      className="h-4 w-4 animate-spin"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+        fill="none"
+        opacity=".2"
+      />
+      <path
+        d="M22 12a10 10 0 0 1-10 10"
+        stroke="currentColor"
+        strokeWidth="4"
+        fill="none"
+      />
     </svg>
   );
 }

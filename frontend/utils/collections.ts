@@ -1,8 +1,8 @@
-import { Collection } from '../lib/types';
-import { canonicalize } from './saved';
+import { Collection } from "../lib/types";
+import { canonicalize } from "./saved";
 
-const COLLECTIONS_KEY = 'collections';
-const URL_COLLECTIONS_KEY = 'urlCollectionsByUrl';
+const COLLECTIONS_KEY = "collections";
+const URL_COLLECTIONS_KEY = "urlCollectionsByUrl";
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -19,18 +19,18 @@ function writeJSON<T>(key: string, value: T) {
 }
 
 function genId(): string {
-  return 'c_' + Math.random().toString(36).slice(2, 10);
+  return "c_" + Math.random().toString(36).slice(2, 10);
 }
 
 export function getCollections(): Collection[] {
   const cols = readJSON<Collection[]>(COLLECTIONS_KEY, []);
   if (cols.length === 0) {
     const def: Collection = {
-      id: 'c_general',
-      name: 'General',
-      ownerId: 'local',
+      id: "c_general",
+      name: "General",
+      ownerId: "local",
       createdAt: new Date().toISOString(),
-      visibility: 'private',
+      visibility: "private",
     };
     writeJSON(COLLECTIONS_KEY, [def]);
     return [def];
@@ -39,33 +39,35 @@ export function getCollections(): Collection[] {
 }
 
 export function createCollection(name: string): Collection {
-  const trimmed = (name || '').trim();
-  if (!trimmed) throw new Error('Name required');
+  const trimmed = (name || "").trim();
+  if (!trimmed) throw new Error("Name required");
   const cols = getCollections();
   const c: Collection = {
     id: genId(),
     name: trimmed,
-    ownerId: 'local',
+    ownerId: "local",
     createdAt: new Date().toISOString(),
-    visibility: 'private',
+    visibility: "private",
   };
   writeJSON(COLLECTIONS_KEY, [...cols, c]);
   return c;
 }
 
 export function renameCollection(id: string, name: string) {
-  const cols = getCollections().map(c => c.id === id ? { ...c, name: name.trim() } : c);
+  const cols = getCollections().map((c) =>
+    c.id === id ? { ...c, name: name.trim() } : c,
+  );
   writeJSON(COLLECTIONS_KEY, cols);
 }
 
 export function deleteCollection(id: string) {
-  const cols = getCollections().filter(c => c.id != id);
+  const cols = getCollections().filter((c) => c.id != id);
   writeJSON(COLLECTIONS_KEY, cols);
   // remove from URL mapping
   const map = readJSON<Record<string, string[]>>(URL_COLLECTIONS_KEY, {});
   const next: Record<string, string[]> = {};
   Object.entries(map).forEach(([u, arr]) => {
-    const filtered = (arr || []).filter(cid => cid !== id);
+    const filtered = (arr || []).filter((cid) => cid !== id);
     if (filtered.length) next[u] = filtered;
   });
   writeJSON(URL_COLLECTIONS_KEY, next);
@@ -105,4 +107,21 @@ export function removeUrlFromCollection(collectionId: string, rawUrl: string) {
     delete map[u];
   }
   writeJSON(URL_COLLECTIONS_KEY, map);
+}
+
+// Keep local url->collections map consistent with backend truth.
+// If a URL is not present in backend anymore, remove it from local collections map.
+export function reconcileUrlCollections(allowedCanonicalUrls: Set<string>) {
+  const map = readJSON<Record<string, string[]>>(URL_COLLECTIONS_KEY, {});
+  let changed = false;
+
+  for (const key of Object.keys(map)) {
+    if (!allowedCanonicalUrls.has(key)) {
+      delete map[key];
+      changed = true;
+    }
+  }
+
+  if (changed) writeJSON(URL_COLLECTIONS_KEY, map);
+  return changed;
 }
