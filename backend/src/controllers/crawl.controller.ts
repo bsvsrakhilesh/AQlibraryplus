@@ -6,7 +6,6 @@ import crypto from "crypto";
 import prisma from "../config/database";
 import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
 import { recordCaptureEvent } from "../services/provenance.service";
-import * as cheerio from "cheerio";
 import { createDom } from "../utils/dom";
 import { Readability } from "@mozilla/readability";
 import puppeteer, { Browser, LaunchOptions, Page } from "puppeteer";
@@ -140,7 +139,7 @@ async function persistFile(
     } as any,
   });
 
-  // Canonical revision + capture provenance 
+  // Canonical revision + capture provenance
   const docRev = await ensureDocumentRevisionForStoredFile(rec.id);
 
   await recordCaptureEvent({
@@ -315,33 +314,26 @@ export async function crawlTextHandler(
 
     // 2) Extract readable text
     const dom = createDom(html, url);
-    const reader = new Readability(dom.window.document);
+    const doc = dom.window.document;
+
+    const reader = new Readability(doc);
     const article = reader.parse();
 
     const title = (
       article?.title ||
-      cheerio.load(html)("title").first().text() ||
+      doc.querySelector("title")?.textContent ||
       url
     ).trim();
-    let textContent = (
-      article?.textContent ||
-      cheerio.load(html)("body").text() ||
-      ""
-    )
+
+    let textContent = (article?.textContent || doc.body?.textContent || "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
-    log.info("crawl_text_extracted", {
-      ...requestMeta(req),
-      url,
-      title,
-      textLength: textContent.length,
-    });
 
     if (!textContent) {
-      const $ = cheerio.load(html);
-      $("script, style, noscript").remove();
-      textContent = $.root()
-        .text()
+      doc
+        .querySelectorAll("script, style, noscript")
+        .forEach((n) => n.remove());
+      textContent = (doc.body?.textContent || "")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
     }

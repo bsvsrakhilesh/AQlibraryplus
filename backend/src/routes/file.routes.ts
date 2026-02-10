@@ -5,7 +5,7 @@ import fs from "fs";
 import prisma from "../config/database";
 import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
 import { recordCaptureEvent } from "../services/provenance.service";
-import archiver from "archiver";
+import yazl from "yazl";
 import crypto from "crypto";
 import unzipper from "unzipper";
 import pdfParse from "pdf-parse";
@@ -1218,30 +1218,26 @@ r.post("/files/zip", async (req, res, next) => {
   try {
     const { ids } = (req.body || {}) as { ids?: string[] };
     if (!Array.isArray(ids) || ids.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Body must be { ids: string[] }" });
+      return res.status(400).json({ message: "Body must be { ids: string[] }" });
     }
 
-    const files = await prisma.storedFile.findMany({
-      where: { id: { in: ids } },
-    });
-    if (files.length === 0)
-      return res.status(404).json({ message: "No files found" });
+    const files = await prisma.storedFile.findMany({ where: { id: { in: ids } } });
+    if (files.length === 0) return res.status(404).json({ message: "No files found" });
 
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="files.zip"');
-    const archive = archiver("zip", { zlib: { level: 9 } });
-    archive.on("error", (err: Error) => next(err));
-    archive.pipe(res);
 
-    files.forEach((f) => {
-      const name = f.fileName;
+    const zipfile = new yazl.ZipFile();
+    zipfile.outputStream.on("error", next);
+    zipfile.outputStream.pipe(res);
+
+    for (const f of files) {
       if (fs.existsSync(f.storagePath)) {
-        archive.file(f.storagePath, { name });
+        zipfile.addFile(f.storagePath, f.fileName);
       }
-    });
-    await archive.finalize();
+    }
+
+    zipfile.end();
   } catch (err) {
     next(err);
   }
