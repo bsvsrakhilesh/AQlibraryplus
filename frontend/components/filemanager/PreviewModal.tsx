@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { FileDetail } from '../../lib/types';
-import PdfCanvas from '../common/PdfCanvas';
-import { formatBytes, formatDate } from '../../utils/fileHelpers';
+import React, { useEffect, useRef, useState } from "react";
+import { FileDetail } from "../../lib/types";
+import PdfCanvas from "../common/PdfCanvas";
+import { formatBytes, formatDate } from "../../utils/fileHelpers";
 import FavoriteButton from "../common/FavoriteButton";
 import AITagButton from "../common/AITagButton";
+import { apiUrl } from "../../lib/api";
 
 type Props = {
   file: FileDetail | null | undefined;
@@ -31,7 +32,7 @@ const PreviewModal: React.FC<Props> = ({
   const [hadError, setHadError] = useState<string | null>(null);
 
   // image zoom state
-  const [fitMode, setFitMode] = useState<'contain' | 'actual'>('contain');
+  const [fitMode, setFitMode] = useState<"contain" | "actual">("contain");
   const [zoom, setZoom] = useState<number>(1);
 
   // PDF pagination
@@ -41,76 +42,81 @@ const PreviewModal: React.FC<Props> = ({
   const f = file ?? null;
 
   // Refs for focusing/scrolling the tag area
-const tagInputRef = useRef<HTMLInputElement | null>(null);
-const tagSectionRef = useRef<HTMLDivElement | null>(null);
+  const tagInputRef = useRef<HTMLInputElement | null>(null);
+  const tagSectionRef = useRef<HTMLDivElement | null>(null);
 
-useEffect(() => {
-  if (!isOpen || !autoFocusTags) return;
-  // small delay to ensure the modal contents rendered
-  const t = setTimeout(() => {
-    tagSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    tagInputRef.current?.focus();
-  }, 50);
-  return () => clearTimeout(t);
-}, [isOpen, autoFocusTags]);
-
-
-// ---- Tag editor (like SavedUrlDetailModal) ----
-const [localTags, setLocalTags] = useState<string[]>(f?.tags || []);
-const [newTagInput, setNewTagInput] = useState<string>("");
-
-useEffect(() => {
-  setLocalTags(f?.tags || []);
-}, [f?.id, f?.tags]);
-
-const persistTags = async (next: string[]) => {
-  onTagUpdate?.(String(f!.id), next);
-  if (!onTagUpdate) {
-    try {
-      await fetch(`/api/files/${encodeURIComponent(String(f!.id))}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tags: next }),
+  useEffect(() => {
+    if (!isOpen || !autoFocusTags) return;
+    // small delay to ensure the modal contents rendered
+    const t = setTimeout(() => {
+      tagSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
       });
-    } catch (e) {
-      console.error("Failed to update tags", e);
+      tagInputRef.current?.focus();
+    }, 50);
+    return () => clearTimeout(t);
+  }, [isOpen, autoFocusTags]);
+
+  // ---- Tag editor (like SavedUrlDetailModal) ----
+  const [localTags, setLocalTags] = useState<string[]>(f?.tags || []);
+  const [newTagInput, setNewTagInput] = useState<string>("");
+
+  useEffect(() => {
+    setLocalTags(f?.tags || []);
+  }, [f?.id, f?.tags]);
+
+  const persistTags = async (next: string[]) => {
+    onTagUpdate?.(String(f!.id), next);
+    if (!onTagUpdate) {
+      try {
+        await fetch(apiUrl(`/api/files/${encodeURIComponent(String(f!.id))}`), {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tags: next }),
+        });
+      } catch (e) {
+        console.error("Failed to update tags", e);
+      }
     }
-  }
-};
+  };
 
-const addTag = () => {
-  const t = newTagInput.trim();
-  if (!t || localTags.includes(t)) return;
-  const next = [...localTags, t];
-  setLocalTags(next);
-  setNewTagInput("");
-  if (f) persistTags(next);
-};
+  const addTag = () => {
+    const t = newTagInput.trim();
+    if (!t || localTags.includes(t)) return;
+    const next = [...localTags, t];
+    setLocalTags(next);
+    setNewTagInput("");
+    if (f) persistTags(next);
+  };
 
-const removeTag = (t: string) => {
-  const next = localTags.filter(x => x !== t);
-  setLocalTags(next);
-  if (f) persistTags(next);
-};
+  const removeTag = (t: string) => {
+    const next = localTags.filter((x) => x !== t);
+    setLocalTags(next);
+    if (f) persistTags(next);
+  };
 
+  const rawMime = (f?.mimeType || "").toLowerCase();
+  const mimeBase = rawMime.split(";")[0]?.trim() || "";
+  const title = ((f as any)?.title as string) || "";
+  const previewUrl = f ? apiUrl(`/api/files/${f.id}/preview`) : "";
 
-  const rawMime = (f?.mimeType || '').toLowerCase();
-  const mimeBase = rawMime.split(';')[0]?.trim() || '';
-  const title = ((f as any)?.title as string) || '';
-  const previewUrl = f ? `/api/files/${f.id}/preview` : '';
-
-  const isImage = mimeBase.startsWith('image/');
-  const isPDF   = mimeBase === 'application/pdf';
-  const isText  = mimeBase.startsWith('text/') || mimeBase === 'application/json' || mimeBase.endsWith('+json');
-  const [textContent, setTextContent] = useState<string>('');
+  const isImage = mimeBase.startsWith("image/");
+  const isPDF = mimeBase === "application/pdf";
+  const isText =
+    mimeBase.startsWith("text/") ||
+    mimeBase === "application/json" ||
+    mimeBase.endsWith("+json");
+  const [textContent, setTextContent] = useState<string>("");
 
   // reset state when file changes
   useEffect(() => {
     setIsLoading(true);
     setHadError(null);
-    setFitMode('contain');
+    setFitMode("contain");
     setZoom(1);
-    setTextContent('');
+    setTextContent("");
     setPdfPages(0);
     setPdfPage(1);
   }, [f?.id]);
@@ -118,19 +124,26 @@ const removeTag = (t: string) => {
   // Escape key to close
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
   // Click outside to close
   useEffect(() => {
     if (!isOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (dialogRef.current && e.target instanceof Node && !dialogRef.current.contains(e.target)) onClose();
+      if (
+        dialogRef.current &&
+        e.target instanceof Node &&
+        !dialogRef.current.contains(e.target)
+      )
+        onClose();
     };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
   }, [isOpen, onClose]);
 
   // Focus a control when opening
@@ -147,7 +160,10 @@ const removeTag = (t: string) => {
     setIsLoading(true);
     setHadError(null);
     fetch(previewUrl, {
-      headers: { Accept: 'text/plain, text/*;q=0.9, application/json;q=0.8, */*;q=0.1' },
+      credentials: "include",
+      headers: {
+        Accept: "text/plain, text/*;q=0.9, application/json;q=0.8, */*;q=0.1",
+      },
     })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -159,16 +175,20 @@ const removeTag = (t: string) => {
       })
       .catch((e) => {
         console.error(e);
-        setHadError('text');
+        setHadError("text");
         setIsLoading(false);
       });
   }, [isOpen, f, isText, previewUrl]);
 
   // image style (contain vs actual with zoom)
   const imageStyle: React.CSSProperties =
-    fitMode === 'contain'
-      ? { maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }
-      : { transform: `scale(${zoom})`, transformOrigin: 'top left', display: 'inline-block' };
+    fitMode === "contain"
+      ? { maxWidth: "100%", maxHeight: "65vh", objectFit: "contain" }
+      : {
+          transform: `scale(${zoom})`,
+          transformOrigin: "top left",
+          display: "inline-block",
+        };
 
   const uploadedRaw =
     (f ? (f as any).uploadDate : null) ??
@@ -176,10 +196,10 @@ const removeTag = (t: string) => {
     null;
 
   const metaRows: Array<[string, string]> = [
-    ['Title', title || (f?.id || '')],
-    ['Type', rawMime || '—'],
-    ['Size', typeof f?.size === 'number' ? formatBytes(f.size) : '—'],
-    ['Uploaded', uploadedRaw ? formatDate(uploadedRaw) : '—'],
+    ["Title", title || f?.id || ""],
+    ["Type", rawMime || "—"],
+    ["Size", typeof f?.size === "number" ? formatBytes(f.size) : "—"],
+    ["Uploaded", uploadedRaw ? formatDate(uploadedRaw) : "—"],
   ];
 
   const canPaginate = isPDF && !hadError && pdfPages > 1;
@@ -216,7 +236,8 @@ const removeTag = (t: string) => {
                   Prev
                 </button>
                 <span className="text-sm text-neutral-600 dark:text-neutral-400 min-w-[90px] text-center">
-                  Page {Math.min(pdfPage, Math.max(1, pdfPages || 1))} / {pdfPages || '—'}
+                  Page {Math.min(pdfPage, Math.max(1, pdfPages || 1))} /{" "}
+                  {pdfPages || "—"}
                 </span>
                 <button
                   className="px-2 py-1 rounded border dark:border-neutral-800 disabled:opacity-50"
@@ -269,7 +290,7 @@ const removeTag = (t: string) => {
           )}
 
           {/* Generic error (suppressed for PDF so the fallback can render) */}
-          {hadError && hadError !== 'pdf' && (
+          {hadError && hadError !== "pdf" && (
             <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">
               Failed to load preview. You can still use “Download”.
             </div>
@@ -280,21 +301,28 @@ const removeTag = (t: string) => {
             <PdfCanvas
               url={previewUrl}
               page={pdfPage}
-              onReady={(pages) => { setPdfPages(pages); setIsLoading(false); }}
-              onError={() => { setHadError('pdf'); setIsLoading(false); }}
+              onReady={(pages) => {
+                setPdfPages(pages);
+                setIsLoading(false);
+              }}
+              onError={() => {
+                setHadError("pdf");
+                setIsLoading(false);
+              }}
             />
           )}
 
           {/* PDF fallback (browser viewer) */}
-          {hadError === 'pdf' && (
+          {hadError === "pdf" && (
             <div className="w-full">
               <iframe
-                src={previewUrl + '#view=FitH'}
-                title={title || 'PDF'}
+                src={previewUrl + "#view=FitH"}
+                title={title || "PDF"}
                 className="w-full h-[70vh] rounded-xl border dark:border-neutral-800"
               />
               <div className="mt-2 text-sm text-neutral-500">
-                Viewer fallback shown. You can also use the Download button above.
+                Viewer fallback shown. You can also use the Download button
+                above.
               </div>
             </div>
           )}
@@ -302,14 +330,16 @@ const removeTag = (t: string) => {
           {/* Image */}
           {!hadError && isImage && (
             <div className="w-full">
-              <div className={fitMode === 'actual' ? 'min-h-[65vh]' : ''}>
+              <div className={fitMode === "actual" ? "min-h-[65vh]" : ""}>
                 <img
                   src={previewUrl}
                   alt={title}
                   style={imageStyle}
-                  className={fitMode === 'contain' ? 'rounded-xl shadow-sm' : ''}
+                  className={
+                    fitMode === "contain" ? "rounded-xl shadow-sm" : ""
+                  }
                   onLoad={() => setIsLoading(false)}
-                  onError={() => setHadError('image')}
+                  onError={() => setHadError("image")}
                 />
               </div>
             </div>
@@ -328,58 +358,64 @@ const removeTag = (t: string) => {
 
           {/* Tags - Editable (like SavedUrlDetailModal) */}
           <div ref={tagSectionRef} className="mt-4">
-          <div className="text-sm text-neutral-500">Tags</div>
-          <div className="flex flex-wrap gap-2 mt-2">
-          {localTags.map(t => (
-          <span key={t} className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/40 rounded-full">
-          <span>{t}</span>
-          <button
-          type="button"
-          aria-label={`Remove tag ${t}`}
-          className="text-[10px] opacity-70 hover:opacity-100"
-          onClick={() => removeTag(t)}
-          >
-          ×
-        </button>
-        </span>
-        ))}
-        </div>
-        
-        <div className="mt-2 flex items-center gap-2">
-        <input
-            ref={tagInputRef} 
-            type="text"
-            placeholder="Add tag"
-            value={newTagInput}
-            onChange={(e) => setNewTagInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') addTag(); }}
-            className="input h-8 w-48 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-primary/40"
-        />
-        <button
-        type="button"
-        onClick={addTag}
-        className="text-xs px-2 py-1 border rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
-        >
-       Add
-      </button>
-      {f && (
-      <AITagButton
-        kind="file"
-        id={String(f.id)}
-        onMerge={(aiTags) => {
-          const merged = Array.from(new Set([...(f.tags || []), ...aiTags]));
-          setLocalTags(merged);
-          persistTags(merged);
-        }}
-      />
-      )}
-      </div>
-    </div>
+            <div className="text-sm text-neutral-500">Tags</div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {localTags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/40 rounded-full"
+                >
+                  <span>{t}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove tag ${t}`}
+                    className="text-[10px] opacity-70 hover:opacity-100"
+                    onClick={() => removeTag(t)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
 
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                ref={tagInputRef}
+                type="text"
+                placeholder="Add tag"
+                value={newTagInput}
+                onChange={(e) => setNewTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addTag();
+                }}
+                className="input h-8 w-48 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-primary/40"
+              />
+              <button
+                type="button"
+                onClick={addTag}
+                className="text-xs px-2 py-1 border rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+              >
+                Add
+              </button>
+              {f && (
+                <AITagButton
+                  kind="file"
+                  id={String(f.id)}
+                  onMerge={(aiTags) => {
+                    const merged = Array.from(
+                      new Set([...(f.tags || []), ...aiTags]),
+                    );
+                    setLocalTags(merged);
+                    persistTags(merged);
+                  }}
+                />
+              )}
+            </div>
+          </div>
 
-    {/* Metadata (always) */}
-    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-        {metaRows.map(([k, v]) => (
+          {/* Metadata (always) */}
+          <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+            {metaRows.map(([k, v]) => (
               <div key={k}>
                 <div className="text-neutral-500">{k}</div>
                 <div className="font-medium break-words">{v}</div>

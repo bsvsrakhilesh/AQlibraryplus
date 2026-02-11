@@ -32,6 +32,7 @@ import {
   renameFile,
   renameFolder,
   updateFileTags,
+  apiUrl,
 } from "../lib/api";
 import BulkActionBar from "../components/common/BulkActionBar";
 import ContextMenu, { type MenuItem } from "../components/common/ContextMenu";
@@ -545,7 +546,7 @@ export default function FileManagerPage() {
         );
 
         if (!cancelled) {
-          // Folder UX: show folders pinned on the FIRST page only 
+          // Folder UX: show folders pinned on the FIRST page only
           const q = searchQuery.trim().toLowerCase();
           const filteredFolderItems =
             q.length > 0
@@ -640,7 +641,7 @@ export default function FileManagerPage() {
   );
 
   const handleDownload = (f: FileDetail | FileItem) => {
-    window.open(`/api/files/${f.id}/download`, "_blank");
+    window.open(apiUrl(`/api/files/${f.id}/download`), "_blank");
   };
   const handleDownloadItem = (f: FileItem) => handleDownload(f);
 

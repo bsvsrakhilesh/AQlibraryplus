@@ -1,156 +1,188 @@
-"use client"
-import { X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
-import { useEffect, useState, useRef } from "react"
-import type { FileDetail } from "../../lib/types"
-import AITagButton from "../common/AITagButton"
+"use client";
+import { X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useState, useRef } from "react";
+import type { FileDetail } from "../../lib/types";
+import AITagButton from "../common/AITagButton";
+import { apiUrl } from "../../lib/api";
 
 type Props = {
-  file: FileDetail | null | undefined
-  isOpen: boolean
-  onClose(): void
-  onDownload(file: FileDetail): void
-  onToggleFavorite?(file: FileDetail): void
-  onTagUpdate?(id: string, tags: string[]): void
-  autoFocusTags?: boolean
-}
+  file: FileDetail | null | undefined;
+  isOpen: boolean;
+  onClose(): void;
+  onDownload(file: FileDetail): void;
+  onToggleFavorite?(file: FileDetail): void;
+  onTagUpdate?(id: string, tags: string[]): void;
+  autoFocusTags?: boolean;
+};
 
 export default function ExplorerPreviewModal(props: Props) {
-  const { file, isOpen, onClose, onDownload, onToggleFavorite, onTagUpdate, autoFocusTags = false } = props
-  const [isLoading, setIsLoading] = useState(true)
-  const [hadError, setHadError] = useState<string | null>(null)
-  const [textContent, setTextContent] = useState<string>('')
+  const {
+    file,
+    isOpen,
+    onClose,
+    onDownload,
+    onToggleFavorite,
+    onTagUpdate,
+    autoFocusTags = false,
+  } = props;
+  const [isLoading, setIsLoading] = useState(true);
+  const [hadError, setHadError] = useState<string | null>(null);
+  const [textContent, setTextContent] = useState<string>("");
 
   // image zoom state
-  const [fitMode, setFitMode] = useState<'contain' | 'actual'>('contain')
-  const [zoom, setZoom] = useState<number>(1)
+  const [fitMode, setFitMode] = useState<"contain" | "actual">("contain");
+  const [zoom, setZoom] = useState<number>(1);
 
   // PDF pagination
-  const [pdfPages, setPdfPages] = useState<number>(0)
-  const [pdfPage, setPdfPage] = useState<number>(1)
+  const [pdfPages, setPdfPages] = useState<number>(0);
+  const [pdfPage, setPdfPage] = useState<number>(1);
 
-  const f = file ?? null
-  const rawMime = (f?.mimeType || '').toLowerCase()
-  const mimeBase = rawMime.split(';')[0]?.trim() || ''
-  const previewUrl = f ? `/api/files/${f.id}/preview` : ''
-  const isImage = mimeBase.startsWith('image/')
-  const isPDF = mimeBase === 'application/pdf'
-  const isText = mimeBase.startsWith('text/') || mimeBase === 'application/json' || mimeBase.endsWith('+json')
+  const f = file ?? null;
+  const rawMime = (f?.mimeType || "").toLowerCase();
+  const mimeBase = rawMime.split(";")[0]?.trim() || "";
+  const previewUrl = f ? apiUrl(`/api/files/${f.id}/preview`) : "";
+  const isImage = mimeBase.startsWith("image/");
+  const isPDF = mimeBase === "application/pdf";
+  const isText =
+    mimeBase.startsWith("text/") ||
+    mimeBase === "application/json" ||
+    mimeBase.endsWith("+json");
 
   // Refs for focusing/scrolling the tag area
-  const tagInputRef = useRef<HTMLInputElement | null>(null)
-  const tagSectionRef = useRef<HTMLDivElement | null>(null)
+  const tagInputRef = useRef<HTMLInputElement | null>(null);
+  const tagSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!isOpen || !autoFocusTags) return
+    if (!isOpen || !autoFocusTags) return;
     // small delay to ensure the modal contents rendered
     const t = setTimeout(() => {
-      tagSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      tagInputRef.current?.focus()
-    }, 50)
-    return () => clearTimeout(t)
-  }, [isOpen, autoFocusTags])
+      tagSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      tagInputRef.current?.focus();
+    }, 50);
+    return () => clearTimeout(t);
+  }, [isOpen, autoFocusTags]);
 
   // ---- Tag editor ----
-  const [localTags, setLocalTags] = useState<string[]>(f?.tags || [])
-  const [newTagInput, setNewTagInput] = useState<string>("")
+  const [localTags, setLocalTags] = useState<string[]>(f?.tags || []);
+  const [newTagInput, setNewTagInput] = useState<string>("");
 
   useEffect(() => {
-    setLocalTags(f?.tags || [])
-  }, [f?.id, f?.tags])
+    setLocalTags(f?.tags || []);
+  }, [f?.id, f?.tags]);
 
   const persistTags = async (next: string[]) => {
-    onTagUpdate?.(String(f!.id), next)
+    onTagUpdate?.(String(f!.id), next);
     if (!onTagUpdate) {
       try {
-        await fetch(`/api/files/${encodeURIComponent(String(f!.id))}`, {
+        await fetch(apiUrl(`/api/files/${encodeURIComponent(String(f!.id))}`), {
           method: "PATCH",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tags: next }),
-        })
+        });
       } catch (e) {
-        console.error("Failed to update tags", e)
+        console.error("Failed to update tags", e);
       }
     }
-  }
+  };
 
   const addTag = () => {
-    const t = newTagInput.trim()
-    if (!t || localTags.includes(t)) return
-    const next = [...localTags, t]
-    setLocalTags(next)
-    setNewTagInput("")
-    if (f) persistTags(next)
-  }
+    const t = newTagInput.trim();
+    if (!t || localTags.includes(t)) return;
+    const next = [...localTags, t];
+    setLocalTags(next);
+    setNewTagInput("");
+    if (f) persistTags(next);
+  };
 
   const removeTag = (t: string) => {
-    const next = localTags.filter(x => x !== t)
-    setLocalTags(next)
-    if (f) persistTags(next)
-  }
+    const next = localTags.filter((x) => x !== t);
+    setLocalTags(next);
+    if (f) persistTags(next);
+  };
 
   // Reset state when file changes
   useEffect(() => {
-    setIsLoading(true)
-    setHadError(null)
-    setFitMode('contain')
-    setZoom(1)
-    setTextContent('')
-    setPdfPages(0)
-    setPdfPage(1)
-  }, [f?.id])
+    setIsLoading(true);
+    setHadError(null);
+    setFitMode("contain");
+    setZoom(1);
+    setTextContent("");
+    setPdfPages(0);
+    setPdfPage(1);
+  }, [f?.id]);
 
   // Fetch text content when needed
   useEffect(() => {
-    if (!isOpen || !f || !isText || !previewUrl) return
-    setIsLoading(true)
-    setHadError(null)
+    if (!isOpen || !f || !isText || !previewUrl) return;
+    setIsLoading(true);
+    setHadError(null);
     fetch(previewUrl, {
-      headers: { Accept: 'text/plain, text/*;q=0.9, application/json;q=0.8, */*;q=0.1' },
+      credentials: "include",
+      headers: {
+        Accept: "text/plain, text/*;q=0.9, application/json;q=0.8, */*;q=0.1",
+      },
     })
       .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.text()
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
       })
       .then((txt) => {
-        setTextContent(txt)
-        setIsLoading(false)
+        setTextContent(txt);
+        setIsLoading(false);
       })
       .catch((e) => {
-        console.error(e)
-        setHadError('text')
-        setIsLoading(false)
-      })
-  }, [isOpen, f, isText, previewUrl])
+        console.error(e);
+        setHadError("text");
+        setIsLoading(false);
+      });
+  }, [isOpen, f, isText, previewUrl]);
 
   // image style (contain vs actual with zoom)
   const imageStyle: React.CSSProperties =
-    fitMode === 'contain'
-      ? { maxWidth: '100%', maxHeight: '50vh', objectFit: 'contain' }
-      : { transform: `scale(${zoom})`, transformOrigin: 'top left', display: 'inline-block' }
+    fitMode === "contain"
+      ? { maxWidth: "100%", maxHeight: "50vh", objectFit: "contain" }
+      : {
+          transform: `scale(${zoom})`,
+          transformOrigin: "top left",
+          display: "inline-block",
+        };
 
   const uploadedRaw =
     (f ? (f as any).uploadDate : null) ??
     (f ? (f as any).createdAt : null) ??
-    null
+    null;
 
   const metaRows: Array<[string, string]> = [
-    ['Title', (f as any)?.title || ''],
-    ['Type', rawMime || '—'],
-    ['Size', typeof f?.size === 'number' ? `${(f.size / 1024).toFixed(1)} KB` : '—'],
-    ['Uploaded', uploadedRaw ? new Date(uploadedRaw).toLocaleString() : '—'],
-  ]
+    ["Title", (f as any)?.title || ""],
+    ["Type", rawMime || "—"],
+    [
+      "Size",
+      typeof f?.size === "number" ? `${(f.size / 1024).toFixed(1)} KB` : "—",
+    ],
+    ["Uploaded", uploadedRaw ? new Date(uploadedRaw).toLocaleString() : "—"],
+  ];
 
-  const canPaginate = isPDF && !hadError && pdfPages > 1
-  const goPrev = () => setPdfPage((p) => Math.max(1, p - 1))
-  const goNext = () => setPdfPage((p) => Math.min(pdfPages || p, p + 1))
+  const canPaginate = isPDF && !hadError && pdfPages > 1;
+  const goPrev = () => setPdfPage((p) => Math.max(1, p - 1));
+  const goNext = () => setPdfPage((p) => Math.min(pdfPages || p, p + 1));
 
   return (
     <AnimatePresence>
       {isOpen && file ? (
-        <motion.div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 backdrop-blur-sm"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          aria-modal="true" role="dialog" aria-labelledby="preview-title">
+        <motion.div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          aria-modal="true"
+          role="dialog"
+          aria-labelledby="preview-title"
+        >
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -159,8 +191,17 @@ export default function ExplorerPreviewModal(props: Props) {
             className="flex flex-col w-[min(800px,90vw)] max-h-[90vh] rounded-2xl border border-app surface shadow-xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-app flex-shrink-0">
-              <h2 id="preview-title" className="text-sm font-semibold line-clamp-1">{file.title}</h2>
-              <button onClick={onClose} aria-label="Close" className="rounded-lg p-2 hover:bg-[hsl(var(--surface-elev))]">
+              <h2
+                id="preview-title"
+                className="text-sm font-semibold line-clamp-1"
+              >
+                {file.title}
+              </h2>
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="rounded-lg p-2 hover:bg-[hsl(var(--surface-elev))]"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -176,7 +217,7 @@ export default function ExplorerPreviewModal(props: Props) {
                 )}
 
                 {/* Error */}
-                {hadError && hadError !== 'pdf' && (
+                {hadError && hadError !== "pdf" && (
                   <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">
                     Failed to load preview. You can still use "Download".
                   </div>
@@ -185,42 +226,48 @@ export default function ExplorerPreviewModal(props: Props) {
                 {/* Image */}
                 {!hadError && isImage && (
                   <div className="w-full">
-                    <div className={fitMode === 'actual' ? 'min-h-[50vh]' : ''}>
+                    <div className={fitMode === "actual" ? "min-h-[50vh]" : ""}>
                       <img
                         src={previewUrl}
                         alt={file.title}
                         style={imageStyle}
-                        className={fitMode === 'contain' ? 'rounded-xl shadow-sm' : ''}
+                        className={
+                          fitMode === "contain" ? "rounded-xl shadow-sm" : ""
+                        }
                         onLoad={() => setIsLoading(false)}
-                        onError={() => setHadError('image')}
+                        onError={() => setHadError("image")}
                       />
                     </div>
                     {/* Image controls */}
                     <div className="mt-2 flex gap-2">
                       <button
                         className="px-2 py-1 rounded border border-app text-xs"
-                        onClick={() => setFitMode('contain')}
+                        onClick={() => setFitMode("contain")}
                       >
                         Fit
                       </button>
                       <button
                         className="px-2 py-1 rounded border border-app text-xs"
-                        onClick={() => setFitMode('actual')}
+                        onClick={() => setFitMode("actual")}
                       >
                         Actual
                       </button>
-                      {fitMode === 'actual' && (
+                      {fitMode === "actual" && (
                         <>
                           <button
                             className="px-2 py-1 rounded border border-app text-xs"
-                            onClick={() => setZoom(z => Math.max(0.1, z - 0.1))}
+                            onClick={() =>
+                              setZoom((z) => Math.max(0.1, z - 0.1))
+                            }
                           >
                             Zoom Out
                           </button>
-                          <span className="text-xs self-center">{(zoom * 100).toFixed(0)}%</span>
+                          <span className="text-xs self-center">
+                            {(zoom * 100).toFixed(0)}%
+                          </span>
                           <button
                             className="px-2 py-1 rounded border border-app text-xs"
-                            onClick={() => setZoom(z => Math.min(5, z + 0.1))}
+                            onClick={() => setZoom((z) => Math.min(5, z + 0.1))}
                           >
                             Zoom In
                           </button>
@@ -234,12 +281,13 @@ export default function ExplorerPreviewModal(props: Props) {
                 {!hadError && isPDF && (
                   <div className="w-full">
                     <iframe
-                      src={previewUrl + '#view=FitH&zoom=120'}
-                      title={file.title || 'PDF'}
+                      src={previewUrl + "#view=FitH&zoom=120"}
+                      title={file.title || "PDF"}
                       className="w-full flex-1 rounded-xl border border-app min-h-[50vh]"
                     />
                     <div className="mt-2 text-sm text-neutral-500">
-                      Viewer fallback shown. You can also use the Download button.
+                      Viewer fallback shown. You can also use the Download
+                      button.
                     </div>
                     {/* PDF Pagination */}
                     {canPaginate && (
@@ -252,7 +300,8 @@ export default function ExplorerPreviewModal(props: Props) {
                           Prev
                         </button>
                         <span className="text-sm">
-                          Page {Math.min(pdfPage, Math.max(1, pdfPages || 1))} / {pdfPages || '—'}
+                          Page {Math.min(pdfPage, Math.max(1, pdfPages || 1))} /{" "}
+                          {pdfPages || "—"}
                         </span>
                         <button
                           className="px-2 py-1 rounded border border-app disabled:opacity-50"
@@ -280,7 +329,8 @@ export default function ExplorerPreviewModal(props: Props) {
                 {/* Unsupported */}
                 {!isLoading && !hadError && !isImage && !isPDF && !isText && (
                   <div className="p-4 text-center text-neutral-500">
-                    Preview not available for this file type. Use Download to view.
+                    Preview not available for this file type. Use Download to
+                    view.
                   </div>
                 )}
               </div>
@@ -300,8 +350,11 @@ export default function ExplorerPreviewModal(props: Props) {
               <div ref={tagSectionRef}>
                 <div className="text-neutral-500">Tags</div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {localTags.map(t => (
-                    <span key={t} className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/40 rounded-full">
+                  {localTags.map((t) => (
+                    <span
+                      key={t}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/40 rounded-full"
+                    >
                       <span>{t}</span>
                       <button
                         type="button"
@@ -321,7 +374,9 @@ export default function ExplorerPreviewModal(props: Props) {
                     placeholder="Add tag"
                     value={newTagInput}
                     onChange={(e) => setNewTagInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') addTag() }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addTag();
+                    }}
                     className="input h-8 w-48 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-primary/40"
                   />
                   <button
@@ -336,9 +391,11 @@ export default function ExplorerPreviewModal(props: Props) {
                       kind="file"
                       id={String(f.id)}
                       onMerge={(aiTags) => {
-                        const merged = Array.from(new Set([...(f.tags || []), ...aiTags]))
-                        setLocalTags(merged)
-                        persistTags(merged)
+                        const merged = Array.from(
+                          new Set([...(f.tags || []), ...aiTags]),
+                        );
+                        setLocalTags(merged);
+                        persistTags(merged);
                       }}
                     />
                   )}
@@ -347,15 +404,23 @@ export default function ExplorerPreviewModal(props: Props) {
 
               {/* Actions */}
               <div className="flex gap-2">
-                <button className="rounded-xl px-3 py-2 bg-[hsl(var(--accent))] text-white"
-                        onClick={()=>onDownload(file)}>Download</button>
-                <button className="rounded-xl px-3 py-2 border border-app"
-                        onClick={()=>onToggleFavorite?.(file)}>{file.isFavorited ? "Unfavorite" : "Favorite"}</button>
+                <button
+                  className="rounded-xl px-3 py-2 bg-[hsl(var(--accent))] text-white"
+                  onClick={() => onDownload(file)}
+                >
+                  Download
+                </button>
+                <button
+                  className="rounded-xl px-3 py-2 border border-app"
+                  onClick={() => onToggleFavorite?.(file)}
+                >
+                  {file.isFavorited ? "Unfavorite" : "Favorite"}
+                </button>
               </div>
             </div>
           </motion.div>
         </motion.div>
       ) : null}
     </AnimatePresence>
-  )
+  );
 }

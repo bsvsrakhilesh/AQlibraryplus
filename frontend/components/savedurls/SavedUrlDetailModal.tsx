@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { formatDate } from "../../utils/fileHelpers";
 import CloseIcon from "../icons/CloseIcon";
 import AITagButton from "../common/AITagButton";
-import { getUrlSnapshots, getFileExtractedText } from "../../lib/api";
+import { getUrlSnapshots, getFileExtractedText, apiUrl } from "../../lib/api";
 import DiffViewer from "../common/DiffViewer";
 
 interface SavedUrlDetailModalProps {
@@ -296,7 +296,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       <button
                         className="px-2 py-1 border rounded text-xs"
                         onClick={() =>
-                          window.open(`/api/files/${s.id}/preview`, "_blank")
+                          window.open(apiUrl(`/api/files/${s.id}/preview`), "_blank")
                         }
                         title="Open preview"
                       >
@@ -305,7 +305,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       <button
                         className="px-2 py-1 border rounded text-xs"
                         onClick={() =>
-                          window.open(`/api/files/${s.id}/download`, "_blank")
+                          window.open(apiUrl(`/api/files/${s.id}/download`), "_blank")
                         }
                         title="Download"
                       >

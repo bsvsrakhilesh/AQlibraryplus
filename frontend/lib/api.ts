@@ -13,6 +13,25 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Build an absolute URL that respects VITE_API_URL / axios baseURL.
+// Safe for same-origin (baseURL="") and cross-origin (baseURL="https://host").
+export function apiUrl(p: string) {
+  const path = String(p || "");
+  const b = String((api.defaults.baseURL as any) || "");
+
+  if (!b) return path;
+
+  // Avoid double "/api" if baseURL already ends with "/api" and path starts with "/api/.."
+  const bNorm = b.endsWith("/") ? b.slice(0, -1) : b;
+  if (bNorm.endsWith("/api") && path.startsWith("/api/")) {
+    return bNorm + path.slice("/api".length);
+  }
+
+  if (bNorm.endsWith("/") && path.startsWith("/")) return bNorm.slice(0, -1) + path;
+  if (!bNorm.endsWith("/") && !path.startsWith("/")) return bNorm + "/" + path;
+  return bNorm + path;
+}
+
 export type BackendUrlRow = {
   id: number;
   url: string;
@@ -450,7 +469,7 @@ export async function listZipChildren(fileId: string, prefix = "") {
   };
 }
 export function streamZipFile(fileId: string, p: string) {
-  return `/api/files/${fileId}/archive/stream?path=${encodeURIComponent(p)}`;
+  return apiUrl(`/api/files/${fileId}/archive/stream?path=${encodeURIComponent(p)}`);
 }
 export async function searchZip(fileId: string, q: string) {
   const res = await api.get(`/api/files/${fileId}/archive/search`, {
