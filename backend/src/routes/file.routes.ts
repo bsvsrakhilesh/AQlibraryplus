@@ -1214,6 +1214,19 @@ r.patch("/files/:id", async (req, res, next) => {
       nextMime = inferMimeType(nextFileName, existing.mimeType);
     }
 
+    // Keep favoritesCount consistent with isFavorited
+    let nextIsFavorited = existing.isFavorited;
+    let nextFavoritesCount = existing.favoritesCount;
+
+    if (
+      typeof isFavorited === "boolean" &&
+      isFavorited !== existing.isFavorited
+    ) {
+      nextIsFavorited = isFavorited;
+      const delta = isFavorited ? 1 : -1;
+      nextFavoritesCount = Math.max(0, existing.favoritesCount + delta);
+    }
+
     const updated = await prisma.storedFile.update({
       where: { id },
       data: {
@@ -1225,8 +1238,8 @@ r.patch("/files/:id", async (req, res, next) => {
         tags: Array.isArray(tags) ? tags : existing.tags,
         visibility:
           typeof visibility === "string" ? visibility : existing.visibility,
-        isFavorited:
-          typeof isFavorited === "boolean" ? isFavorited : existing.isFavorited,
+        favoritesCount: nextFavoritesCount,
+        isFavorited: nextIsFavorited,
         folderId:
           typeof folderId === "string"
             ? folderId === "root" || folderId === ""
