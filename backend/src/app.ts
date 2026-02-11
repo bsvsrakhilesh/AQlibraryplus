@@ -46,10 +46,37 @@ app.use(express.text({ type: ["text/plain", "text/*"], limit: "2mb" }));
 app.use(requestId);
 
 // -------- Security headers (single helmet config) --------
+const cspAllowed = allowedOrigins; // already trimmed + filtered above
+
 app.use(
   helmet({
-    // CSP is best configured at the frontend/reverse-proxy layer unless you’re strict about it
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        "default-src": ["'self'"],
+        "base-uri": ["'self'"],
+        "object-src": ["'none'"],
+        "frame-ancestors": ["'none'"],
+
+        // previews/thumbnails
+        "img-src": ["'self'", "data:", "blob:"],
+
+        // if you don't rely on inline styles, we can tighten later
+        "style-src": ["'self'", "'unsafe-inline'"],
+
+        // block inline scripts; allow only same-origin scripts
+        "script-src": ["'self'"],
+
+        // allow API calls + WS + your allowed frontends
+        "connect-src": ["'self'", "ws:", "wss:", ...cspAllowed],
+
+        "font-src": ["'self'", "data:"],
+        "media-src": ["'self'", "blob:"],
+
+        // pdf.js / preview workers often need blob
+        "worker-src": ["'self'", "blob:"],
+      },
+    },
     crossOriginResourcePolicy: { policy: "cross-origin" },
     referrerPolicy: { policy: "no-referrer" },
   }),
@@ -119,7 +146,9 @@ const searchLimiter = rateLimit({
 app.use("/api/tagger", taggerLimiter);
 app.use("/api/auth", authLimiter);
 app.use("/api/crawl", crawlLimiter);
-app.use("/api/files", uploadLimiter);
+// Only rate-limit upload endpoints (chunk spam / large uploads), not browsing (list/preview/download)
+app.use("/api/files/upload", uploadLimiter);
+
 
 // -------- Routes --------
 app.use("/api", urlRoutes);

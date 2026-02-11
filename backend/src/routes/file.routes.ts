@@ -15,6 +15,28 @@ const MAX_UPLOAD_BYTES = Number(
   process.env.MAX_UPLOAD_BYTES || 50 * 1024 * 1024, // 50MB default
 );
 
+// Fingerprint hardening:
+// Frontend uses SHA-1 hex (40 chars) of "name-size-lastModified".
+const FINGERPRINT_RE = /^[a-f0-9]{40}$/i;
+
+function normalizeFingerprint(fp: unknown): string {
+  const s = String(fp || "").trim();
+  if (!FINGERPRINT_RE.test(s)) {
+    throw new Error("INVALID_FINGERPRINT");
+  }
+  return s.toLowerCase();
+}
+
+// Ensures the resolved path always stays inside baseDir (blocks ../../ traversal).
+function safeResolveUnder(baseDir: string, ...parts: string[]): string {
+  const base = path.resolve(baseDir);
+  const resolved = path.resolve(baseDir, ...parts);
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) {
+    throw new Error("PATH_TRAVERSAL");
+  }
+  return resolved;
+}
+
 function sanitizeFilename(name: string): string {
   return String(name || "file")
     .replace(/[\/\\]/g, "_") // block path traversal
@@ -78,9 +100,17 @@ async function streamFileWithRange(opts: {
   res.setHeader("ETag", etag);
   res.setHeader("Accept-Ranges", "bytes");
   res.setHeader("Content-Type", contentType);
+  // Never inline SVG (defense-in-depth against XSS vectors)
+  const baseType = String(contentType || "")
+    .toLowerCase()
+    .split(";")[0]
+    .trim();
+  const effectiveDisposition =
+    baseType === "image/svg+xml" ? "attachment" : disposition;
+
   res.setHeader(
     "Content-Disposition",
-    `${disposition}; filename="${encodeURIComponent(fileName)}"`,
+    `${effectiveDisposition}; filename="${encodeURIComponent(fileName)}"`,
   );
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
@@ -152,13 +182,12 @@ async function streamFileWithRange(opts: {
 }
 
 function chunkDirFor(fingerprint: string) {
-  return path.join(STORAGE_DIR, "chunks", fingerprint);
+  return safeResolveUnder(STORAGE_DIR, "chunks", fingerprint);
 }
 
 function finalFilePathFor(fingerprint: string, fileName: string) {
-  // Optional: place under year/month subdirs
   const safeName = fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
-  return path.join(STORAGE_DIR, "files", `${fingerprint}__${safeName}`);
+  return safeResolveUnder(STORAGE_DIR, "files", `${fingerprint}__${safeName}`);
 }
 
 async function stitchChunksToFile(
@@ -256,7 +285,7 @@ function normalizeMime(m?: string) {
 function isInlinePreviewable(contentType: string) {
   const base = normalizeMime(contentType);
   if (!base) return false;
-  if (base.startsWith("image/")) return true; // png, jpeg, webp, svg, gif, etc.
+  if (base.startsWith("image/")) return base !== "image/svg+xml"; // never inline SVG
   if (base.startsWith("text/")) return true; // text/plain; charset=utf-8, text/markdown, text/csv, ...
   if (base === "application/pdf") return true;
   if (base === "application/json" || base.endsWith("+json")) return true; // json, openapi+json, etc.
@@ -296,17 +325,31 @@ r.post(
           .json({ message: "Missing fingerprint or fileName" });
       if (!req.file) return res.status(400).json({ message: "Missing chunk" });
 
+      let safeFingerprint: string;
+      try {
+        safeFingerprint = normalizeFingerprint(fingerprint);
+      } catch {
+        return res.status(400).json({ message: "Invalid fingerprint" });
+      }
+
       const safeFileName = sanitizeFilename(fileName);
 
       const idx = Number(chunkIndex);
       const total = Number(totalChunks);
+
+      // hard limits to prevent disk fill / abuse
+      const MAX_TOTAL_CHUNKS = 2000;
+
       if (!Number.isInteger(idx) || !Number.isInteger(total)) {
         return res
           .status(400)
           .json({ message: "Invalid chunkIndex/totalChunks" });
       }
+      if (total <= 0 || total > MAX_TOTAL_CHUNKS || idx < 0 || idx >= total) {
+        return res.status(400).json({ message: "Invalid chunk bounds" });
+      }
 
-      const dir = chunkDirFor(fingerprint);
+      const dir = chunkDirFor(safeFingerprint);
       fs.mkdirSync(dir, { recursive: true });
       const chunkPath = path.join(dir, `${idx}.part`);
       fs.writeFileSync(chunkPath, req.file.buffer);
@@ -323,7 +366,7 @@ r.post(
         parts.sort((a, b) => a - b)[parts.length - 1] === total - 1;
 
       if (haveAll) {
-        const finalPath = finalFilePathFor(fingerprint, safeFileName);
+        const finalPath = finalFilePathFor(safeFingerprint, safeFileName);
 
         await stitchChunksToFile(dir, total, finalPath);
 
@@ -396,7 +439,7 @@ r.post(
           contentHash: sha256,
         };
         const createData: any = {
-          id: fingerprint,
+          id: safeFingerprint,
           fileName: safeFileName,
           mimeType: updateData.mimeType,
           size: stat.size,
@@ -488,20 +531,77 @@ r.patch("/files/:id/restore", async (req, res) => {
   res.json(updated);
 });
 
-// GET /api/trash  → list only trashed items
-r.get("/trash", async (_req, res, next) => {
+// GET /api/trash → list trashed items
+r.get("/trash", async (req, res, next) => {
   try {
-    const files = await prisma.storedFile.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-    });
+    const {
+      q,
+      sortKey = "deletedAt",
+      sortOrder = "desc",
+      page,
+      pageSize,
+    } = req.query as Record<string, string>;
+
+    const where: any = { deletedAt: { not: null } };
+
+    if (q && q.trim()) {
+      const term = q.trim().toLowerCase();
+      where.OR = [
+        { fileName: { contains: term, mode: "insensitive" } },
+        { description: { contains: term, mode: "insensitive" } },
+      ];
+    }
+
+    const orderBy: any = {};
+    if (
+      ["deletedAt", "createdAt", "fileName", "size"].includes(String(sortKey))
+    ) {
+      orderBy[String(sortKey)] = sortOrder === "asc" ? "asc" : "desc";
+    } else {
+      orderBy.deletedAt = "desc";
+    }
+
     const folders = prismaSupportsFolders()
       ? await prisma.folder.findMany({
           where: { deletedAt: { not: null } },
           orderBy: { deletedAt: "desc" },
         })
       : [];
-    res.json({ files, folders });
+
+    const hasPagination =
+      Number.isInteger(Number(page)) && Number.isInteger(Number(pageSize));
+
+    if (hasPagination) {
+      const p = Math.max(1, Number(page));
+      const ps = Math.min(100, Math.max(1, Number(pageSize)));
+      const skip = (p - 1) * ps;
+
+      const [files, total, sum] = await Promise.all([
+        prisma.storedFile.findMany({ where, orderBy, skip, take: ps }),
+        prisma.storedFile.count({ where }),
+        prisma.storedFile.aggregate({ where, _sum: { size: true } }),
+      ]);
+
+      const totalBytes = sum?._sum?.size ?? 0;
+      return res.json({
+        files,
+        folders,
+        total,
+        totalBytes,
+        page: p,
+        pageSize: ps,
+      });
+    }
+
+    // Non-paginated fallback (still returns totals)
+    const [files, total, sum] = await Promise.all([
+      prisma.storedFile.findMany({ where, orderBy }),
+      prisma.storedFile.count({ where }),
+      prisma.storedFile.aggregate({ where, _sum: { size: true } }),
+    ]);
+
+    const totalBytes = sum?._sum?.size ?? 0;
+    return res.json({ files, folders, total, totalBytes });
   } catch (err) {
     next(err);
   }
@@ -1456,14 +1556,18 @@ r.get("/files/:id/archive/stream", async (req, res, next) => {
 r.get("/files/:id/archive/search", async (req, res, next) => {
   try {
     const id = String(req.params.id);
-    const q = String(req.query.q || "").toLowerCase().trim();
+    const q = String(req.query.q || "")
+      .toLowerCase()
+      .trim();
     if (!q) return res.json({ results: [] });
 
     const chk = await requireZipFileOr400(id);
-    if (!chk.ok) return res.status(chk.res.status).json({ message: chk.res.message });
+    if (!chk.ok)
+      return res.status(chk.res.status).json({ message: chk.res.message });
 
     const zipPath = chk.file.storagePath;
-    if (!fs.existsSync(zipPath)) return res.status(404).json({ message: "Archive missing on disk" });
+    if (!fs.existsSync(zipPath))
+      return res.status(404).json({ message: "Archive missing on disk" });
 
     const stream = fs.createReadStream(zipPath);
     const zip = await unzipper.Open.stream(stream);
@@ -1495,7 +1599,9 @@ r.get("/files/:id/archive/search", async (req, res, next) => {
 
     return res.json({
       results,
-      truncated: scanned > MAX_ARCHIVE_ENTRIES_SCAN || approxBytes > MAX_ARCHIVE_LIST_BYTES,
+      truncated:
+        scanned > MAX_ARCHIVE_ENTRIES_SCAN ||
+        approxBytes > MAX_ARCHIVE_LIST_BYTES,
     });
   } catch (err) {
     next(err);

@@ -261,11 +261,7 @@ export default function FileManagerPage() {
   }, [isDragging]);
 
   // derived files based on header search
-  const visibleFiles = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return allFiles;
-    return allFiles.filter((f) => (f.title ?? "").toLowerCase().includes(q));
-  }, [allFiles, search]);
+  const visibleFiles = allFiles;
 
   // Selection + clipboard for cut/copy/paste
   const [selected, setSelected] = useState<FileItem[]>([]);
