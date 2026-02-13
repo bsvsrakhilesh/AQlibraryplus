@@ -36,6 +36,8 @@ interface ResultsTableProps {
   selectedUrls?: Set<string>;
   onToggleRow?: (url: string) => void;
   onToggleAll?: () => void;
+  onTogglePage?: (urls: string[], select: boolean) => void;
+  onClearSelection?: () => void;
   onClear?: () => void;
   sortKey?: "original" | "title" | "domain";
   onSortChange?: (k: "original" | "title" | "domain") => void;
@@ -147,6 +149,8 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   selectedUrls = new Set<string>(),
   onToggleRow,
   onToggleAll,
+  onTogglePage,
+  onClearSelection,
   onClear,
   sortKey: sortKeyProp,
   onSortChange,
@@ -431,20 +435,26 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     if (pageRows.length === 0) return false;
     for (const r of pageRows) if (!selected.has(r.url)) return false;
     return true;
-  }, [filtered, selected]);
+  }, [pageRows, selected]);
 
   const toggleAll = () => {
-    // Parent-controlled selection: keep existing behavior.
-    // Local selection: toggle only the current page to match pagination UX.
-    if (onToggleAll) return onToggleAll();
+    // Option A: header checkbox toggles ONLY current page rows (never global).
+    const urls = pageRows.map((r) => r.url).filter(Boolean);
+    if (urls.length === 0) return;
 
-    if (allSelected) {
+    const wantSelect = !allSelected;
+
+    // Parent-controlled selection: delegate page-only toggle
+    if (onTogglePage) return onTogglePage(urls, wantSelect);
+
+    // Local selection fallback: still page-only
+    if (wantSelect) {
       const next = new Set(localSelected);
-      pageRows.forEach((r) => next.delete(r.url));
+      urls.forEach((u) => next.add(u));
       setLocalSelected(next);
     } else {
       const next = new Set(localSelected);
-      pageRows.forEach((r) => next.add(r.url));
+      urls.forEach((u) => next.delete(u));
       setLocalSelected(next);
     }
   };
@@ -908,15 +918,40 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
             </div>
 
             {selectable && filtered.length > 0 && (
-              <label className="ml-1 flex cursor-pointer select-none items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                />
-                Select all ({onToggleAll ? "loaded" : "page"})
-              </label>
+              <div className="ml-1 flex flex-wrap items-center gap-3 text-sm text-gray-700">
+                <label className="flex cursor-pointer select-none items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                  />
+                  Select this page
+                </label>
+
+                {/* Explicit global action (safe): selects all currently loaded results */}
+                {onToggleAll && (
+                  <button
+                    type="button"
+                    onClick={onToggleAll}
+                    className="underline opacity-80 hover:opacity-100"
+                    title="Select all currently loaded results (not unloaded pages)"
+                  >
+                    Select all loaded ({filtered.length})
+                  </button>
+                )}
+
+                {onClearSelection && selected.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={onClearSelection}
+                    className="underline opacity-80 hover:opacity-100"
+                    title="Clear current selection"
+                  >
+                    Clear selection
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>

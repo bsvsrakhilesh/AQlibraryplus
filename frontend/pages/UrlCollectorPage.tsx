@@ -311,6 +311,21 @@ const UrlCollectorPage: React.FC = () => {
     });
   }, []);
 
+  const onTogglePage = useCallback((urls: string[], select: boolean) => {
+    setSelectedUrls((prev) => {
+      const next = new Set(prev);
+      for (const u of urls) {
+        if (select) next.add(u);
+        else next.delete(u);
+      }
+      return next;
+    });
+  }, []);
+
+  const onClearSelection = useCallback(() => {
+    setSelectedUrls(new Set());
+  }, []);
+
   // ResultsTable expects () => void
   const onToggleAll = useCallback(() => {
     setSelectedUrls((prev) => {
@@ -458,7 +473,9 @@ const UrlCollectorPage: React.FC = () => {
                   selectable
                   selectedUrls={selectedUrls}
                   onToggleRow={onToggleRow}
+                  onTogglePage={onTogglePage}
                   onToggleAll={onToggleAll}
+                  onClearSelection={onClearSelection}
                   onClear={handleClear}
                   sortKey={sortKey}
                   onSortChange={(k) => setSortKey(k)}
