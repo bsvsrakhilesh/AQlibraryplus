@@ -3,6 +3,7 @@ import {
   getUrlsHandler,
   getUrlByIdHandler,
   createUrlsHandler,
+  urlsExistHandler,
   deleteUrlByIdHandler,
   deleteUrlsBulkHandler,
   updateUrlByIdHandler,
@@ -25,6 +26,10 @@ const createUrlsBody = z.object({
       }),
     )
     .min(1),
+});
+
+const urlsExistsBody = z.object({
+  urls: z.array(z.string().min(1)).min(1),
 });
 
 const previewUrlBody = z.object({
@@ -59,7 +64,7 @@ r.get(
   validate({ query: urlSnapshotsQuery }),
   getUrlSnapshotsHandler,
 );
-
+r.post("/urls/exists", validate({ body: urlsExistsBody }), urlsExistHandler);
 r.post("/urls", validate({ body: createUrlsBody }), createUrlsHandler);
 r.delete("/urls/:id", deleteUrlByIdHandler);
 r.delete("/urls", deleteUrlsBulkHandler);

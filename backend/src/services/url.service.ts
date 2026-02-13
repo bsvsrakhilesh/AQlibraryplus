@@ -2,6 +2,7 @@
 import { Prisma, TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
+import { canonicalizeUrl } from "../utils/urlCanonical";
 
 /** Payload used to create URLs from the URL Collector */
 export type CreateUrlInput = {
@@ -155,11 +156,30 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
   const created: Array<{ id: number; url: string }> = [];
 
   for (const r0 of rows) {
+    const canonical = canonicalizeUrl(r0.url);
+
+    // If canonical exists already, skip (even if raw url differs).
+    // This prevents duplicate rows before canonical_url becomes unique.
+    const existing = canonical
+      ? await prisma.url.findFirst({
+          where: { canonical_url: canonical },
+          select: { id: true },
+        })
+      : null;
+
+    if (existing) {
+      skipped++;
+      skippedUrls.push(r0.url);
+      continue;
+    }
+
     const data: Prisma.UrlCreateInput = {
       url: r0.url,
+      canonical_url: canonical,
       title: r0.title?.trim() || r0.url,
       snippet: r0.snippet ?? null,
     };
+
     try {
       const rec = await prisma.url.create({ data });
       created.push({ id: rec.id, url: rec.url });
@@ -174,7 +194,7 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
     }
   }
 
-  // 🔹 Non-blocking tagging via Python ai-tagger
+  // Non-blocking tagging via Python ai-tagger
   // Stagger starts a bit to avoid hammering the tagger when the user saves many URLs at once.
   const STAGGER_MS = Number(process.env.TAGS_STAGGER_MS || 250);
 
@@ -197,6 +217,34 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
   ];
 
   return { added, skipped, skippedUrls, rows: rowsOut };
+}
+
+export async function urlsExist(urls: string[]) {
+  const cleaned = (urls || [])
+    .map((u) => String(u || "").trim())
+    .filter(Boolean);
+
+  if (cleaned.length === 0) return { exists: {} as Record<string, number> };
+
+  const canon = cleaned.map((u) => canonicalizeUrl(u)).filter(Boolean);
+
+  // During rollout (canonical_url nullable), match either canonical_url OR raw url
+  const found = await prisma.url.findMany({
+    where: {
+      OR: [
+        { canonical_url: { in: canon } },
+        { url: { in: cleaned } },
+      ],
+    },
+    select: { id: true, canonical_url: true, url: true },
+  });
+
+  const exists: Record<string, number> = {};
+  for (const r of found) {
+    const key = r.canonical_url || canonicalizeUrl(r.url);
+    if (key) exists[key] = r.id;
+  }
+  return { exists };
 }
 
 /** Update title/snippet/tags of a URL (does NOT re-run tagger) */

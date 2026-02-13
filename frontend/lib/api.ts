@@ -164,6 +164,11 @@ export async function saveUrls(
   return res.data as SaveUrlsResponse;
 }
 
+export async function urlsExists(urls: string[]) {
+  const res = await api.post("/api/urls/exists", { urls });
+  return res.data as { exists: Record<string, number> };
+}
+
 export async function patchUrl(id: number, patch: any) {
   const res = await api.patch(`/api/urls/${id}`, patch);
   return res.data;

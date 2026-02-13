@@ -5,18 +5,17 @@ import {
   createCollection,
   getCollections,
   getUrlCollections,
-  reconcileUrlCollections,
   removeUrlFromCollection,
   setUrlCollections,
 } from "../../utils/collections";
 import { SearchResult } from "../../lib/types";
 import {
   fetchSavedUrls,
+  urlsExists,
   saveUrls,
   deleteUrlsBulk,
   type SaveUrlsRequestRow,
   type SaveUrlsResponse,
-  type BackendUrlRow,
   crawlSavePdf,
   crawlSaveText,
 } from "../../lib/api";
@@ -25,7 +24,6 @@ import FolderPickerModal from "../savedurls/FolderPickerModal";
 import { StaggerList, StaggerItem } from "../motion/StaggerList";
 import {
   canonicalize as canonicalizeSaved,
-  getSaved,
   removeSaved,
   SAVED_KEY,
 } from "../../utils/saved";
@@ -218,41 +216,38 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     rowsForRecalc: SearchResult[] = results,
   ) => {
     try {
-      const saved: BackendUrlRow[] = await fetchSavedUrls();
-      const idMap: Record<string, number> = {};
-      const set = new Set<string>();
+      const urls = rowsForRecalc.map((r) => r.url).filter(Boolean);
+      if (urls.length === 0) return;
 
-      for (const r of saved) {
-        const c = canonicalizeSaved(r.url);
-        set.add(c);
-        idMap[c] = r.id;
+      // Only check what we haven't cached yet
+      const toCheck: string[] = [];
+      for (const u of urls) {
+        const c = canonicalizeSaved(u);
+        if (!backendIdsRef.current[c]) toCheck.push(u);
       }
 
-      backendIdsRef.current = idMap;
-      backendSetRef.current = set;
+      if (toCheck.length) {
+        const resp = await urlsExists(toCheck);
+        const exists = resp?.exists ?? {};
 
-      // Scrub local saved cache + collection memberships for URLs not present in backend.
-      // Backend is the source of truth when reachable.
-      const localSaved = getSaved();
-      for (const r of localSaved) {
-        const c = canonicalizeSaved(r.url);
-        if (!set.has(c)) {
-          removeSaved(r.url);
-          reconcileUrlCollections(r.url);
+        for (const [canon, id] of Object.entries(exists)) {
+          const c = canonicalizeSaved(canon);
+          backendIdsRef.current[c] = id;
+          backendSetRef.current.add(c);
         }
       }
 
+      // Update UI saved flags
       setRowSaved((prev) => {
         const next = { ...prev };
         for (const rr of rowsForRecalc) {
           const c = canonicalizeSaved(rr.url);
-          const inBackend = set.has(c);
-          next[rr.url] = inBackend;
+          next[rr.url] = backendSetRef.current.has(c);
         }
         return next;
       });
     } catch (e) {
-      // If backend is unreachable, keep UI usable with local categories
+      // Backend unreachable → fallback to local categories only
       setRowSaved((prev) => {
         const next = { ...prev };
         for (const rr of rowsForRecalc) {
