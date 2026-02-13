@@ -1,15 +1,15 @@
-import axios from 'axios';
-import { log, mask } from '../utils/logger';
+import axios from "axios";
+import { log, mask } from "../utils/logger";
 
-const GOOGLE_CSE_URL = 'https://www.googleapis.com/customsearch/v1';
+const GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1";
 
 export async function googleSearch(q: string, page: number = 1) {
   const key = process.env.GOOGLE_CSE_KEY;
-  const cx  = process.env.GOOGLE_CSE_CX;
+  const cx = process.env.GOOGLE_CSE_CX;
 
   if (!key || !cx) {
-    const msg = 'Missing GOOGLE_CSE_KEY or GOOGLE_CSE_CX in environment';
-    log.error('cse.env.missing', { msg });
+    const msg = "Missing GOOGLE_CSE_KEY or GOOGLE_CSE_CX in environment";
+    log.error("cse.env.missing", { msg });
     throw new Error(msg);
   }
 
@@ -25,33 +25,46 @@ export async function googleSearch(q: string, page: number = 1) {
         key,
         cx,
         num: 10,
-        start,               // <-- pagination
-        safe: 'off',
+        start, // <-- pagination
+        safe: "off",
         prettyPrint: false,
       },
       validateStatus: (s) => s >= 200 && s < 300,
     });
 
-    const items: any[] = Array.isArray(resp?.data?.items) ? resp.data.items : [];
+    const items: any[] = Array.isArray(resp?.data?.items)
+      ? resp.data.items
+      : [];
     const results = items.map((item: any) => ({
-      title:   item?.title ?? '',
-      url:     item?.link ?? '',
-      snippet: item?.snippet ?? '',
+      title: item?.title ?? "",
+      url: item?.link ?? "",
+      snippet: item?.snippet ?? "",
     }));
 
     const nextStart: unknown = resp?.data?.queries?.nextPage?.[0]?.startIndex;
+    const nextPageCandidate =
+      typeof nextStart === "number"
+        ? Math.floor((nextStart - 1) / 10) + 1
+        : null;
+
+    // Clamp to Google CSE hard limit (max 100 results => 10 pages) and prevent non-forward pagination.
     const nextPage =
-      typeof nextStart === 'number' ? Math.floor((nextStart - 1) / 10) + 1 : null;
+      typeof nextPageCandidate === "number" &&
+      nextPageCandidate >= 1 &&
+      nextPageCandidate <= 10 &&
+      nextPageCandidate > safePage
+        ? nextPageCandidate
+        : null;
 
     const totalRaw: unknown = resp?.data?.searchInformation?.totalResults;
     const totalResults =
-      typeof totalRaw === 'string'
+      typeof totalRaw === "string"
         ? Number(totalRaw)
-        : typeof totalRaw === 'number'
-        ? totalRaw
-        : null;
+        : typeof totalRaw === "number"
+          ? totalRaw
+          : null;
 
-    log.info('cse.search.ok', {
+    log.info("cse.search.ok", {
       query: q,
       cx: mask(cx),
       page: safePage,
@@ -66,14 +79,14 @@ export async function googleSearch(q: string, page: number = 1) {
     return { results, nextPage, totalResults };
   } catch (err: any) {
     const status = err?.response?.status;
-    const data   = err?.response?.data;
-    const reason = data?.error?.message || err.message || 'CSE request failed';
+    const data = err?.response?.data;
+    const reason = data?.error?.message || err.message || "CSE request failed";
 
-    let hint = '';
-    if (status === 403) hint = 'check key/cx validity and daily quota';
-    else if (status === 400) hint = 'check your query or cx id';
+    let hint = "";
+    if (status === 403) hint = "check key/cx validity and daily quota";
+    else if (status === 400) hint = "check your query or cx id";
 
-    log.error('cse.search.fail', {
+    log.error("cse.search.fail", {
       query: q,
       cx: mask(cx),
       status,
@@ -82,6 +95,8 @@ export async function googleSearch(q: string, page: number = 1) {
       ms: Date.now() - startedAt,
     });
 
-    throw new Error(`Google CSE error ${status ?? ''}: ${reason}${hint ? ` (${hint})` : ''}`);
+    throw new Error(
+      `Google CSE error ${status ?? ""}: ${reason}${hint ? ` (${hint})` : ""}`,
+    );
   }
 }
