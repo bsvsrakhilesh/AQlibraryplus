@@ -1085,7 +1085,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                     <a
                       href={r.url}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className={`font-medium text-gray-900 hover:underline ${titleSize} leading-snug group/title`}
                       title={r.title || r.url}
                       onClick={(e) => e.stopPropagation()}

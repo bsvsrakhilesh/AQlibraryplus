@@ -168,7 +168,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
             <a
               href={url.url}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               title={url.title}
               className="truncate text-lg font-semibold text-gray-900 hover:underline dark:text-white"
             >
