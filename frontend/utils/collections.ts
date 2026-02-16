@@ -13,6 +13,16 @@ import {
 const COLLECTIONS_KEY = "collections";
 const URL_COLLECTIONS_KEY = "urlCollectionsByUrl";
 
+// Debounced refresh to keep backend as source-of-truth without spamming requests
+let hydrateTimer: any = null;
+
+function scheduleHydrate(delayMs = 350) {
+  if (hydrateTimer) clearTimeout(hydrateTimer);
+  hydrateTimer = setTimeout(() => {
+    hydrateCollectionsFromBackend().catch(() => {});
+  }, delayMs);
+}
+
 function readJSON<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -64,7 +74,11 @@ export async function hydrateCollectionsFromBackend(): Promise<void> {
       const local = readJSON<Collection[]>(COLLECTIONS_KEY, []);
       const def = local.find((c) => c.id === "c_general") || local[0];
       if (def) {
-        await createCollectionApi({ id: def.id, name: def.name, visibility: def.visibility });
+        await createCollectionApi({
+          id: def.id,
+          name: def.name,
+          visibility: def.visibility,
+        });
       }
       // re-fetch
       const nextCols = await fetchCollections();
@@ -103,10 +117,14 @@ export function createCollection(name: string): Collection {
   };
   writeJSON(COLLECTIONS_KEY, [...cols, c]);
 
-  // persist (best-effort)
-  createCollectionApi({ id: c.id, name: c.name, visibility: c.visibility }).catch((e) => {
-    console.error("[collections] create failed", e);
-  });
+  // persist (best-effort) + converge to server truth
+  createCollectionApi({ id: c.id, name: c.name, visibility: c.visibility })
+    .then(() => scheduleHydrate())
+    .catch((e) => {
+      console.error("[collections] create failed", e);
+      // still try to re-hydrate later in case backend succeeded but response failed
+      scheduleHydrate(1200);
+    });
 
   return c;
 }
@@ -117,9 +135,12 @@ export function renameCollection(id: string, name: string) {
   );
   writeJSON(COLLECTIONS_KEY, cols);
 
-  renameCollectionApi(id, name.trim()).catch((e) => {
-    console.error("[collections] rename failed", e);
-  });
+  renameCollectionApi(id, name.trim())
+    .then(() => scheduleHydrate())
+    .catch((e) => {
+      console.error("[collections] rename failed", e);
+      scheduleHydrate(1200);
+    });
 }
 
 export function deleteCollection(id: string) {
@@ -135,9 +156,12 @@ export function deleteCollection(id: string) {
   });
   writeJSON(URL_COLLECTIONS_KEY, next);
 
-  deleteCollectionApi(id).catch((e) => {
-    console.error("[collections] delete failed", e);
-  });
+  deleteCollectionApi(id)
+    .then(() => scheduleHydrate())
+    .catch((e) => {
+      console.error("[collections] delete failed", e);
+      scheduleHydrate(1200);
+    });
 }
 
 export function getUrlCollections(rawUrl: string): string[] {
@@ -155,9 +179,12 @@ function writeUrlCollections(rawUrl: string, collectionIds: string[]) {
 
 export function setUrlCollections(rawUrl: string, collectionIds: string[]) {
   writeUrlCollections(rawUrl, collectionIds);
-  setCollectionsForUrlApi({ url: rawUrl, collectionIds }).catch((e) => {
-    console.error("[collections] set url collections failed", e);
-  });
+  setCollectionsForUrlApi({ url: rawUrl, collectionIds })
+    .then(() => scheduleHydrate())
+    .catch((e) => {
+      console.error("[collections] set url collections failed", e);
+      scheduleHydrate(1200);
+    });
 }
 
 export function addUrlToCollection(collectionId: string, rawUrl: string) {

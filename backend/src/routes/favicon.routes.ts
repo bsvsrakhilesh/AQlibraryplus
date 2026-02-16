@@ -1,5 +1,7 @@
 import { Router } from "express";
 import axios from "axios";
+import dns from "dns/promises";
+import net from "net";
 
 // Minimal in-memory cache. Good enough for favicons; avoids repeated outbound hits.
 // NOTE: If you run multiple replicas, consider moving this to Redis.
@@ -38,6 +40,92 @@ function cacheSet(key: string, entry: CacheEntry) {
   }
 }
 
+function isPrivateIp(ip: string): boolean {
+  // Handles IPv4 and IPv6
+  if (net.isIP(ip) === 4) {
+    const parts = ip.split(".").map((x) => parseInt(x, 10));
+    const [a, b] = parts;
+
+    // 10.0.0.0/8
+    if (a === 10) return true;
+    // 127.0.0.0/8 loopback
+    if (a === 127) return true;
+    // 169.254.0.0/16 link-local
+    if (a === 169 && b === 254) return true;
+    // 172.16.0.0/12
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.168.0.0/16
+    if (a === 192 && b === 168) return true;
+    // 0.0.0.0/8 and 100.64.0.0/10 (CGNAT) are also “not public”
+    if (a === 0) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+
+    return false;
+  }
+
+  if (net.isIP(ip) === 6) {
+    const normalized = ip.toLowerCase();
+
+    // ::1 loopback
+    if (normalized === "::1") return true;
+    // fc00::/7 unique local addresses
+    if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+    // fe80::/10 link-local
+    if (
+      normalized.startsWith("fe8") ||
+      normalized.startsWith("fe9") ||
+      normalized.startsWith("fea") ||
+      normalized.startsWith("feb")
+    )
+      return true;
+
+    return false;
+  }
+
+  return true; // unknown => treat as unsafe
+}
+
+function isBlockedHostname(host: string): boolean {
+  const h = host.toLowerCase();
+
+  // obvious local targets
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+
+  // internal/reserved-ish TLDs commonly used in corp networks
+  const blockedSuffixes = [
+    ".local",
+    ".internal",
+    ".intranet",
+    ".corp",
+    ".home",
+    ".lan",
+  ];
+  if (blockedSuffixes.some((s) => h.endsWith(s))) return true;
+
+  return false;
+}
+
+async function assertPublicHost(host: string) {
+  if (isBlockedHostname(host)) {
+    throw new Error("BLOCKED_HOST");
+  }
+
+  // If host is already an IP literal, block private ranges
+  const ipType = net.isIP(host);
+  if (ipType) {
+    if (isPrivateIp(host)) throw new Error("BLOCKED_IP");
+    return;
+  }
+
+  // Resolve A/AAAA and ensure none are private
+  const results = await dns.lookup(host, { all: true });
+  for (const r of results) {
+    if (isPrivateIp(r.address)) {
+      throw new Error("BLOCKED_DNS");
+    }
+  }
+}
+
 function safeHostFromUrl(raw: string): string | null {
   try {
     const u = new URL(raw);
@@ -68,8 +156,7 @@ async function fetchFavicon(host: string, ifNoneMatch?: string) {
 
   return {
     status: res.status,
-    contentType:
-      (res.headers["content-type"] as string) || "image/x-icon",
+    contentType: (res.headers["content-type"] as string) || "image/x-icon",
     etag: res.headers["etag"] as string | undefined,
     body: Buffer.from(res.data),
   };
@@ -85,6 +172,12 @@ router.get("/favicon", async (req, res) => {
 
   if (!host) {
     return res.status(400).json({ error: "Invalid url" });
+  }
+
+  try {
+    await assertPublicHost(host);
+  } catch {
+    return res.status(400).json({ error: "Blocked host" });
   }
 
   const cacheKey = host.toLowerCase();

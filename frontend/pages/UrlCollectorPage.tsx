@@ -13,12 +13,29 @@ const LS_KEY = "uc:v1";
 const RESULTS_PER_PAGE = 10;
 const INITIAL_RESULTS_TARGET = 50; // fetch up to this many automatically on a single Search
 
+// Rate-limit hardening
+const RATE_LIMIT_COOLDOWN_MS = 60_000; // match backend window
+const PREFETCH_DELAY_MS = 650; // small pacing to avoid bursty requests
+
+function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const t = setTimeout(() => resolve(), ms);
+    if (!signal) return;
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(Object.assign(new Error("AbortError"), { name: "AbortError" }));
+    };
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 type SortKey = "original" | "title" | "domain";
 
 type PersistShape = {
   website: string;
   keywords: string;
-  results: SearchResult[];
+  results?: SearchResult[];
   selected: string[]; // persist Set<string> as array
   sortKey?: SortKey;
   lastRunAt?: string;
@@ -29,6 +46,28 @@ type PersistShape = {
 };
 
 const UrlCollectorPage: React.FC = () => {
+  // ---------- Persistence guardrails (avoid localStorage quota issues) ----------
+  const MAX_PERSIST_RESULTS = 100; // cap stored results
+  const MAX_PERSIST_SNIPPET = 240; // trim large snippets
+
+  function minifyResults(rows: SearchResult[]): SearchResult[] {
+    return rows.slice(0, MAX_PERSIST_RESULTS).map((r) => ({
+      ...r,
+      // keep UI useful but prevent huge payloads
+      title: (r.title ?? "").slice(0, 300),
+      snippet: (r.snippet ?? "").slice(0, MAX_PERSIST_SNIPPET),
+    }));
+  }
+
+  function safeLocalStorageSet(key: string, value: unknown): boolean {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   const navigate = useNavigate();
   const loc = useLocation();
   const params = new URLSearchParams(loc.search);
@@ -60,6 +99,17 @@ const UrlCollectorPage: React.FC = () => {
 
   // Abort in-flight searches when a new one starts
   const fetchAbortRef = useRef<AbortController | null>(null);
+  // After a 429, we pause further search calls for a short cooldown
+  const rateLimitUntilRef = useRef<number>(0);
+
+  // Abort any in-flight requests when leaving the page
+  useEffect(() => {
+    return () => {
+      try {
+        fetchAbortRef.current?.abort();
+      } catch {}
+    };
+  }, []);
 
   // Scroll target for the results section
   const resultsSectionRef = useRef<HTMLElement | null>(null);
@@ -88,23 +138,45 @@ const UrlCollectorPage: React.FC = () => {
     }
   }, []);
 
-  /* ---------- Persist state ---------- */
+  /* ---------- Persist state (quota-safe) ---------- */
   useEffect(() => {
-    const payload: PersistShape = {
+    // 1) Best-effort: store capped + minified results for a good UX on refresh
+    const full: PersistShape = {
       website,
       keywords,
-      results: searchResults,
+      results: minifyResults(searchResults),
       selected: Array.from(selectedUrls),
       sortKey,
       lastRunAt: hasSearched ? new Date().toISOString() : undefined,
-
       lastQuery,
       nextPage,
       totalResults,
     };
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(payload));
-    } catch {}
+
+    // 2) Fallback: if quota exceeded, store everything except results
+    const noResults: PersistShape = {
+      website,
+      keywords,
+      selected: Array.from(selectedUrls),
+      sortKey,
+      lastRunAt: hasSearched ? new Date().toISOString() : undefined,
+      lastQuery,
+      nextPage,
+      totalResults,
+    };
+
+    // 3) Minimal fallback: just restore the user’s inputs and sort
+    const minimal: PersistShape = {
+      website,
+      keywords,
+      selected: [],
+      sortKey,
+      lastRunAt: hasSearched ? new Date().toISOString() : undefined,
+    };
+
+    if (safeLocalStorageSet(LS_KEY, full)) return;
+    if (safeLocalStorageSet(LS_KEY, noResults)) return;
+    safeLocalStorageSet(LS_KEY, minimal);
   }, [
     website,
     keywords,
@@ -138,6 +210,14 @@ const UrlCollectorPage: React.FC = () => {
     async (siteArg?: string, kwArg?: string) => {
       const site = (siteArg ?? website).trim();
       const kws = (kwArg ?? keywords).trim();
+
+      const now = Date.now();
+      if (now < rateLimitUntilRef.current) {
+        const secs = Math.ceil((rateLimitUntilRef.current - now) / 1000);
+        setError(`Rate limit hit. Please wait ${secs}s and try again.`);
+        setHasSearched(true);
+        return;
+      }
 
       if (!site && !kws) {
         setError("Enter a website and/or keywords to search.");
@@ -214,7 +294,23 @@ const UrlCollectorPage: React.FC = () => {
           merged.length < INITIAL_RESULTS_TARGET &&
           pagesFetched < maxPages
         ) {
-          const pn = await fetchPage(np);
+          // Pace requests to avoid bursty 429s
+          await sleep(PREFETCH_DELAY_MS, controller.signal);
+
+          let pn;
+          try {
+            pn = await fetchPage(np);
+          } catch (e: any) {
+            if (e?.message === "RATE_LIMITED") {
+              rateLimitUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+              setError(
+                `Rate limit reached. Showing the first ${merged.length} results. Try again in ~60s.`,
+              );
+              break; // stop auto-prefetch, keep what we already have
+            }
+            throw e;
+          }
+
           pagesFetched += 1;
 
           for (const r of pn.rows) {
@@ -238,8 +334,9 @@ const UrlCollectorPage: React.FC = () => {
       } catch (e: any) {
         if (e?.name !== "AbortError" && e?.code !== "ERR_CANCELED") {
           if (e?.message === "RATE_LIMITED") {
+            rateLimitUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
             setError(
-              "Too many searches too quickly. Please wait 60 seconds and try again.",
+              "Too many searches too quickly. Please wait ~60 seconds and try again.",
             );
           } else {
             const msg =
@@ -292,11 +389,19 @@ const UrlCollectorPage: React.FC = () => {
     } catch (e: any) {
       const msg =
         typeof e?.message === "string" ? e.message : "Load more failed";
-      setError(
-        msg.includes("Failed to fetch") || msg.includes("Network Error")
-          ? "Network error. Is your server running and reachable?"
-          : msg,
-      );
+
+      if (msg === "RATE_LIMITED") {
+        rateLimitUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+        setError(
+          "Rate limit reached. Please wait ~60 seconds, then try Load more again.",
+        );
+      } else {
+        setError(
+          msg.includes("Failed to fetch") || msg.includes("Network Error")
+            ? "Network error. Is your server running and reachable?"
+            : msg,
+        );
+      }
     } finally {
       setIsLoadingMore(false);
     }
