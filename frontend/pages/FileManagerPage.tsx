@@ -904,16 +904,24 @@ export default function FileManagerPage() {
 
   // ------- Navigation handlers  -------
   const onFolderSelect = useCallback(
-    async (id?: string, folderName?: string) => {
+    async (
+      id?: string,
+      folderName?: string,
+      parentIdOverride?: string | null,
+    ) => {
       setSelected([]);
       setEmptyBgMenu(null);
 
       const folderId = id || "";
-      // Update history
-      const newHistory = history.slice(0, historyIndex + 1);
-      newHistory.push(folderId);
-      setHistory(newHistory);
-      setHistoryIndex(newHistory.length - 1);
+
+      // Update history ONLY if folder actually changed
+      const currentHistFolder = history[historyIndex] ?? "";
+      if (currentHistFolder !== folderId) {
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push(folderId);
+        setHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+      }
 
       // Optimistically cache folder metadata when caller provides a name
       // so buildBreadcrumb can pick it up immediately without an extra fetch.
@@ -921,7 +929,9 @@ export default function FileManagerPage() {
         folderCache.current.set(id, {
           id,
           name: folderName,
-          parentId: currentFolderId ?? null,
+          // IMPORTANT: for "open child folder from list", parent is currentFolderId.
+          // For breadcrumb navigation, caller will pass the correct parentIdOverride.
+          parentId: parentIdOverride ?? currentFolderId ?? null,
         });
       }
 
@@ -936,8 +946,11 @@ export default function FileManagerPage() {
   const handleBack = useCallback(() => {
     if (historyIndex > 0) {
       setSelected([]);
+      setEmptyBgMenu(null);
+
       const newIndex = historyIndex - 1;
       const folderId = history[newIndex] || undefined;
+
       setHistoryIndex(newIndex);
       setCurrentFolderId(folderId);
       setPage(1);
@@ -960,15 +973,22 @@ export default function FileManagerPage() {
 
   const onCrumbClick = useCallback(
     async (idx: number) => {
-      setSelected([]);
-      setEmptyBgMenu(null);
+      // idx 0 is "Home"
+      if (idx <= 0) {
+        await onFolderSelect(undefined);
+        return;
+      }
+
       const target = breadcrumb[idx];
-      const bc = await buildBreadcrumb(target.id);
-      setBreadcrumb(bc);
-      setCurrentFolderId(target.id);
-      setPage(1);
+
+      // breadcrumb[0] = Home (no id)
+      // breadcrumb[1] = first folder -> parent is root/null
+      const parentId =
+        idx <= 1 ? null : ((breadcrumb[idx - 1] as any)?.id ?? null);
+
+      await onFolderSelect(target.id, target.name, parentId);
     },
-    [breadcrumb, buildBreadcrumb],
+    [breadcrumb, onFolderSelect],
   );
 
   const onDeleteSelected = useCallback(
@@ -1362,10 +1382,7 @@ export default function FileManagerPage() {
                       return match?.id ?? null;
                     }}
                     onNavigate={async (folderId) => {
-                      setCurrentFolderId(folderId ?? undefined);
-                      setPage(1);
-                      const bc = await buildBreadcrumb(folderId ?? undefined);
-                      setBreadcrumb(bc);
+                      await onFolderSelect(folderId ?? undefined);
                     }}
                     onSearchSubmit={(q) => setSearch(q)}
                     initialSearch={search}
