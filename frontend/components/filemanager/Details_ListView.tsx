@@ -346,23 +346,33 @@ export default function Details_ListView({
 
   /** ---- context menus ---- */
   const buildBGMenu = useCallback((): MenuItem[] => {
-    const pasteLabel = currentFolderId ? "Paste into this folder" : "Paste";
-    return [
-      {
+    const items: MenuItem[] = [];
+
+    if (onNew) {
+      items.push({
         type: "item",
         id: "newfolder",
         label: "New folder",
         onSelect: () => onNew?.("folder"),
-      },
-      {
+      });
+    }
+
+    if (onPaste) {
+      const pasteLabel = currentFolderId ? "Paste into this folder" : "Paste";
+      items.push({
         type: "item",
         id: "paste",
         label: pasteLabel,
         shortcut: "Ctrl+V",
-        disabled: !onPaste,
         onSelect: () => onPaste?.(),
-      },
-      { type: "separator" },
+      });
+    }
+
+    if (items.length) items.push({ type: "separator" });
+
+    return [
+      ...items,
+
       {
         type: "item",
         id: "selectall",

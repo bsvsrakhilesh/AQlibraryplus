@@ -253,6 +253,20 @@ export default function FileManagerPage() {
   const [propertiesFile, setPropertiesFile] = useState<FileItem | null>(null);
   const [showProperties, setShowProperties] = useState<boolean>(false);
 
+  // ----- Safe destructive actions: confirm + undo -----
+  const TRASH_UNDO_MS = 10_000;
+
+  const [trashConfirm, setTrashConfirm] = useState<null | {
+    ids: string[];
+    names: string[];
+  }>(null);
+
+  const [undoTrash, setUndoTrash] = useState<null | {
+    ids: string[];
+    label: string;
+    expiresAt: number;
+  }>(null);
+
   // data
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -838,37 +852,112 @@ export default function FileManagerPage() {
     }
   }, []);
 
-  const handleDelete = async (file: FileItem) => {
-    const isFolder =
-      (file as any).mimeType === "folder" ||
-      String(file.id).startsWith("folder:");
+  const openTrashConfirm = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
 
-    const label = file.title || (isFolder ? "this folder" : "this file");
-    if (!confirm(`Move ${label} to Trash?`)) return;
+      // build display names from current visible list
+      const names = ids
+        .map((id) => allFiles.find((f) => String(f.id) === String(id))?.title)
+        .filter(Boolean) as string[];
+
+      const fallbackName = (id: string) => {
+        if (String(id).startsWith("folder:")) return "Folder";
+        return "File";
+      };
+
+      setTrashConfirm({
+        ids,
+        names: names.length ? names : ids.map(fallbackName),
+      });
+    },
+    [allFiles],
+  );
+
+  const performMoveToTrash = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+
+      const backup = allFiles;
+
+      // optimistic remove
+      setAllFiles((prev) => prev.filter((f) => !ids.includes(f.id)));
+      setSelected([]);
+
+      try {
+        const itemsToTrash = allFiles.filter((f) => ids.includes(f.id));
+
+        await Promise.all(
+          itemsToTrash.map(async (f) => {
+            const isFolder =
+              (f as any).mimeType === "folder" ||
+              String(f.id).startsWith("folder:");
+
+            if (isFolder) {
+              const rawId = String(f.id).startsWith("folder:")
+                ? String(f.id).slice("folder:".length)
+                : String(f.id);
+              await moveFolderToTrash(rawId);
+            } else {
+              await moveFileToTrash(String(f.id));
+            }
+          }),
+        );
+
+        notify("Moved to Trash", "success");
+
+        // show undo
+        setUndoTrash({
+          ids,
+          label: ids.length === 1 ? "1 item" : `${ids.length} items`,
+          expiresAt: Date.now() + TRASH_UNDO_MS,
+        });
+
+        refreshAll();
+      } catch (e: any) {
+        setAllFiles(backup);
+        notify(e?.message || "Failed to move some items to Trash", "error");
+      }
+    },
+    [TRASH_UNDO_MS, allFiles, notify, refreshAll],
+  );
+
+  const undoMoveToTrash = useCallback(async () => {
+    if (!undoTrash) return;
+    if (Date.now() > undoTrash.expiresAt) {
+      setUndoTrash(null);
+      return;
+    }
+
+    const { folderIds, fileIds } = splitSelectionIds(undoTrash.ids);
 
     try {
-      if (isFolder) {
-        const rawId = String(file.id).startsWith("folder:")
-          ? String(file.id).slice("folder:".length)
-          : String(file.id);
-
-        await moveFolderToTrash(rawId);
-      } else {
-        await moveFileToTrash(String(file.id));
-      }
-
-      notify("Moved to Trash", "success");
-
-      // Instant UI: if it's a file, subtract its size right away
-      if (!isFolder && typeof file.size === "number") {
-        setStorageUsedBytes((s) => Math.max(0, s - file.size));
-      }
-
-      // Then sync from server (folders can remove many files)
+      await Promise.all([
+        ...folderIds.map((fid) => restoreFolderFromTrash(fid)),
+        ...fileIds.map((fid) => restoreFileFromTrash(fid)),
+      ]);
+      notify("Undo: restored from Trash", "success");
+      setUndoTrash(null);
       refreshAll();
     } catch (e: any) {
-      notify(e?.message || "Failed to move to Trash", "error");
+      notify(e?.message || "Undo failed", "error");
     }
+  }, [notify, refreshAll, splitSelectionIds, undoTrash]);
+
+  useEffect(() => {
+    if (!undoTrash) return;
+    const ms = Math.max(0, undoTrash.expiresAt - Date.now());
+    const t = window.setTimeout(() => setUndoTrash(null), ms);
+    return () => window.clearTimeout(t);
+  }, [undoTrash]);
+
+  const handleDelete = async (file: FileItem) => {
+    // safety: never trash inside virtual zip view
+    if (virtualZip) {
+      notify("Archive browsing is read-only.", "info");
+      return;
+    }
+    openTrashConfirm([String(file.id)]);
   };
 
   const handleRestore = async (item: FileItem) => {
@@ -958,6 +1047,18 @@ export default function FileManagerPage() {
   const handlePaste = useCallback(async () => {
     if (!clipboard) return;
 
+    // Safety: archive browsing is read-only
+    if (virtualZip) {
+      notify("Archive browsing is read-only.", "info");
+      return;
+    }
+
+    // Safety: never paste into Trash
+    if (viewMode === "trash" || currentFolderId === "trash") {
+      notify("You can’t paste into Trash. Restore items first.", "info");
+      return;
+    }
+
     const isFolderItem = (f: FileItem) =>
       (f as any)?.mimeType === "folder" ||
       String((f as any)?.id).startsWith("folder:");
@@ -1015,7 +1116,7 @@ export default function FileManagerPage() {
     } finally {
       setClipboard(null);
     }
-  }, [clipboard, currentFolderId, notify, refreshAll]);
+  }, [clipboard, currentFolderId, notify, refreshAll, viewMode, virtualZip]);
 
   const buildEmptyBGMenu = useCallback((): MenuItem[] => {
     const items: MenuItem[] = [
@@ -1035,7 +1136,7 @@ export default function FileManagerPage() {
       },
     ];
 
-    if (clipboard?.files?.length) {
+    if (clipboard?.files?.length && viewMode !== "trash" && !virtualZip) {
       items.push({ type: "separator" });
       items.push({
         type: "item",
@@ -1073,8 +1174,30 @@ export default function FileManagerPage() {
   const handleDrop = useCallback(
     async (ids: string[], targetFolderId: string | null) => {
       if (!ids.length) return;
+
+      // Safety: archive browsing is read-only
+      if (virtualZip) {
+        notify("Archive browsing is read-only.", "info");
+        return;
+      }
+
+      // Safety: don't allow moving while viewing Trash
+      if (viewMode === "trash" || currentFolderId === "trash") {
+        notify("Restore items first — moving from Trash is disabled.", "info");
+        return;
+      }
+
+      // No-op move (dropping into the same folder)
+      if ((currentFolderId ?? null) === (targetFolderId ?? null)) return;
+
       try {
         const { fileIds, folderIds } = splitSelectionIds(ids);
+
+        // Prevent moving a folder into itself (client-side guard)
+        if (targetFolderId && folderIds.includes(targetFolderId)) {
+          notify("You can’t move a folder into itself.", "info");
+          return;
+        }
 
         const moves: Promise<any>[] = [];
         if (fileIds.length > 0)
@@ -1091,7 +1214,7 @@ export default function FileManagerPage() {
         notify("Move failed", "error");
       }
     },
-    [notify, refresh],
+    [notify, refresh, currentFolderId, viewMode, virtualZip],
   );
 
   const pageCount = useMemo(
@@ -1258,44 +1381,13 @@ export default function FileManagerPage() {
   const onDeleteSelected = useCallback(
     async (ids: string[]) => {
       if (!ids.length) return;
-      if (!confirm(`Move ${ids.length} selected item(s) to Trash?`)) return;
-
-      const backup = allFiles;
-
-      // optimistic removal from UI
-      setAllFiles((prev) => prev.filter((f) => !ids.includes(f.id)));
-      setSelected([]);
-
-      try {
-        const itemsToTrash = allFiles.filter((f) => ids.includes(f.id));
-
-        await Promise.all(
-          itemsToTrash.map(async (f) => {
-            const isFolder =
-              (f as any).mimeType === "folder" ||
-              String(f.id).startsWith("folder:");
-
-            if (isFolder) {
-              const rawId = String(f.id).startsWith("folder:")
-                ? String(f.id).slice("folder:".length)
-                : String(f.id);
-
-              await moveFolderToTrash(rawId);
-            } else {
-              await moveFileToTrash(String(f.id));
-            }
-          }),
-        );
-
-        notify("Moved to Trash", "success");
-        refreshAll();
-      } catch (e: any) {
-        // revert optimistic change if anything failed
-        setAllFiles(backup);
-        notify(e?.message || "Failed to move some items to Trash", "error");
+      if (virtualZip) {
+        notify("Archive browsing is read-only.", "info");
+        return;
       }
+      openTrashConfirm(ids);
     },
-    [allFiles, notify, refreshAll],
+    [notify, openTrashConfirm, virtualZip],
   );
 
   const onRestoreSelected = useCallback(
@@ -2025,7 +2117,13 @@ export default function FileManagerPage() {
                                 ? onRestoreSelected
                                 : onDeleteSelected
                           }
-                          onPaste={virtualZip ? undefined : handlePaste}
+                          onPaste={
+                            virtualZip ||
+                            viewMode === "trash" ||
+                            currentFolderId === "trash"
+                              ? undefined
+                              : handlePaste
+                          }
                           onRename={virtualZip ? undefined : handleRenameById}
                           onCopy={
                             virtualZip
@@ -2150,7 +2248,12 @@ export default function FileManagerPage() {
 
                             clipboard,
 
-                            onPaste: virtualZip ? undefined : handlePaste,
+                            onPaste:
+                              virtualZip ||
+                              viewMode === "trash" ||
+                              currentFolderId === "trash"
+                                ? undefined
+                                : handlePaste,
                             onUpdateTags: handleUpdateTags,
                             onEditTags: handleEditTagsInPreview,
                             onSelectionChange: handleSelectionChangeByIds,
@@ -2283,6 +2386,7 @@ export default function FileManagerPage() {
             folderId={currentFolderId}
           />
         </Modal>
+
         {/* Bulk AI auto-tag modal */}
         <Modal
           open={autoTagUI.open}
@@ -2355,6 +2459,76 @@ export default function FileManagerPage() {
           </div>
         </Modal>
       </motion.div>
+
+      {/* Confirm: Move to Trash */}
+      <Modal
+        open={!!trashConfirm}
+        onClose={() => setTrashConfirm(null)}
+        title="Move to Trash?"
+      >
+        <div className="space-y-4">
+          <div className="text-sm text-neutral-700 dark:text-neutral-300">
+            This will move the selected item(s) to Trash. You can undo for 10
+            seconds.
+          </div>
+
+          {trashConfirm?.names?.length ? (
+            <div className="flex flex-wrap gap-2 max-h-40 overflow-auto">
+              {trashConfirm.names.slice(0, 8).map((n) => (
+                <span
+                  key={n}
+                  className="px-2 py-1 rounded-full bg-black/5 dark:bg-white/10 text-xs"
+                >
+                  {n}
+                </span>
+              ))}
+              {trashConfirm.names.length > 8 && (
+                <span className="text-xs text-neutral-500">
+                  +{trashConfirm.names.length - 8} more
+                </span>
+              )}
+            </div>
+          ) : null}
+
+          <div className="flex justify-end gap-2">
+            <ToolbarButton
+              variant="ghost"
+              onClick={() => setTrashConfirm(null)}
+            >
+              Cancel
+            </ToolbarButton>
+            <ToolbarButton
+              variant="primary"
+              onClick={async () => {
+                const ids = trashConfirm?.ids ?? [];
+                setTrashConfirm(null);
+                await performMoveToTrash(ids);
+              }}
+            >
+              Move to Trash
+            </ToolbarButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Undo bar */}
+      {undoTrash && Date.now() <= undoTrash.expiresAt && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[130]">
+          <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl px-4 py-3 flex items-center gap-3">
+            <div className="text-sm">
+              Moved <span className="font-medium">{undoTrash.label}</span> to
+              Trash.
+            </div>
+            <ToolbarButton variant="outline" onClick={undoMoveToTrash}>
+              Undo
+            </ToolbarButton>
+            <ToolbarButton variant="ghost" onClick={() => setUndoTrash(null)}>
+              Dismiss
+            </ToolbarButton>
+          </div>
+        </div>
+      )}
+
       {showHotkeys && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-[hsl(var(--popover))] border border-[hsl(var(--border))] rounded-2xl shadow-2xl p-6 w-[460px] max-w-[90%]">

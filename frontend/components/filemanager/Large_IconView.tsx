@@ -320,24 +320,33 @@ export default function Large_IconView({
   const [bgMenu, setBgMenu] = useState<{ x: number; y: number } | null>(null);
 
   const buildBGMenu = useCallback((): MenuItem[] => {
-    const pasteLabel = currentFolderId ? "Paste into this folder" : "Paste";
+    const items: MenuItem[] = [];
 
-    return [
-      {
+    if (onNew) {
+      items.push({
         type: "item",
         id: "newfolder",
         label: "New folder",
         onSelect: () => onNew?.("folder"),
-      },
-      {
+      });
+    }
+
+    if (onPaste) {
+      const pasteLabel = currentFolderId ? "Paste into this folder" : "Paste";
+      items.push({
         type: "item",
         id: "paste",
         label: pasteLabel,
         shortcut: "Ctrl+V",
-        disabled: !onPaste,
         onSelect: () => onPaste?.(),
-      },
-      { type: "separator" },
+      });
+    }
+
+    if (items.length) items.push({ type: "separator" });
+
+    return [
+      ...items,
+
       {
         type: "item",
         id: "selectall",
