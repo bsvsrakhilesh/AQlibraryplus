@@ -924,6 +924,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                   />
                   Select this page
                 </label>
+                
+                <span className="text-xs text-gray-500">
+                  (page: {pageRows.length}, loaded: {filtered.length})
+                </span>
 
                 {/* Explicit global action (safe): selects all currently loaded results */}
                 {onToggleAll && (

@@ -68,6 +68,36 @@ const UrlCollectorPage: React.FC = () => {
     }
   }
 
+  // ---------- Keyword query normalization ----------
+  function normalizeKeywords(raw: string): string {
+    const s = (raw || "").trim();
+    if (!s) return "";
+
+    // Only apply special handling when user actually used commas
+    if (!s.includes(",")) return s;
+
+    const parts = s
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (parts.length === 0) return "";
+
+    const q = parts
+      .map((p) => {
+        // Quote phrases with spaces unless already quoted
+        const alreadyQuoted =
+          (p.startsWith('"') && p.endsWith('"')) ||
+          (p.startsWith("'") && p.endsWith("'"));
+        if (alreadyQuoted) return p;
+        return p.includes(" ") ? `"${p}"` : p;
+      })
+      .join(" OR ");
+
+    // Wrap in parens to keep it as a unit if website/site scoping is added later
+    return parts.length > 1 ? `(${q})` : q;
+  }
+
   const navigate = useNavigate();
   const loc = useLocation();
   const params = new URLSearchParams(loc.search);
@@ -209,7 +239,7 @@ const UrlCollectorPage: React.FC = () => {
   const handleSearch = useCallback(
     async (siteArg?: string, kwArg?: string) => {
       const site = (siteArg ?? website).trim();
-      const kws = (kwArg ?? keywords).trim();
+      const kws = normalizeKeywords(kwArg ?? keywords);
 
       const now = Date.now();
       if (now < rateLimitUntilRef.current) {
