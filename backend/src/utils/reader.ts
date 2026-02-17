@@ -32,7 +32,7 @@ export async function setReadableContentOnPage(page: Page, url: string) {
   const isHtml =
     ct.includes("text/html") || ct.includes("application/xhtml+xml");
 
-  // IMPORTANT: never attempt Readability on PDFs/binary
+  // Reader mode must only run on HTML.
   if (!isHtml) throw new Error(`NOT_HTML:${ct || "unknown"}`);
 
   const html = await res.text();

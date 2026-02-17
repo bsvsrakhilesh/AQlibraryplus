@@ -71,15 +71,15 @@ async function isRobotsAllowed(targetUrl: string) {
 }
 
 function isPdfMagic(buf: Buffer) {
-  // PDF files start with: %PDF-
+  // PDFs start with: %PDF-
   return buf.length >= 5 && buf.slice(0, 5).toString("utf8") === "%PDF-";
 }
 
 function looksLikePdfUrl(u: URL) {
-  const lowerPath = u.pathname.toLowerCase();
-  if (lowerPath.endsWith(".pdf")) return true;
+  const p = u.pathname.toLowerCase();
+  if (p.endsWith(".pdf")) return true;
 
-  // Common patterns like ?filename=...pdf or ?file=...pdf
+  // common govt patterns: ?filename=...pdf or any param containing .pdf
   for (const [, v] of u.searchParams.entries()) {
     const s = String(v || "").toLowerCase();
     if (s.includes(".pdf")) return true;
@@ -87,24 +87,16 @@ function looksLikePdfUrl(u: URL) {
   return false;
 }
 
-function derivePdfNameFromUrl(u: URL): string | null {
-  // Prefer any query param that contains a .pdf path (like your sci.gov.in ?filename=...pdf)
-  for (const [k, v] of u.searchParams.entries()) {
-    const val = String(v || "");
-    if (val.toLowerCase().includes(".pdf")) {
-      const base = val.split("/").pop() || val;
-      return decodeURIComponent(base);
-    }
-    // sometimes param key is "filename"
-    if (k.toLowerCase().includes("file") && val) {
-      const base = val.split("/").pop() || val;
+function derivePdfNameFromUrl(u: URL): string {
+  for (const [, v] of u.searchParams.entries()) {
+    const s = String(v || "");
+    if (s.toLowerCase().includes(".pdf")) {
+      const base = s.split("/").pop() || "document.pdf";
       return decodeURIComponent(base);
     }
   }
-
-  const base = u.pathname.split("/").pop() || "";
-  if (base.toLowerCase().endsWith(".pdf")) return decodeURIComponent(base);
-  return null;
+  const base = u.pathname.split("/").pop() || "document.pdf";
+  return decodeURIComponent(base);
 }
 
 // ===================== Storage helpers =====================
@@ -492,6 +484,7 @@ export async function crawlPdfHandler(
     log.info("crawlPdfHandler_begin", { ...requestMeta(req), url });
 
     // --------- Guardrails END ---------
+    
     // Common post-processing (copy URL tags + schedule ai-tag + respond)
     const postProcessAndRespond = async (fileRec: any) => {
       // Copy tags from the source URL if provided
@@ -596,9 +589,7 @@ export async function crawlPdfHandler(
       });
     }
 
-    // Puppeteer PDF capture
-
-    // Puppeteer PDF capture (drop-in replacement)
+    // Puppeteer PDF capture 
     const tryMakePdf = async () => {
       const b = await launchBrowser(); // keep your existing launcher if you have one
       try {
