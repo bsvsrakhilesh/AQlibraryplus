@@ -26,6 +26,8 @@ import {
   getFileTagJob,
   startFileTagJob,
   listFolders,
+  listZipChildren,
+  streamZipFile,
   getFileById,
   queryFiles,
   getStorageUsage,
@@ -240,6 +242,13 @@ export default function FileManagerPage() {
   const [history, setHistory] = useState<string[]>([""]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
 
+  // ---------- Zip-as-folder (virtual archive browsing) ----------
+  const [virtualZip, setVirtualZip] = useState<null | {
+    zipId: string;
+    label: string; // archive file name shown in breadcrumb
+    prefix: string; // e.g. "", "dir1/", "dir1/dir2/"
+  }>(null);
+
   // properties modal
   const [propertiesFile, setPropertiesFile] = useState<FileItem | null>(null);
   const [showProperties, setShowProperties] = useState<boolean>(false);
@@ -331,6 +340,36 @@ export default function FileManagerPage() {
       else fileIds.push(sid);
     }
     return { folderIds, fileIds };
+  };
+
+  // ---- Zip-as-folder helpers ----
+  const ZIP_HIST_PREFIX = "zip|";
+  const ZIP_DIR_PREFIX = "zipdir|";
+  const ZIP_FILE_PREFIX = "zipfile|";
+
+  const makeZipHist = (zipId: string, prefix: string) =>
+    `${ZIP_HIST_PREFIX}${zipId}|${prefix}`;
+
+  const isZipHist = (h: string) => h.startsWith(ZIP_HIST_PREFIX);
+
+  const parseZipHist = (h: string) => {
+    const parts = h.split("|");
+    return { zipId: parts[1] ?? "", prefix: parts[2] ?? "" };
+  };
+
+  const makeZipDirId = (zipId: string, path: string) =>
+    `${ZIP_DIR_PREFIX}${zipId}|${path}`; // path ends with "/"
+  const makeZipFileId = (zipId: string, path: string) =>
+    `${ZIP_FILE_PREFIX}${zipId}|${path}`;
+
+  const isZipDirId = (id: string) => id.startsWith(ZIP_DIR_PREFIX);
+  const isZipFileId = (id: string) => id.startsWith(ZIP_FILE_PREFIX);
+
+  const parseZipItemId = (id: string) => {
+    const parts = id.split("|");
+    const zipId = parts[1] ?? "";
+    const path = parts.slice(2).join("|"); // defensive
+    return { zipId, path };
   };
 
   const selectedBytes = useMemo(() => {
@@ -510,15 +549,39 @@ export default function FileManagerPage() {
     [fetchFolderMeta],
   );
 
+  const buildZipBreadcrumb = useCallback(
+    (zipId: string, label: string, prefix: string) => {
+      const crumbs: { id?: string; name: string }[] = [
+        { name: "Home" },
+        { id: makeZipHist(zipId, ""), name: label || "Archive" },
+      ];
+
+      const clean = (prefix || "").replace(/^\/+/, "");
+      if (!clean) return crumbs;
+
+      const segs = clean.split("/").filter(Boolean);
+      let acc = "";
+      for (const seg of segs) {
+        acc += `${seg}/`;
+        crumbs.push({ id: makeZipHist(zipId, acc), name: seg });
+      }
+      return crumbs;
+    },
+    [],
+  );
+
   // ------- Data fetch -------
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setError(null);
 
-    const inTrash = currentFolderId === "trash";
+    const inZip = !!virtualZip;
+    const inTrash = !inZip && currentFolderId === "trash";
+
     const params = new URLSearchParams();
-    if (!inTrash) {
+
+    if (!inZip && !inTrash) {
       params.set(
         "folderId",
         currentFolderId ? String(currentFolderId) : "root",
@@ -527,22 +590,100 @@ export default function FileManagerPage() {
 
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
-    // Map frontend sortKey to backend expected values
     const backendSortKey = sortKey === "date" ? "createdAt" : sortKey;
     params.set("sortKey", backendSortKey);
     params.set("sortOrder", sortDir);
-    if (searchQuery.trim()) {
-      params.set("q", searchQuery.trim());
-    }
+
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
 
     (async () => {
       try {
+        // ----------------------------
+        // ZIP MODE: listZipChildren()
+        // ----------------------------
+        if (virtualZip) {
+          const z = virtualZip;
+          const data = await listZipChildren(z.zipId, z.prefix);
+
+          const q = searchQuery.trim().toLowerCase();
+
+          const folderItems: FileItem[] = (data.folders || []).map((name) => ({
+            id: makeZipDirId(z.zipId, `${data.prefix}${name}/`),
+            title: name,
+            description: "",
+            uploader: { id: "system", name: "—" },
+            uploadDate: new Date().toISOString(),
+            size: 0,
+            mimeType: "folder",
+            tags: [],
+            visibility: "private",
+          }));
+
+          const fileItems: FileItem[] = (data.files || []).map((f) => ({
+            id: makeZipFileId(z.zipId, `${data.prefix}${f.name}`),
+            title: f.name,
+            description: "",
+            uploader: { id: "system", name: "—" },
+            uploadDate: f.modified
+              ? new Date(f.modified as any).toISOString()
+              : new Date().toISOString(),
+            size: Number(f.size ?? 0),
+            mimeType: "application/octet-stream",
+            tags: [],
+            visibility: "private",
+          }));
+
+          const filteredFolderItems =
+            q.length > 0
+              ? folderItems.filter((x) =>
+                  String(x.title || "")
+                    .toLowerCase()
+                    .includes(q),
+                )
+              : folderItems;
+
+          const filteredFileItems =
+            q.length > 0
+              ? fileItems.filter((x) =>
+                  String(x.title || "")
+                    .toLowerCase()
+                    .includes(q),
+                )
+              : fileItems;
+
+          // Keep folders pinned on page 1, paginate files in the remaining slots.
+          const folderCount = filteredFolderItems.length;
+          const fileSlotsPage1 = Math.max(0, pageSize - folderCount);
+
+          const pageFiles =
+            page === 1
+              ? filteredFileItems.slice(0, fileSlotsPage1)
+              : filteredFileItems.slice(
+                  fileSlotsPage1 + (page - 2) * pageSize,
+                  fileSlotsPage1 + (page - 2) * pageSize + pageSize,
+                );
+
+          const items =
+            page === 1 ? [...filteredFolderItems, ...pageFiles] : pageFiles;
+
+          if (!cancelled) {
+            setAllFiles(items);
+            setTotal(filteredFileItems.length);
+            setTotalBytes(
+              filteredFileItems.reduce((acc, it) => acc + (it.size || 0), 0),
+            );
+          }
+
+          return;
+        }
+
+        // ----------------------------
+        // NORMAL MODE: existing logic
+        // ----------------------------
         const data = inTrash
           ? await listTrashFiles(Object.fromEntries(params.entries()))
           : await queryFiles(Object.fromEntries(params.entries()));
 
-        // NEW: fetch child folders for the selected folder (or root)
-        // Folders + files depend on view mode
         const folderRows = inTrash
           ? Array.isArray((data as any)?.folders)
             ? (data as any).folders
@@ -558,9 +699,9 @@ export default function FileManagerPage() {
             : Array.isArray((data as any).items)
               ? (data as any).items
               : [];
+
         const fileItems: FileItem[] = fileRows.map(toFileItem);
 
-        // Map folders to FileItem-like rows so FileList can render them
         const folderItems: FileItem[] = (folderRows as FolderRow[]).map(
           (fr) => ({
             id: `folder:${fr.id}`,
@@ -578,7 +719,6 @@ export default function FileManagerPage() {
         );
 
         if (!cancelled) {
-          // Folder UX: show folders pinned on the FIRST page only
           const q = searchQuery.trim().toLowerCase();
           const filteredFolderItems =
             q.length > 0
@@ -595,14 +735,12 @@ export default function FileManagerPage() {
             : fileItems;
           setAllFiles(items);
 
-          // Pagination + total counts are for FILES only
           const totalCount =
             typeof (data as any)?.total === "number"
               ? (data as any).total
               : fileItems.length;
           setTotal(totalCount);
 
-          // Bytes are for files only
           const bytes =
             typeof (data as any)?.totalBytes === "number"
               ? (data as any).totalBytes
@@ -636,6 +774,7 @@ export default function FileManagerPage() {
     sortDir,
     searchQuery,
     refreshToken,
+    virtualZip,
   ]);
 
   // ------- Storage usage (sidebar) -------
@@ -939,6 +1078,29 @@ export default function FileManagerPage() {
   );
 
   // ------- Navigation handlers  -------
+  const onZipSelect = useCallback(
+    async (zipId: string, label: string, prefix = "") => {
+      setSelected([]);
+      setEmptyBgMenu(null);
+
+      const entry = makeZipHist(zipId, prefix);
+      const currentEntry = history[historyIndex] ?? "";
+      if (currentEntry !== entry) {
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push(entry);
+        setHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+      }
+
+      setViewMode("drive");
+      setCurrentFolderId(undefined);
+      setVirtualZip({ zipId, label, prefix });
+      setPage(1);
+      setBreadcrumb(buildZipBreadcrumb(zipId, label, prefix));
+    },
+    [history, historyIndex, buildZipBreadcrumb],
+  );
+
   const onFolderSelect = useCallback(
     async (
       id?: string,
@@ -949,6 +1111,8 @@ export default function FileManagerPage() {
       setEmptyBgMenu(null);
 
       const folderId = id || "";
+      setVirtualZip(null);
+      setViewMode(folderId === "trash" ? "trash" : "drive");
 
       // Update history ONLY if folder actually changed
       const currentHistFolder = history[historyIndex] ?? "";
@@ -980,51 +1144,93 @@ export default function FileManagerPage() {
   );
 
   const handleBack = useCallback(() => {
-    if (historyIndex > 0) {
-      setSelected([]);
-      setEmptyBgMenu(null);
+    if (historyIndex <= 0) return;
 
-      const newIndex = historyIndex - 1;
-      const folderId = history[newIndex] || undefined;
+    setSelected([]);
+    setEmptyBgMenu(null);
 
-      setHistoryIndex(newIndex);
-      setCurrentFolderId(folderId);
-      setPage(1);
-      buildBreadcrumb(folderId).then(setBreadcrumb);
+    const newIndex = historyIndex - 1;
+    const entry = history[newIndex] ?? "";
+
+    setHistoryIndex(newIndex);
+    setPage(1);
+
+    if (isZipHist(entry)) {
+      const { zipId, prefix } = parseZipHist(entry);
+      const label = virtualZip?.zipId === zipId ? virtualZip.label : "Archive";
+
+      setViewMode("drive");
+      setCurrentFolderId(undefined);
+      setVirtualZip({ zipId, label, prefix });
+      setBreadcrumb(buildZipBreadcrumb(zipId, label, prefix));
+      return;
     }
-  }, [history, historyIndex, buildBreadcrumb]);
+
+    setVirtualZip(null);
+    const folderId = entry || undefined;
+    setCurrentFolderId(folderId);
+    setViewMode(folderId === "trash" ? "trash" : "drive");
+    buildBreadcrumb(folderId).then(setBreadcrumb);
+  }, [history, historyIndex, buildBreadcrumb, buildZipBreadcrumb, virtualZip]);
 
   const handleForward = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      setSelected([]);
-      setEmptyBgMenu(null);
-      const newIndex = historyIndex + 1;
-      const folderId = history[newIndex] || undefined;
-      setHistoryIndex(newIndex);
-      setCurrentFolderId(folderId);
-      setPage(1);
-      buildBreadcrumb(folderId).then(setBreadcrumb);
+    if (historyIndex >= history.length - 1) return;
+
+    setSelected([]);
+    setEmptyBgMenu(null);
+
+    const newIndex = historyIndex + 1;
+    const entry = history[newIndex] ?? "";
+
+    setHistoryIndex(newIndex);
+    setPage(1);
+
+    if (isZipHist(entry)) {
+      const { zipId, prefix } = parseZipHist(entry);
+      const label = virtualZip?.zipId === zipId ? virtualZip.label : "Archive";
+
+      setViewMode("drive");
+      setCurrentFolderId(undefined);
+      setVirtualZip({ zipId, label, prefix });
+      setBreadcrumb(buildZipBreadcrumb(zipId, label, prefix));
+      return;
     }
-  }, [history, historyIndex, buildBreadcrumb]);
+
+    setVirtualZip(null);
+    const folderId = entry || undefined;
+    setCurrentFolderId(folderId);
+    setViewMode(folderId === "trash" ? "trash" : "drive");
+    buildBreadcrumb(folderId).then(setBreadcrumb);
+  }, [history, historyIndex, buildBreadcrumb, buildZipBreadcrumb, virtualZip]);
 
   const onCrumbClick = useCallback(
     async (idx: number) => {
-      // idx 0 is "Home"
       if (idx <= 0) {
         await onFolderSelect(undefined);
         return;
       }
 
       const target = breadcrumb[idx];
+      const tid = String((target as any)?.id ?? "");
 
-      // breadcrumb[0] = Home (no id)
-      // breadcrumb[1] = first folder -> parent is root/null
+      // Zip breadcrumb navigation
+      if (tid && isZipHist(tid)) {
+        const { zipId, prefix } = parseZipHist(tid);
+        const label =
+          virtualZip?.zipId === zipId
+            ? virtualZip.label
+            : breadcrumb[1]?.name || "Archive";
+        await onZipSelect(zipId, label, prefix);
+        return;
+      }
+
+      // Normal folder breadcrumb navigation
       const parentId =
         idx <= 1 ? null : ((breadcrumb[idx - 1] as any)?.id ?? null);
 
       await onFolderSelect(target.id, target.name, parentId);
     },
-    [breadcrumb, onFolderSelect],
+    [breadcrumb, onFolderSelect, onZipSelect, virtualZip],
   );
 
   const onDeleteSelected = useCallback(
@@ -1652,7 +1858,6 @@ export default function FileManagerPage() {
                       onContextMenu={(e) => {
                         const t = e.target as HTMLElement;
 
-                        // Don't hijack right-click on buttons/inputs/links inside the empty card
                         if (t.closest("button, a, input, textarea, select"))
                           return;
 
@@ -1715,16 +1920,47 @@ export default function FileManagerPage() {
                           files={visibleFiles}
                           variant={layout === "icons" ? "icons" : "large"}
                           density={density === "compact" ? "compact" : "cozy"}
+                          onOpenVirtual={({ zipId, prefix }) => {
+                            const label =
+                              visibleFiles.find((x) => String(x.id) === zipId)
+                                ?.title ?? "Archive";
+                            void onZipSelect(zipId, label, prefix);
+                          }}
                           onOpen={(f) => {
-                            const isFolder = String(f.id).startsWith("folder:");
+                            const id = String((f as any).id);
+
+                            // Zip folder inside virtual archive
+                            if (isZipDirId(id)) {
+                              const { zipId, path } = parseZipItemId(id);
+                              const label =
+                                virtualZip?.zipId === zipId
+                                  ? virtualZip.label
+                                  : "Archive";
+                              void onZipSelect(zipId, label, path);
+                              return;
+                            }
+
+                            // Zip file inside virtual archive
+                            if (isZipFileId(id)) {
+                              const { zipId, path } = parseZipItemId(id);
+                              window.open(
+                                streamZipFile(zipId, path),
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                              return;
+                            }
+
+                            // Normal folder/file behavior
+                            const isFolder = String(id).startsWith("folder:");
                             if (isFolder) {
                               if (currentFolderId === "trash") {
                                 notify("Restore the folder to open it", "info");
                                 return;
                               }
-                              const folderId = f.id.startsWith("folder:")
-                                ? f.id.slice("folder:".length)
-                                : String(f.id);
+                              const folderId = id.startsWith("folder:")
+                                ? id.slice("folder:".length)
+                                : String(id);
                               onFolderSelect(folderId, (f as any).title);
                             } else {
                               handleOpenPreview(f as any);
@@ -1737,21 +1973,45 @@ export default function FileManagerPage() {
                           onShowProperties={(f: FileItem) => {
                             setPropertiesFile(f);
                           }}
-                          onDownload={handleDownloadItem}
+                          onDownload={(f) => {
+                            const id = String((f as any).id);
+                            if (isZipFileId(id)) {
+                              const { zipId, path } = parseZipItemId(id);
+                              window.open(
+                                streamZipFile(zipId, path),
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                              return;
+                            }
+                            handleDownloadItem(f);
+                          }}
                           onDelete={
-                            currentFolderId === "trash"
-                              ? handleRestore
-                              : handleDelete
+                            virtualZip
+                              ? undefined
+                              : currentFolderId === "trash"
+                                ? handleRestore
+                                : handleDelete
                           }
                           onDeleteMany={
-                            currentFolderId === "trash"
-                              ? onRestoreSelected
-                              : onDeleteSelected
+                            virtualZip
+                              ? undefined
+                              : currentFolderId === "trash"
+                                ? onRestoreSelected
+                                : onDeleteSelected
                           }
-                          onPaste={handlePaste}
-                          onRename={handleRenameById}
-                          onCopy={(ids: string[]) => handleCopy(byIds(ids))}
-                          onCut={(ids: string[]) => handleCut(byIds(ids))}
+                          onPaste={virtualZip ? undefined : handlePaste}
+                          onRename={virtualZip ? undefined : handleRenameById}
+                          onCopy={
+                            virtualZip
+                              ? undefined
+                              : (ids: string[]) => handleCopy(byIds(ids))
+                          }
+                          onCut={
+                            virtualZip
+                              ? undefined
+                              : (ids: string[]) => handleCut(byIds(ids))
+                          }
                           onDragStart={handleDragStart}
                           onDragEnd={() => handleDragEnd([])}
                           onDrop={(e) => {
@@ -1778,39 +2038,108 @@ export default function FileManagerPage() {
                             layout,
                             selectable: true,
                             selectedIds: selectedIds,
+
+                            onOpenVirtual: ({ zipId, prefix }: any) => {
+                              const label =
+                                visibleFiles.find(
+                                  (x) => String(x.id) === String(zipId),
+                                )?.title ?? "Archive";
+                              void onZipSelect(
+                                String(zipId),
+                                label,
+                                String(prefix ?? ""),
+                              );
+                            },
+
                             onOpen: (f: any) => {
+                              const id = String(f?.id ?? "");
+
+                              // Zip folder inside virtual archive
+                              if (isZipDirId(id)) {
+                                const { zipId, path } = parseZipItemId(id);
+                                const label =
+                                  virtualZip?.zipId === zipId
+                                    ? virtualZip.label
+                                    : "Archive";
+                                void onZipSelect(zipId, label, path);
+                                return;
+                              }
+
+                              // Zip file inside virtual archive
+                              if (isZipFileId(id)) {
+                                const { zipId, path } = parseZipItemId(id);
+                                window.open(
+                                  streamZipFile(zipId, path),
+                                  "_blank",
+                                  "noopener,noreferrer",
+                                );
+                                return;
+                              }
+
                               if (f.mimeType === "folder") {
-                                const folderId = f.id.startsWith("folder:")
-                                  ? f.id.slice("folder:".length)
-                                  : f.id;
+                                if (currentFolderId === "trash") {
+                                  notify(
+                                    "Restore the folder to open it",
+                                    "info",
+                                  );
+                                  return;
+                                }
+                                const folderId = id.startsWith("folder:")
+                                  ? id.slice("folder:".length)
+                                  : id;
                                 onFolderSelect(folderId, f.title);
                               } else {
                                 handleOpenPreview(f as any);
                               }
                             },
+
                             onShowProperties: (f: FileItem) => {
                               setPropertiesFile(f);
                             },
-                            onDownload: handleDownloadItem,
-                            onDelete:
-                              currentFolderId === "trash"
+
+                            onDownload: (f: any) => {
+                              const id = String(f?.id ?? "");
+                              if (isZipFileId(id)) {
+                                const { zipId, path } = parseZipItemId(id);
+                                window.open(
+                                  streamZipFile(zipId, path),
+                                  "_blank",
+                                  "noopener,noreferrer",
+                                );
+                                return;
+                              }
+                              handleDownloadItem(f);
+                            },
+
+                            onDelete: virtualZip
+                              ? undefined
+                              : currentFolderId === "trash"
                                 ? handleRestore
                                 : handleDelete,
-                            onDeleteMany:
-                              currentFolderId === "trash"
+
+                            onDeleteMany: virtualZip
+                              ? undefined
+                              : currentFolderId === "trash"
                                 ? onRestoreSelected
                                 : onDeleteSelected,
+
                             clipboard,
-                            onPaste: handlePaste,
+
+                            onPaste: virtualZip ? undefined : handlePaste,
                             onUpdateTags: handleUpdateTags,
                             onEditTags: handleEditTagsInPreview,
                             onSelectionChange: handleSelectionChangeByIds,
-                            onRename: handleRenameById,
-                            onCopy: (ids: string[]) => handleCopy(byIds(ids)),
-                            onCut: (ids: string[]) => handleCut(byIds(ids)),
+                            onRename: virtualZip ? undefined : handleRenameById,
+                            onCopy: virtualZip
+                              ? undefined
+                              : (ids: string[]) => handleCopy(byIds(ids)),
+                            onCut: virtualZip
+                              ? undefined
+                              : (ids: string[]) => handleCut(byIds(ids)),
                             onDragStart: handleDragStart,
                             onDragEnd: handleDragEnd,
-                            onDrop: handleDrop,
+                            onDrop: virtualZip ? undefined : handleDrop,
+
                             currentFolderId,
                             sortKey,
                             sortDir,
