@@ -11,6 +11,8 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { useToast } from "../components/providers/Toast";
 import { FileItem, FileDetail } from "../lib/types";
@@ -51,6 +53,7 @@ import ExplorerCommandBar from "../components/filemanager/CommandBar";
 import ExplorerBreadcrumbs from "../components/filemanager/Breadcrumbs";
 import ExplorerPreviewModal from "../components/filemanager/ExplorerPreviewModal";
 import PropertiesModal from "../components/filemanager/PropertiesModal";
+import EvidenceInspector from "../components/filemanager/EvidenceInspector";
 import CommandPalette, {
   type PaletteCommand,
 } from "../components/filemanager/CommandPalette";
@@ -158,6 +161,11 @@ export default function FileManagerPage() {
     getLS("fm:focusMode", false),
   );
   useEffect(() => setLS("fm:focusMode", focusMode), [focusMode]);
+
+  const [inspectorOpen, setInspectorOpen] = useState<boolean>(() =>
+    getLS("fm:inspectorOpen", true),
+  );
+  useEffect(() => setLS("fm:inspectorOpen", inspectorOpen), [inspectorOpen]);
 
   // Search text from the header input.
   // Important: the listing is paginated, so we must send search to the server
@@ -2146,6 +2154,23 @@ export default function FileManagerPage() {
                 {focusMode ? "On" : "Off"}
               </span>
             </button>
+            <button
+              type="button"
+              className="page-header-pill page-header-pill--button"
+              onClick={() => setInspectorOpen((v) => !v)}
+              title={inspectorOpen ? "Hide Inspector" : "Show Inspector"}
+            >
+              {inspectorOpen ? (
+                <PanelRightClose className="w-4 h-4" />
+              ) : (
+                <PanelRightOpen className="w-4 h-4" />
+              )}
+              <span className="page-header-pill-label">Inspector</span>
+              <span className="page-header-pill-value">
+                {inspectorOpen ? "On" : "Off"}
+              </span>
+            </button>
+
             <div className="page-header-pill">
               <span className="page-header-pill-label">Files</span>
               <span className="page-header-pill-value">{allFiles.length}</span>
@@ -2301,6 +2326,15 @@ export default function FileManagerPage() {
                     />
                   </motion.div>
                 )}
+
+                <div
+                  className={
+                    !focusMode && inspectorOpen
+                      ? "grid gap-4 items-start xl:grid-cols-[minmax(0,1fr)_360px]"
+                      : "grid gap-4"
+                  }
+                >
+                  <div className="min-w-0 space-y-4">
 
                 {/* Files list */}
                 <motion.div
@@ -2731,6 +2765,15 @@ export default function FileManagerPage() {
                     </div>
                   </div>
                 </motion.div>
+
+                  </div>
+
+                  {!focusMode && inspectorOpen && (
+                    <div className="hidden xl:block w-[360px] shrink-0 sticky top-4">
+                      <EvidenceInspector file={selectedSingle} />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </section>
