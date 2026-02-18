@@ -1,10 +1,20 @@
 // frontend/components/filemanager/CommandBar.tsx
 "use client";
+
 import { useMemo } from "react";
 import {
-  Plus, Upload, ChevronDown, LayoutGrid, Square, List, Rows3, ArrowUpDown, Check, SlidersHorizontal} from "lucide-react";
+  Plus,
+  Upload,
+  LayoutGrid,
+  Square,
+  List,
+  Rows3,
+  ArrowUpDown,
+  Check,
+  SlidersHorizontal,
+} from "lucide-react";
 
-type LayoutKind = "large" | "icons" | "details" | "list"; 
+type LayoutKind = "large" | "icons" | "details" | "list";
 
 type Props = {
   layout?: LayoutKind;
@@ -26,7 +36,6 @@ type Props = {
   /** density */
   density?: "cozy" | "compact";
   onDensityChange?: (d: "cozy" | "compact") => void;
-
 };
 
 const SORT_KEYS: Array<{ key: string; label: string }> = [
@@ -37,7 +46,7 @@ const SORT_KEYS: Array<{ key: string; label: string }> = [
 ];
 
 export default function CommandBar({
-  layout,
+  layout = "icons",
   onLayoutChange,
   onToggleView,
   onNew,
@@ -51,7 +60,6 @@ export default function CommandBar({
   density = "cozy",
   onDensityChange,
 }: Props) {
-
   const setLayout = (next: LayoutKind) => {
     // prefer explicit layout change
     if (onLayoutChange) onLayoutChange(next);
@@ -67,148 +75,177 @@ export default function CommandBar({
 
   const densityLabel = useMemo(
     () => (density === "compact" ? "Compact" : "Cozy"),
-    [density]
+    [density],
   );
+
+  const toggleDensity = () => {
+    onDensityChange?.(density === "compact" ? "cozy" : "compact");
+  };
 
   return (
     <div
-      className="fm-toolbar bg-slate-50 border-t border-slate-200 px-3 py-2 md:px-4 md:py-3"
+      className="fm-toolbar px-3 py-2 md:px-4 md:py-3"
       role="toolbar"
       aria-label="Explorer commands"
     >
-      {/* Row 1 — primary controls */}
-      <div className="flex items-center justify-between gap-x-5 gap-y-1 whitespace-nowrap">
-        <div className="flex items-center gap-2 flex-shrink-0">
-         {/* Select All (updated classes) */}
-         <button
-           type="button"
-           onClick={() => onSelectAll?.(!(isAllSelected ?? false))}
-           className="flex items-center h-8 px-4 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
-           title={isAllSelected ? "Deselect all" : "Select all"}
-           aria-pressed={!!isAllSelected}
-         >
-           <div
-             className={`w-4 h-4 rounded border-2 ${isAllSelected ? "bg-teal-500 border-teal-500" : "border-gray-400"} flex items-center justify-center mr-2.5 transition-colors`}
-             aria-hidden
-           >
-             {isAllSelected && <Check className="w-3 h-3 text-white" strokeWidth={2.5} />}
-           </div>
-           <span className="hidden sm:inline">
-             {isAllSelected ? "Deselect" : "Select all"}
-           </span>
-         </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* Left: select + core actions */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onSelectAll?.(!(isAllSelected ?? false))}
+            className="flex items-center h-8 px-3 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
+            title={isAllSelected ? "Deselect all" : "Select all"}
+            aria-pressed={!!isAllSelected}
+          >
+            <span
+              className={[
+                "w-4 h-4 rounded border-2 flex items-center justify-center mr-2 transition-colors",
+                isAllSelected
+                  ? "bg-teal-500 border-teal-500"
+                  : "border-gray-400",
+              ].join(" ")}
+              aria-hidden
+            >
+              {isAllSelected && (
+                <Check className="w-3 h-3 text-white" strokeWidth={2.5} />
+              )}
+            </span>
+            <span className="hidden sm:inline">
+              {isAllSelected ? "Deselect" : "Select all"}
+            </span>
+          </button>
 
-         {/* New / Upload (updated classes, preserved handlers) */}
-         <button
-           onClick={onNew}
-           className="flex items-center h-8 px-4 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
-           title="New…"
-         >
-           <Plus className="h-4 w-4" />
-           <span className="ml-2 hidden sm:inline">New</span>
-           <ChevronDown className="w-4 h-4 ml-1 text-gray-500" />
-         </button>
-        <button
-           onClick={onUpload}
-           className="flex items-center h-8 px-4 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
-           title="Upload files"
-         >
-           <Upload className="h-4 w-4" />
-           <span className="ml-2 hidden sm:inline">Upload</span>
-         </button>
+          <button
+            type="button"
+            onClick={onNew}
+            className="flex items-center h-8 px-3 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
+            title="New folder"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="ml-2 hidden sm:inline">New</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onUpload}
+            className="flex items-center h-8 px-3 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
+            title="Upload files"
+          >
+            <Upload className="h-4 w-4" />
+            <span className="ml-2 hidden sm:inline">Upload</span>
+          </button>
         </div>
-        
-        {/* right group (sort / density) */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="flex items-center bg-gray-100 rounded-lg">
-           <button
-             onClick={nextSortKey}
-             className="flex items-center h-8 px-4 text-gray-700 text-sm font-medium hover:bg-gray-200/50 rounded-l-lg"
-             title="Change sort key"
-           >
-             <ArrowUpDown className="h-4 w-4" />
-             <span className="mx-2">
-               {SORT_KEYS.find((s) => s.key === sortKey)?.label ?? "Date"}
-             </span>
-           </button>
 
-           <button
-             onClick={onSortDirChange}
-             className="h-8 px-4 text-gray-700 text-sm font-medium border-l border-gray-300 hover:bg-gray-200/50 rounded-r-lg"
-             title="Toggle sort order"
-           >
-             {(sortDir ?? "desc").toUpperCase()}
-           </button>
-         </div>
+        {/* Center: view/layout (single place) */}
+        <div className="flex-1 min-w-[240px] flex justify-center">
+          <div className="inline-flex items-center gap-1.5 rounded-2xl bg-white/60 ring-1 ring-white/60 p-1.5 overflow-x-auto fm-no-scrollbar shadow-sm">
+            <button
+              className={`fm-segmented ${layout === "large" ? "fm-seg-active" : ""}`}
+              onClick={() => setLayout("large")}
+              title="Large"
+              type="button"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs ml-1">Large</span>
+            </button>
 
-          <div className="mx-3 h-4 w-px bg-[hsl(var(--border))]" aria-hidden />
+            <button
+              className={`fm-segmented ${layout === "icons" ? "fm-seg-active" : ""}`}
+              onClick={() => setLayout("icons")}
+              title="Icons"
+              type="button"
+            >
+              <Square className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs ml-1">Icons</span>
+            </button>
 
-          {/* Density */}
-          <div className="hidden md:flex items-center gap-1.5">
-           <button
-             className={`fm-segmented ${density === "cozy" ? "fm-seg-active" : ""}`}
-             onClick={() => onDensityChange?.("cozy")}
-             title="Cozy"
-           >
-             <SlidersHorizontal className="h-4 w-4" />
-           </button>
-           <button
-             className={`fm-segmented ${density === "compact" ? "fm-seg-active" : ""}`}
-             onClick={() => onDensityChange?.("compact")}
-             title="Compact"
-           >
-             <SlidersHorizontal className="h-4 w-4" />
-             <Rows3 className="h-3.5 w-3.5 -ml-0.5" />
-           </button>
-           <span className="ml-1 hidden xl:inline text-[12px] text-[hsl(var(--muted-foreground))]">
-             {densityLabel}
-           </span>  
+            <button
+              className={`fm-segmented ${layout === "details" ? "fm-seg-active" : ""}`}
+              onClick={() => setLayout("details")}
+              title="Details"
+              type="button"
+            >
+              <List className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs ml-1">Details</span>
+            </button>
+
+            <button
+              className={`fm-segmented ${layout === "list" ? "fm-seg-active" : ""}`}
+              onClick={() => setLayout("list")}
+              title="List"
+              type="button"
+            >
+              <Rows3 className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs ml-1">List</span>
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Row 2 — view switch + quick filters */}
-      <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        {/* View segmented control: Large (tiles), Icons, Details, List (alias details) */}
-        <div className="inline-flex items-center gap-1.5 rounded-2xl bg-white/60 ring-1 ring-white/60 p-1.5 overflow-x-auto fm-no-scrollbar shadow-sm"
->
+        {/* Right: sort + density (single place) */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-gray-100 rounded-lg">
+            <button
+              type="button"
+              onClick={nextSortKey}
+              className="flex items-center h-8 px-3 text-gray-700 text-sm font-medium hover:bg-gray-200/50 rounded-l-lg"
+              title="Change sort key"
+            >
+              <ArrowUpDown className="h-4 w-4" />
+              <span className="mx-2">
+                {SORT_KEYS.find((s) => s.key === sortKey)?.label ?? "Date"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onSortDirChange}
+              className="h-8 px-3 text-gray-700 text-sm font-medium border-l border-gray-300 hover:bg-gray-200/50 rounded-r-lg"
+              title="Toggle sort order"
+            >
+              {(sortDir ?? "desc").toUpperCase()}
+            </button>
+          </div>
+
+          <div className="mx-1 h-4 w-px bg-[hsl(var(--border))]" aria-hidden />
+
+          {/* Density: show a single toggle on small screens, segmented on md+ */}
           <button
-            className={`fm-segmented ${layout === "large" ? "fm-seg-active" : ""}`}
-            onClick={() => setLayout("large")}
-            title="Large"
+            type="button"
+            className="md:hidden flex items-center h-8 px-3 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
+            onClick={toggleDensity}
+            title="Toggle density"
           >
-          <LayoutGrid className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs ml-1">Large</span>
+            <SlidersHorizontal className="h-4 w-4" />
+            <span className="ml-2">{densityLabel}</span>
           </button>
-          
-          <button
-            className={`fm-segmented ${layout === "icons" ? "fm-seg-active" : ""}`}
-            onClick={() => setLayout("icons")}
-            title="Icons"
-          >
-          <Square className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs ml-1">Icons</span>
-          </button>
-          
-          <button
-            className={`fm-segmented ${layout === "details" ? "fm-seg-active" : ""}`}
-            onClick={() => setLayout("details")}
-            title="Details"
-          >
-          <List className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs ml-1">Details</span>
-          </button>
-          
-          <button
-            className={`fm-segmented ${layout === "list" ? "fm-seg-active" : ""}`}
-            onClick={() => setLayout("list")}
-            title="List"
-          >
-          <Rows3 className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs ml-1">List</span>
-          </button>
+
+          <div className="hidden md:flex items-center gap-1.5">
+            <button
+              type="button"
+              className={`fm-segmented ${density === "cozy" ? "fm-seg-active" : ""}`}
+              onClick={() => onDensityChange?.("cozy")}
+              title="Cozy"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              <span className="ml-1 hidden xl:inline text-[12px] text-[hsl(var(--muted-foreground))]">
+                Cozy
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={`fm-segmented ${density === "compact" ? "fm-seg-active" : ""}`}
+              onClick={() => onDensityChange?.("compact")}
+              title="Compact"
+            >
+              <Rows3 className="h-4 w-4" />
+              <span className="ml-1 hidden xl:inline text-[12px] text-[hsl(var(--muted-foreground))]">
+                Compact
+              </span>
+            </button>
+          </div>
         </div>
-
       </div>
     </div>
   );

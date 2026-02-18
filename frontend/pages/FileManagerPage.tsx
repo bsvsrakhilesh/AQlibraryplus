@@ -6,7 +6,12 @@ import React, {
   useState,
 } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 import { useToast } from "../components/providers/Toast";
 import { FileItem, FileDetail } from "../lib/types";
 import {
@@ -147,6 +152,12 @@ export default function FileManagerPage() {
     getLS("fm:density", "cozy"),
   );
   useEffect(() => setLS("fm:density", density), [density]);
+
+  // Focus Mode (collapses the left sidebar for a distraction-free workspace)
+  const [focusMode, setFocusMode] = useState<boolean>(() =>
+    getLS("fm:focusMode", false),
+  );
+  useEffect(() => setLS("fm:focusMode", focusMode), [focusMode]);
 
   // Search text from the header input.
   // Important: the listing is paginated, so we must send search to the server
@@ -1449,6 +1460,15 @@ export default function FileManagerPage() {
       run: () => setDensity((d) => (d === "compact" ? "cozy" : "compact")),
     });
 
+    cmds.push({
+      id: "view.focus",
+      title: focusMode ? "Exit Focus Mode" : "Enter Focus Mode",
+      subtitle: "Collapse the sidebar for distraction-free work",
+      group: "View",
+      keywords: ["focus", "zen", "sidebar", "collapse"],
+      run: () => setFocusMode((v) => !v),
+    });
+
     // Sort
     cmds.push({
       id: "sort.name",
@@ -1617,6 +1637,7 @@ export default function FileManagerPage() {
     onFolderSelect,
     handleNewFolder,
     density,
+    focusMode,
     sortKey,
     setSearch,
     setSearchQuery,
@@ -1625,6 +1646,7 @@ export default function FileManagerPage() {
     setEmptyBgMenu,
     setLayout,
     setDensity,
+    setFocusMode,
     setSortKey,
     setSortDir,
     setShowUpload,
@@ -2108,6 +2130,22 @@ export default function FileManagerPage() {
           </div>
 
           <div className="page-header-meta">
+            <button
+              type="button"
+              className="page-header-pill page-header-pill--button"
+              onClick={() => setFocusMode((v) => !v)}
+              title={focusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+            >
+              {focusMode ? (
+                <PanelLeftOpen className="w-4 h-4" />
+              ) : (
+                <PanelLeftClose className="w-4 h-4" />
+              )}
+              <span className="page-header-pill-label">Focus</span>
+              <span className="page-header-pill-value">
+                {focusMode ? "On" : "Off"}
+              </span>
+            </button>
             <div className="page-header-pill">
               <span className="page-header-pill-label">Files</span>
               <span className="page-header-pill-value">{allFiles.length}</span>
@@ -2124,25 +2162,31 @@ export default function FileManagerPage() {
         </motion.header>
 
         {/* Content */}
-        <div className="max-w-7xl w-full mx-auto mt-4 ex-grid">
+        <div
+          className={`max-w-7xl w-full mx-auto mt-4 ex-grid ${
+            focusMode ? "ex-grid--focus" : ""
+          }`}
+        >
           {/* Left: Quick Access + Folder tree */}
-          <aside className="ex-sidebar">
-            <motion.div
-              className="ex-sidebar-surface p-4 md:p-5"
-              initial={{ x: -10, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.6, duration: 0.6, ease: "easeOut" }}
-            >
-              <FileSidebar
-                onFolderSelect={onFolderSelect}
-                currentFolderId={currentFolderId}
-                storageUsedBytes={storageUsedBytes}
-                storageCapacityBytes={1024 ** 4}
-                viewMode={viewMode}
-                setViewMode={setViewMode}
-              />
-            </motion.div>
-          </aside>
+          {!focusMode && (
+            <aside className="ex-sidebar">
+              <motion.div
+                className="ex-sidebar-surface p-4 md:p-5"
+                initial={{ x: -10, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.6, ease: "easeOut" }}
+              >
+                <FileSidebar
+                  onFolderSelect={onFolderSelect}
+                  currentFolderId={currentFolderId}
+                  storageUsedBytes={storageUsedBytes}
+                  storageCapacityBytes={1024 ** 4}
+                  viewMode={viewMode}
+                  setViewMode={setViewMode}
+                />
+              </motion.div>
+            </aside>
+          )}
 
           {/* Right: Explorer */}
           <section className="ex-main">
@@ -2286,22 +2330,8 @@ export default function FileManagerPage() {
                           {visibleFiles.length} items
                         </span>
                       </div>
-                      {/* Right: density micro-chips + total items */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          className={`fm-chip-density ${density === "cozy" ? "fm-chip-density-active" : ""}`}
-                          onClick={() => setDensity("cozy")}
-                        >
-                          Cozy
-                        </button>
-                        <button
-                          type="button"
-                          className={`fm-chip-density ${density === "compact" ? "fm-chip-density-active" : ""}`}
-                          onClick={() => setDensity("compact")}
-                        >
-                          Compact
-                        </button>
+                      
+                      <div className="flex items-center gap-2">
                         <span className="hidden sm:inline-flex items-center rounded-full border border-[hsl(var(--border))] bg-white/70 px-3 py-1 text-[11px] font-medium text-[hsl(var(--muted-foreground))] shadow-sm">
                           {visibleFiles.length} items
                         </span>
