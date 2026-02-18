@@ -20,6 +20,7 @@ import {
   listTrashFiles,
   toggleFileFavorite,
   toFileItem,
+  normalizeFileDetail,
   type BackendStoredFile,
   duplicateFile,
   moveFile,
@@ -825,9 +826,13 @@ export default function FileManagerPage() {
   }, [refreshToken, totalBytes]);
 
   // ------- Actions -------
-  const handleOpenPreview = useCallback((f: FileDetail) => {
-    setSelectedPreview(f);
-    // reset the flag once modal mounts (prevents sticking true for next open)
+  const handleOpenPreview = useCallback((f: any) => {
+    const normalized = normalizeFileDetail(f);
+
+    // If we somehow get a bogus object with no id, don't open.
+    if (!normalized?.id) return;
+
+    setSelectedPreview(normalized);
     setTimeout(() => {}, 0);
   }, []);
 

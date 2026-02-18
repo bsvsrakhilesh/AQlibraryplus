@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { FileItem, SearchResult } from "./types";
+import type { FileDetail, FileItem, SearchResult } from "./types";
 
 const rawBase = (import.meta as any)?.env?.VITE_API_URL || "";
 const baseURL =
@@ -157,6 +157,98 @@ export function toFileItem(row: BackendStoredFile): FileItem {
     taggerVersion: (row as any)?.taggerVersion ?? null,
     tagsMetaRaw: (row as any)?.tagsMeta ?? null,
   };
+}
+
+export function normalizeFileDetail(input: any): FileDetail {
+  if (!input || typeof input !== "object") {
+    // best-effort minimal object (won't preview without id anyway)
+    return {
+      id: "",
+      title: "Untitled",
+      uploader: { id: "unknown", name: "Unknown" },
+      uploadDate: new Date().toISOString(),
+      size: 0,
+      mimeType: "application/octet-stream",
+      tags: [],
+      visibility: "private",
+    };
+  }
+
+  // Already in frontend shape (FileItem/FileDetail)
+  if ("uploadDate" in input && "title" in input && "uploader" in input) {
+    return input as FileDetail;
+  }
+
+  // Looks like backend stored file row (BackendStoredFile-ish)
+  if ("fileName" in input || "createdAt" in input || "uploaderName" in input) {
+    const row = input as any;
+
+    const base = toFileItem({
+      id: String(row.id ?? ""),
+      fileName: row.fileName ?? row.title ?? "Untitled",
+      description: row.description ?? "",
+      uploaderName: row.uploaderName ?? row.uploader?.name ?? "Unknown",
+      uploaderId: row.uploaderId ?? row.uploader?.id ?? "unknown",
+      createdAt: row.createdAt ?? row.uploadDate ?? new Date().toISOString(),
+      mimeType: row.mimeType ?? "application/octet-stream",
+      size: typeof row.size === "number" ? row.size : 0,
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      visibility: row.visibility ?? "private",
+      downloads: row.downloads,
+      favoritesCount: row.favoritesCount,
+      isFavorited: row.isFavorited,
+      folderId: row.folderId,
+      storagePath: row.storagePath,
+      captureType: row.captureType,
+      sourceUrl: row.sourceUrl,
+      urlId: row.urlId,
+      sha256: row.sha256,
+      tagsMeta: row.tagsMeta,
+      contentHash: row.contentHash,
+      taggerVersion: row.taggerVersion,
+    } as any);
+
+    // Merge: keep any extra backend fields (versions, etc), but enforce
+    // correct UI-facing keys from base mapping.
+    return {
+      ...(row as any),
+      ...(base as any),
+      title: base.title,
+      uploadDate: base.uploadDate,
+      uploader: base.uploader,
+      mimeType: base.mimeType,
+      size: base.size,
+      tags: base.tags,
+      visibility: base.visibility,
+    } as FileDetail;
+  }
+
+  // Unknown shape fallback: try to coerce.
+  const id = String((input as any).id ?? "");
+  const title = (input as any).title ?? (input as any).fileName ?? "Untitled";
+  const uploadDate =
+    (input as any).uploadDate ??
+    (input as any).createdAt ??
+    new Date().toISOString();
+
+  const uploader =
+    (input as any).uploader ??
+    ({
+      id: (input as any).uploaderId ?? "unknown",
+      name: (input as any).uploaderName ?? "Unknown",
+    } as any);
+
+  return {
+    ...(input as any),
+    id,
+    title,
+    uploadDate: String(uploadDate),
+    uploader,
+    mimeType: (input as any).mimeType ?? "application/octet-stream",
+    size: typeof (input as any).size === "number" ? (input as any).size : 0,
+    tags: Array.isArray((input as any).tags) ? (input as any).tags : [],
+    visibility: (input as any).visibility ?? "private",
+  } as FileDetail;
 }
 
 // ---------- Saved URLs API ----------
