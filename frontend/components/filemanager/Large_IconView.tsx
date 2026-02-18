@@ -41,23 +41,6 @@ const getSize = (f: FileItem): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-const getUpdated = (f: FileItem): Date | null => {
-  const v =
-    (f as any).uploadDate ??
-    (f as any).updatedAt ??
-    (f as any).modifiedAt ??
-    (f as any).lastModified ??
-    (f as any).updated_at ??
-    (f as any).modified ??
-    null;
-  if (!v) return null;
-  try {
-    return new Date(v);
-  } catch {
-    return null;
-  }
-};
-
 const isFolder = (f: FileItem): boolean =>
   (f as any).isFolder === true ||
   (f as any).mimeType === "folder" ||
@@ -71,17 +54,6 @@ const isZip = (f: FileItem): boolean => {
     t === "application/zip" ||
     t === "application/x-zip-compressed"
   );
-};
-
-const fileType = (f: FileItem): string => {
-  if (isFolder(f)) return "folder";
-  const t = getMime(f)?.toLowerCase() ?? "";
-  if (t.startsWith("image/")) return "image";
-  if (t.startsWith("video/")) return "video";
-  if (t.startsWith("audio/")) return "audio";
-  if (t.includes("pdf")) return "pdf";
-  if (t.includes("zip")) return "archive";
-  return t || "file";
 };
 
 const getThumb = (f: FileItem): string | null => {
@@ -205,12 +177,6 @@ type Props = {
   onSortChange?: (key: SortKey, dir: SortDir) => void;
 };
 
-function safeNumber(n: any): number {
-  if (n == null) return 0;
-  const num = typeof n === "string" ? parseFloat(n) : Number(n);
-  return Number.isFinite(num) ? num : 0;
-}
-
 export default function Large_IconView({
   files,
   onOpen,
@@ -267,49 +233,9 @@ export default function Large_IconView({
 
   // sort
   const sortedFiles = useMemo(() => {
-    const byFolder = (a: FileItem, b: FileItem) => {
-      const af = isFolder(a);
-      const bf = isFolder(b);
-      if (af === bf) return 0;
-      return af ? -1 : 1;
-    };
-
-    const byKey = (a: FileItem, b: FileItem) => {
-      if (!sortKey) return 0;
-      const dir = sortDir === "desc" ? -1 : 1;
-
-      switch (sortKey) {
-        case "name": {
-          const aa = getTitle(a).toLowerCase();
-          const bb = getTitle(b).toLowerCase();
-          return aa === bb ? 0 : aa > bb ? dir : -dir;
-        }
-        case "date": {
-          const aa = getUpdated(a)?.getTime() ?? 0;
-          const bb = getUpdated(b)?.getTime() ?? 0;
-          return aa === bb ? 0 : aa > bb ? dir : -dir;
-        }
-        case "type": {
-          const aa = fileType(a);
-          const bb = fileType(b);
-          return aa === bb ? 0 : aa > bb ? dir : -dir;
-        }
-        case "size": {
-          const aa = safeNumber(getSize(a));
-          const bb = safeNumber(getSize(b));
-          return aa === bb ? 0 : aa > bb ? dir : -dir;
-        }
-        default:
-          return 0;
-      }
-    };
-
-    return [...files].sort((a, b) => {
-      const f = byFolder(a, b);
-      if (f) return f;
-      return byKey(a, b);
-    });
-  }, [files, sortKey, sortDir]);
+    // Parent owns sorting + paging; avoid client re-sort.
+    return files;
+  }, [files]);
 
   // context menus
   const [rowMenu, setRowMenu] = useState<{

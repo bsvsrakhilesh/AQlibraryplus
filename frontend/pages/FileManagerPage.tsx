@@ -591,20 +591,33 @@ export default function FileManagerPage() {
     setError(null);
 
     const inZip = !!virtualZip;
+    const inFavorites = !inZip && currentFolderId === "favorites";
     const inTrash = !inZip && currentFolderId === "trash";
 
     const params = new URLSearchParams();
 
-    if (!inZip && !inTrash) {
+    if (!inZip && !inTrash && !inFavorites) {
       params.set(
         "folderId",
         currentFolderId ? String(currentFolderId) : "root",
       );
     }
 
+    if (inFavorites) {
+      params.set("favoritesOnly", "true");
+    }
+
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
-    const backendSortKey = sortKey === "date" ? "createdAt" : sortKey;
+    const backendSortKey =
+      sortKey === "date"
+        ? "createdAt"
+        : sortKey === "name"
+          ? "fileName"
+          : sortKey === "type"
+            ? "mimeType"
+            : sortKey; // size stays "size"
+
     params.set("sortKey", backendSortKey);
     params.set("sortOrder", sortDir);
 

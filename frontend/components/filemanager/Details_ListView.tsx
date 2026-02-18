@@ -220,46 +220,8 @@ export default function Details_ListView({
   };
 
   const sorted = useMemo(() => {
-    const arr = [...files];
-    const dir = effectiveSortDir === "asc" ? 1 : -1;
-
-    arr.sort((a, b) => {
-      const an = fileDisplayName(a).toLowerCase();
-      const bn = fileDisplayName(b).toLowerCase();
-
-      switch (effectiveSortKey) {
-        case "name":
-          return an < bn ? -dir : an > bn ? dir : 0;
-        case "date": {
-          const ad =
-            (a as any).updatedAt ||
-            (a as any).modifiedAt ||
-            (a as any).uploadDate ||
-            0;
-          const bd =
-            (b as any).updatedAt ||
-            (b as any).modifiedAt ||
-            (b as any).uploadDate ||
-            0;
-          return ad < bd ? -dir : ad > bd ? dir : 0;
-        }
-        case "size": {
-          const asz = Number((a as any).size ?? 0);
-          const bsz = Number((b as any).size ?? 0);
-          return asz < bsz ? -dir : asz > bsz ? dir : 0;
-        }
-        case "type": {
-          const at = ((a as any).mimeType || "").toLowerCase();
-          const bt = ((b as any).mimeType || "").toLowerCase();
-          return at < bt ? -dir : at > bt ? dir : 0;
-        }
-        default:
-          return 0;
-      }
-    });
-
-    return arr;
-  }, [files, effectiveSortKey, effectiveSortDir]);
+    return files;
+  }, [files]);
 
   /** ---- selection helpers ---- */
   const handleRowClick = (file: FileItem, e: React.MouseEvent) => {

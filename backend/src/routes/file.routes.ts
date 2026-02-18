@@ -794,7 +794,9 @@ r.get("/files", async (req, res, next) => {
     }
 
     const orderBy: any = {};
-    if (["createdAt", "fileName", "size"].includes(String(sortKey))) {
+    if (
+      ["createdAt", "fileName", "size", "mimeType"].includes(String(sortKey))
+    ) {
       orderBy[String(sortKey)] = sortOrder === "asc" ? "asc" : "desc";
     } else {
       orderBy.createdAt = "desc";
@@ -884,7 +886,7 @@ r.get("/files/:id", async (req, res, next) => {
     const id = req.params.id;
     const f = await prisma.storedFile.findUnique({ where: { id } });
     if (!f) return res.status(404).json({ message: "Not found" });
-    
+
     res.json({
       id: f.id,
       fileName: f.fileName,

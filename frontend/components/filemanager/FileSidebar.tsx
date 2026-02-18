@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   Pin,
+  Heart,
 } from "lucide-react";
 import type { FolderNode } from "../../types/file";
 import { fetchRootFolders, fetchChildren } from "../../lib/folders";
@@ -181,6 +182,14 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
       pinned: true,
     };
 
+    const FAVORITES = {
+      label: "Favorites",
+      icon: <Heart className="w-4 h-4" />,
+      go: () => onFolderSelect?.("favorites", "Favorites"),
+      active: currentFolderId === "favorites",
+      pinned: true,
+    };
+
     const TRASH = {
       label: "Trash",
       icon: <Trash2 className="w-4 h-4" />,
@@ -219,7 +228,7 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
         pinned: true,
       }));
 
-    return [HOME, ...pinned, TRASH];
+    return [HOME, FAVORITES, ...pinned, TRASH];
   }, [goHome, currentFolderId, libraryFolders, onFolderSelect]);
 
   return (
