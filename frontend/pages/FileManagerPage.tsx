@@ -46,6 +46,9 @@ import ExplorerCommandBar from "../components/filemanager/CommandBar";
 import ExplorerBreadcrumbs from "../components/filemanager/Breadcrumbs";
 import ExplorerPreviewModal from "../components/filemanager/ExplorerPreviewModal";
 import PropertiesModal from "../components/filemanager/PropertiesModal";
+import CommandPalette, {
+  type PaletteCommand,
+} from "../components/filemanager/CommandPalette";
 import FileSidebar from "../components/filemanager/FileSidebar";
 import PageTransition from "../components/motion/PageTransition";
 import { useExplorerHistory } from "../hooks/useExplorerHistory";
@@ -162,6 +165,9 @@ export default function FileManagerPage() {
     return () => window.clearTimeout(t);
   }, [search]);
 
+  // ---------- Command palette ----------
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+
   // ---------- hotkeys overlay ----------
   const [showHotkeys, setShowHotkeys] = useState(false);
 
@@ -208,6 +214,25 @@ export default function FileManagerPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+
+      // Cmd+K (Mac) or Ctrl+K (Win/Linux)
+      const isMac = navigator.platform.toLowerCase().includes("mac");
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      if (mod && key === "k") {
+        e.preventDefault();
+        setIsPaletteOpen(true);
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
   // folders / breadcrumb
@@ -281,6 +306,7 @@ export default function FileManagerPage() {
   const [selectedPreview, setSelectedPreview] = useState<FileDetail | null>(
     null,
   );
+  const [previewFocusTags, setPreviewFocusTags] = useState(false);
   const [showUpload, setShowUpload] = useState<boolean>(false);
 
   // refresh flag
@@ -329,6 +355,11 @@ export default function FileManagerPage() {
     () => new Set(selected.map((f) => f.id)),
     [selected],
   );
+  const selectedSingle = useMemo(
+    () => (selected.length === 1 ? selected[0] : null),
+    [selected],
+  );
+
   const [clipboard, setClipboard] = useState<{
     mode: "copy" | "cut";
     files: FileItem[];
@@ -1305,6 +1336,308 @@ export default function FileManagerPage() {
     },
     [buildBreadcrumb, history, historyIndex, currentFolderId],
   );
+
+  const paletteCommands: PaletteCommand[] = useMemo(() => {
+    const cmds: PaletteCommand[] = [];
+
+    // Navigation
+    cmds.push({
+      id: "nav.home",
+      title: "Go to Home",
+      subtitle: "Root folder",
+      group: "Navigation",
+      keywords: ["home", "root"],
+      run: () => void onFolderSelect(undefined, "Home"),
+    });
+
+    cmds.push({
+      id: "nav.favorites",
+      title: "Go to Favorites",
+      subtitle: "Your favorited files",
+      group: "Navigation",
+      keywords: ["favorites", "star", "liked"],
+      run: () => void onFolderSelect("favorites", "Favorites"),
+    });
+
+    cmds.push({
+      id: "nav.trash",
+      title: "Go to Trash",
+      subtitle: "Deleted files",
+      group: "Navigation",
+      keywords: ["trash", "bin", "deleted"],
+      run: () => void onFolderSelect("trash", "Trash"),
+    });
+
+    // Actions
+    cmds.push({
+      id: "action.upload",
+      title: "Upload files",
+      subtitle: "Open upload dialog",
+      group: "Actions",
+      keywords: ["upload", "import", "add"],
+      run: () => setShowUpload(true),
+    });
+
+    cmds.push({
+      id: "action.newfolder",
+      title: "Create folder",
+      subtitle: "Create a folder in current location",
+      group: "Actions",
+      keywords: ["new folder", "mkdir", "create"],
+      run: () => void handleNewFolder(),
+    });
+
+    // Search
+    cmds.push({
+      id: "search.clear",
+      title: "Clear search",
+      subtitle: "Reset query and reload listing",
+      group: "Search",
+      keywords: ["clear", "reset", "remove filter"],
+      run: () => {
+        setSearch("");
+        setSearchQuery("");
+        setPage(1);
+        setSelected([]);
+        setEmptyBgMenu(null);
+      },
+    });
+
+    // View / layout
+    cmds.push({
+      id: "view.icons",
+      title: "Switch to Icon view",
+      subtitle: "Compact icon grid",
+      group: "View",
+      keywords: ["icons", "grid"],
+      run: () => setLayout("icons"),
+    });
+
+    cmds.push({
+      id: "view.details",
+      title: "Switch to Details view",
+      subtitle: "Table with columns",
+      group: "View",
+      keywords: ["details", "table"],
+      run: () => setLayout("details"),
+    });
+
+    cmds.push({
+      id: "view.list",
+      title: "Switch to List view",
+      subtitle: "Simple list",
+      group: "View",
+      keywords: ["list"],
+      run: () => setLayout("list"),
+    });
+
+    cmds.push({
+      id: "view.large",
+      title: "Switch to Large view",
+      subtitle: "Large thumbnails",
+      group: "View",
+      keywords: ["large", "thumbnails"],
+      run: () => setLayout("large"),
+    });
+
+    cmds.push({
+      id: "view.density",
+      title: density === "compact" ? "Set Cozy density" : "Set Compact density",
+      subtitle: "Change row spacing",
+      group: "View",
+      keywords: ["density", "spacing", "compact"],
+      run: () => setDensity((d) => (d === "compact" ? "cozy" : "compact")),
+    });
+
+    // Sort
+    cmds.push({
+      id: "sort.name",
+      title: "Sort by Name",
+      subtitle: "A → Z / Z → A",
+      group: "Sort",
+      keywords: ["sort", "name", "title"],
+      run: () => {
+        setSortKey("name");
+        setSortDir((d) =>
+          sortKey === "name" ? (d === "asc" ? "desc" : "asc") : "asc",
+        );
+        setPage(1);
+      },
+    });
+
+    cmds.push({
+      id: "sort.date",
+      title: "Sort by Date",
+      subtitle: "Newest / Oldest",
+      group: "Sort",
+      keywords: ["sort", "date", "created"],
+      run: () => {
+        setSortKey("date");
+        setSortDir((d) =>
+          sortKey === "date" ? (d === "asc" ? "desc" : "asc") : "desc",
+        );
+        setPage(1);
+      },
+    });
+
+    cmds.push({
+      id: "sort.size",
+      title: "Sort by Size",
+      subtitle: "Largest / Smallest",
+      group: "Sort",
+      keywords: ["sort", "size"],
+      run: () => {
+        setSortKey("size");
+        setSortDir((d) =>
+          sortKey === "size" ? (d === "asc" ? "desc" : "asc") : "desc",
+        );
+        setPage(1);
+      },
+    });
+
+    cmds.push({
+      id: "sort.type",
+      title: "Sort by Type",
+      subtitle: "A → Z / Z → A",
+      group: "Sort",
+      keywords: ["sort", "type", "mime"],
+      run: () => {
+        setSortKey("type");
+        setSortDir((d) =>
+          sortKey === "type" ? (d === "asc" ? "desc" : "asc") : "asc",
+        );
+        setPage(1);
+      },
+    });
+
+    // Help
+    cmds.push({
+      id: "help.hotkeys",
+      title: "Show hotkeys",
+      subtitle: "Keyboard shortcuts overlay",
+      group: "Help",
+      keywords: ["help", "shortcuts", "hotkeys"],
+      run: () => setShowHotkeys(true),
+    });
+
+    // -------------------------
+    // Contextual (Selection)
+    // -------------------------
+    if (selectedSingle) {
+      const isFolder = isFolderItem(selectedSingle);
+
+      cmds.push({
+        id: "sel.preview",
+        title: "Open Preview",
+        subtitle: "Preview selected file",
+        group: "Selection",
+        keywords: ["open", "preview", "view"],
+        run: async () => {
+          if (isFolder) return;
+
+          try {
+            setPreviewFocusTags(false);
+
+            const hasDetail =
+              !!(selectedSingle as any).mimeType &&
+              typeof (selectedSingle as any).size === "number";
+
+            if (hasDetail) {
+              handleOpenPreview(selectedSingle as any);
+              return;
+            }
+
+            const detail = await getFileById(String(selectedSingle.id));
+            handleOpenPreview(normalizeFileDetail(detail as any));
+          } catch (e) {
+            console.error(e);
+            notify("Couldn't open preview for the selected file.", "error");
+          }
+        },
+      });
+
+      cmds.push({
+        id: "sel.tags",
+        title: "Tag selected",
+        subtitle: "Open preview focused on tags",
+        group: "Selection",
+        keywords: ["tag", "labels", "ai tag"],
+        run: async () => {
+          if (isFolder) return;
+
+          try {
+            setPreviewFocusTags(true);
+
+            const hasDetail =
+              !!(selectedSingle as any).mimeType &&
+              typeof (selectedSingle as any).size === "number";
+
+            if (hasDetail) {
+              handleOpenPreview(selectedSingle as any);
+              return;
+            }
+
+            const detail = await getFileById(String(selectedSingle.id));
+            handleOpenPreview(normalizeFileDetail(detail as any));
+          } catch (e) {
+            console.error(e);
+            notify("Couldn't open tagging for the selected file.", "error");
+          }
+        },
+      });
+
+      cmds.push({
+        id: "sel.download",
+        title: "Download selected",
+        subtitle: "Download selected file",
+        group: "Selection",
+        keywords: ["download", "export", "save"],
+        run: () => {
+          if (isFolder) return;
+          handleDownload(selectedSingle as any);
+        },
+      });
+
+      cmds.push({
+        id: "sel.favorite",
+        title: (selectedSingle as any).isFavorited
+          ? "Unfavorite selected"
+          : "Favorite selected",
+        subtitle: "Toggle favorite",
+        group: "Selection",
+        keywords: ["favorite", "star", "like"],
+        run: () => {
+          handleToggleFavorite(selectedSingle as any);
+        },
+      });
+    }
+
+    return cmds;
+  }, [
+    onFolderSelect,
+    handleNewFolder,
+    density,
+    sortKey,
+    setSearch,
+    setSearchQuery,
+    setPage,
+    setSelected,
+    setEmptyBgMenu,
+    setLayout,
+    setDensity,
+    setSortKey,
+    setSortDir,
+    setShowUpload,
+    setShowHotkeys,
+    selectedSingle,
+    handleOpenPreview,
+    handleDownload,
+    handleToggleFavorite,
+    notify,
+    getFileById,
+    normalizeFileDetail,
+    setPreviewFocusTags,
+  ]);
 
   const handleBack = useCallback(() => {
     if (historyIndex <= 0) return;
@@ -2373,12 +2706,21 @@ export default function FileManagerPage() {
           </section>
         </div>
 
+        <CommandPalette
+          isOpen={isPaletteOpen}
+          onClose={() => setIsPaletteOpen(false)}
+          commands={paletteCommands}
+        />
+
         {/* Preview modal */}
         {selectedPreview && (
           <ExplorerPreviewModal
             file={selectedPreview}
             isOpen={true}
-            onClose={() => setSelectedPreview(null)}
+            onClose={() => {
+              setSelectedPreview(null);
+              setPreviewFocusTags(false);
+            }}
             onDownload={(f) => handleDownload(f)}
             onToggleFavorite={handleToggleFavorite}
             onTagUpdate={(fileId, newTags) => {
@@ -2389,7 +2731,7 @@ export default function FileManagerPage() {
                   : prev,
               );
             }}
-            autoFocusTags={false}
+            autoFocusTags={previewFocusTags}
           />
         )}
 
