@@ -4,8 +4,15 @@ import { createPortal } from "react-dom";
 import { formatDate } from "../../utils/fileHelpers";
 import CloseIcon from "../icons/CloseIcon";
 import AITagButton from "../common/AITagButton";
-import { getUrlSnapshots, getFileExtractedText, apiUrl } from "../../lib/api";
+import {
+  getUrlSnapshots,
+  getUrlRevisions,
+  getFileExtractedText,
+  apiUrl,
+  type BackendDocumentRevision,
+} from "../../lib/api";
 import DiffViewer from "../common/DiffViewer";
+import RevisionHistoryPanel from "../common/RevisionHistoryPanel";
 
 interface SavedUrlDetailModalProps {
   url: SavedUrl;
@@ -27,6 +34,10 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
   const [snapshotsError, setSnapshotsError] = useState<string | null>(null);
+
+  const [revisions, setRevisions] = useState<BackendDocumentRevision[]>([]);
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [revisionsError, setRevisionsError] = useState<string | null>(null);
 
   const [leftSnapId, setLeftSnapId] = useState<string>("");
   const [rightSnapId, setRightSnapId] = useState<string>("");
@@ -65,6 +76,23 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
         setSnapshotsError(e?.message ?? "Failed to load snapshots");
       } finally {
         setSnapshotsLoading(false);
+      }
+    })();
+  }, [isOpen, url.id]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    (async () => {
+      try {
+        setRevisionsLoading(true);
+        setRevisionsError(null);
+        const out = await getUrlRevisions(Number(url.id), 50);
+        setRevisions(out.revisions || []);
+      } catch (e: any) {
+        setRevisionsError(e?.message ?? "Failed to load revision history");
+      } finally {
+        setRevisionsLoading(false);
       }
     })();
   }, [isOpen, url.id]);
@@ -264,6 +292,29 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
           {/* Right: Related & Collections */}
           <div className="space-y-4">
             <div>
+              {revisionsLoading ? (
+                <div className="text-sm text-gray-500">
+                  Loading revision history…
+                </div>
+              ) : revisionsError ? (
+                <div className="text-sm text-red-600">{revisionsError}</div>
+              ) : (
+                <RevisionHistoryPanel
+                  revisions={revisions}
+                  onOpen={(storedFileId) =>
+                    window.open(
+                      apiUrl(`/api/files/${storedFileId}/preview`),
+                      "_blank",
+                    )
+                  }
+                  onSetA={(storedFileId) => setLeftSnapId(storedFileId)}
+                  onSetB={(storedFileId) => setRightSnapId(storedFileId)}
+                  currentA={leftSnapId}
+                  currentB={rightSnapId}
+                />
+              )}
+            </div>
+            <div>
               <div className="font-semibold mb-2">Snapshots</div>
               {snapshotsLoading && (
                 <div className="text-sm text-gray-500">Loading…</div>
@@ -296,7 +347,10 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       <button
                         className="px-2 py-1 border rounded text-xs"
                         onClick={() =>
-                          window.open(apiUrl(`/api/files/${s.id}/preview`), "_blank")
+                          window.open(
+                            apiUrl(`/api/files/${s.id}/preview`),
+                            "_blank",
+                          )
                         }
                         title="Open preview"
                       >
@@ -305,7 +359,10 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       <button
                         className="px-2 py-1 border rounded text-xs"
                         onClick={() =>
-                          window.open(apiUrl(`/api/files/${s.id}/download`), "_blank")
+                          window.open(
+                            apiUrl(`/api/files/${s.id}/download`),
+                            "_blank",
+                          )
                         }
                         title="Download"
                       >

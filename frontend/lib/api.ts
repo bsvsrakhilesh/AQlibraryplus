@@ -31,6 +31,26 @@ export function apiUrl(p: string) {
   return bNorm + path;
 }
 
+// ---------- small helper: GET JSON via axios ----------
+async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  try {
+    const res = await api.get(path, {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    return res.data as T;
+  } catch (err: any) {
+    // Keep errors readable and consistent
+    const status = err?.response?.status;
+    const body = err?.response?.data;
+    const text =
+      typeof body === "string" ? body : body ? JSON.stringify(body) : "";
+    throw new Error(
+      `API GET ${status ?? "?"}: ${text || err?.message || "request failed"}`,
+    );
+  }
+}
+
 // ---------- Web Search API (URL Collector) ----------
 export async function searchWeb(
   q: string,
@@ -159,7 +179,7 @@ export function toFileItem(row: BackendStoredFile): FileItem {
     contentHash: (row as any)?.contentHash ?? null,
     taggerVersion: (row as any)?.taggerVersion ?? null,
     tagsMetaRaw: (row as any)?.tagsMeta ?? null,
-    
+
     document: (row as any).document ?? null,
     documentRevision: (row as any).documentRevision ?? null,
     captureEvent: (row as any).captureEvent ?? null,
@@ -289,6 +309,82 @@ export async function getUrlSnapshots(urlId: number, limit = 50) {
   });
   return res.data as BackendStoredFile[];
 }
+
+// ------------------------------
+// Canonical Document Revisions
+// ------------------------------
+
+export type BackendDocumentRevision = {
+  id: string;
+  ordinal: number;
+  createdAt: string;
+  captureType: "UPLOAD" | "URL_TEXT" | "URL_PDF";
+  contentHash: string | null;
+  storedFile: {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    sha256: string | null;
+    createdAt: string;
+    sourceUrl: string | null;
+    urlId: number | null;
+  };
+  captureEvent: null | {
+    id: string;
+    createdAt: string;
+    actorId: string | null;
+    actorName: string | null;
+    requestId: string | null;
+    pipeline: {
+      id: string;
+      name: string;
+      version: string;
+      configHash: string;
+      codeSha: string | null;
+    };
+  };
+};
+
+export async function getUrlRevisions(urlId: number, limit = 50) {
+  return apiGet<{
+    documentId: string | null;
+    revisions: BackendDocumentRevision[];
+  }>(`/api/urls/${urlId}/revisions?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function getDocumentRevisions(documentId: string, limit = 50) {
+  return apiGet<{
+    document: {
+      id: string;
+      kind: "URL" | "FILE";
+      urlId: number | null;
+      primaryFileId: string | null;
+    };
+    revisions: BackendDocumentRevision[];
+  }>(
+    `/api/documents/${encodeURIComponent(documentId)}/revisions?limit=${encodeURIComponent(
+      String(limit),
+    )}`,
+  );
+}
+
+export async function getFileRevisions(fileId: string, limit = 50) {
+  return apiGet<{
+    document: {
+      id: string;
+      kind: "URL" | "FILE";
+      urlId: number | null;
+      primaryFileId: string | null;
+    };
+    revisions: BackendDocumentRevision[];
+  }>(
+    `/api/files/${encodeURIComponent(fileId)}/revisions?limit=${encodeURIComponent(
+      String(limit),
+    )}`,
+  );
+}
+
 export async function deleteUrlsBulk(ids: number[]): Promise<void> {
   await api.delete("/api/urls", { data: { ids } });
 }

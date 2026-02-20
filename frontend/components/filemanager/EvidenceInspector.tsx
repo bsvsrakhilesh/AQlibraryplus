@@ -1,7 +1,13 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ExternalLink, Copy, Info } from "lucide-react";
 import type { FileItem } from "../../lib/types";
 import { formatBytes } from "../../utils/fileHelpers";
+import {
+  getFileRevisions,
+  type BackendDocumentRevision,
+  apiUrl,
+} from "../../lib/api";
+import RevisionHistoryPanel from "../common/RevisionHistoryPanel";
 
 type Props = {
   file: FileItem | null;
@@ -43,6 +49,27 @@ async function copyToClipboard(txt?: string | null) {
 
 export default function EvidenceInspector({ file }: Props) {
   const sourceUrl = file?.sourceUrl ?? null;
+
+  const [revisions, setRevisions] = useState<BackendDocumentRevision[]>([]);
+  const [revLoading, setRevLoading] = useState(false);
+  const [revError, setRevError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file?.id) return;
+
+    (async () => {
+      try {
+        setRevLoading(true);
+        setRevError(null);
+        const out = await getFileRevisions(file.id, 50);
+        setRevisions(out.revisions || []);
+      } catch (e: any) {
+        setRevError(e?.message ?? "Failed to load revision history");
+      } finally {
+        setRevLoading(false);
+      }
+    })();
+  }, [file?.id]);
 
   return (
     <aside className="rounded-2xl border border-[hsl(var(--border))] bg-white/80 shadow-sm backdrop-blur">
@@ -131,6 +158,25 @@ export default function EvidenceInspector({ file }: Props) {
               />
             </div>
           </div>
+          <div className="h-3" />
+
+          {revLoading ? (
+            <div className="text-[12px] text-[hsl(var(--muted-foreground))]">
+              Loading revision history…
+            </div>
+          ) : revError ? (
+            <div className="text-[12px] text-red-600">{revError}</div>
+          ) : (
+            <RevisionHistoryPanel
+              revisions={revisions}
+              onOpen={(storedFileId) =>
+                window.open(
+                  apiUrl(`/api/files/${storedFileId}/preview`),
+                  "_blank",
+                )
+              }
+            />
+          )}
         </div>
       )}
     </aside>

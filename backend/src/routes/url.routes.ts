@@ -11,6 +11,7 @@ import {
   getUrlTaggingSummaryHandler,
   retryFailedUrlTaggingHandler,
   getUrlSnapshotsHandler,
+  getUrlRevisionsHandler,
 } from "../controllers/url.controller";
 import { z } from "zod";
 import { validate } from "../middlewares/validate";
@@ -47,6 +48,10 @@ const urlSnapshotsQuery = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
 });
 
+const urlRevisionsQuery = z.object({
+  limit: z.coerce.number().int().positive().max(200).optional(),
+});
+
 // Mounted at /api
 r.post("/urls/preview", validate({ body: previewUrlBody }), previewUrlHandler);
 r.get("/urls", getUrlsHandler);
@@ -63,6 +68,11 @@ r.get(
   "/urls/:id/snapshots",
   validate({ query: urlSnapshotsQuery }),
   getUrlSnapshotsHandler,
+);
+r.get(
+  "/urls/:id/revisions",
+  validate({ query: urlRevisionsQuery }),
+  getUrlRevisionsHandler,
 );
 r.post("/urls/exists", validate({ body: urlsExistsBody }), urlsExistHandler);
 r.post("/urls", validate({ body: createUrlsBody }), createUrlsHandler);

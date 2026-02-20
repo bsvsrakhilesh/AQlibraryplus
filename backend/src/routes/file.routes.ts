@@ -3,7 +3,10 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import prisma from "../config/database";
-import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
+import {
+  ensureDocumentRevisionForStoredFile,
+  listDocumentRevisions,
+} from "../services/document.service";
 import { recordCaptureEvent } from "../services/provenance.service";
 import yazl from "yazl";
 import crypto from "crypto";
@@ -980,6 +983,27 @@ r.get("/files/:id", async (req, res, next) => {
           }
         : null,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/files/:id/revisions?limit=50
+// Canonical revision history for the Document that this StoredFile belongs to.
+// - Works for uploads and URL snapshots.
+// - Will create the Document/DocumentRevision link if missing (repair path).
+r.get("/files/:id/revisions", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    const limitRaw = req.query.limit;
+    const limit = typeof limitRaw === "string" ? Number(limitRaw) : undefined;
+
+    // Ensure canonical mapping exists so the UI always has history.
+    const link = await ensureDocumentRevisionForStoredFile(id);
+    const out = await listDocumentRevisions(link.documentId, {
+      limit: Number.isFinite(limit) ? (limit as number) : undefined,
+    });
+    res.json(out);
   } catch (err) {
     next(err);
   }

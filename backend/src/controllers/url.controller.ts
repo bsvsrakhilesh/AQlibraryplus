@@ -15,6 +15,7 @@ import {
   getUrlSnapshots,
 } from "../services/url.service";
 import { extractPreviewFromUrl } from "../services/extract.service";
+import { listRevisionsForUrl } from "../services/document.service";
 
 /* ----------------------- helpers ----------------------- */
 
@@ -185,6 +186,17 @@ export async function getUrlSnapshotsHandler(req: Request, res: Response) {
   res.json(out);
 }
 
+export async function getUrlRevisionsHandler(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const limitRaw = req.query.limit;
+  const limit = typeof limitRaw === "string" ? Number(limitRaw) : undefined;
+
+  const out = await listRevisionsForUrl(id, {
+    limit: Number.isFinite(limit) ? (limit as number) : undefined,
+  });
+  res.json(out);
+}
+
 export async function createUrlsHandler(
   req: Request,
   res: Response,
@@ -209,7 +221,11 @@ export async function createUrlsHandler(
   }
 }
 
-export async function urlsExistHandler(req: Request, res: Response, next: NextFunction) {
+export async function urlsExistHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const body = (req.body ?? {}) as any;
     const urls = Array.isArray(body.urls) ? body.urls : [];
