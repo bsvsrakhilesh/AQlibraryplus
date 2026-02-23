@@ -3,7 +3,70 @@ import { log, mask } from "../utils/logger";
 
 const GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1";
 
-export async function googleSearch(q: string, page: number = 1) {
+export type GoogleSearchOpts = {
+  site?: string; // domain or url (we normalize to host)
+  yearFrom?: number;
+  yearTo?: number;
+  jurisdiction?: string; // AND constraint via hq
+  region?: string; // AND constraint via hq
+  fileType?: "pdf" | "html";
+  lr?: string; // e.g. lang_en
+  cr?: string; // e.g. countryIN
+  gl?: string; // e.g. IN
+};
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeHost(site: string): string {
+  const s = site.trim();
+  if (!s) return "";
+  const withoutProto = s.replace(/^https?:\/\//i, "");
+  return withoutProto.split("/")[0].trim();
+}
+
+function quoteIfNeeded(s: string): string {
+  const t = s.trim();
+  if (!t) return "";
+  const alreadyQuoted =
+    (t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"));
+  if (alreadyQuoted) return t;
+  return t.includes(" ") ? `"${t}"` : t;
+}
+
+function sortRangeForYears(yearFrom?: number, yearTo?: number): string | undefined {
+  const nowYear = new Date().getFullYear();
+  let y1 = typeof yearFrom === "number" ? Math.trunc(yearFrom) : undefined;
+  let y2 = typeof yearTo === "number" ? Math.trunc(yearTo) : undefined;
+
+  if (!y1 && !y2) return undefined;
+  if (!y1 && y2) y1 = y2;
+  if (y1 && !y2) y2 = nowYear;
+  if (!y1 || !y2) return undefined;
+
+  const lo = Math.min(y1, y2);
+  const hi = Math.max(y1, y2);
+
+  // sort=date:r:YYYYMMDD:YYYYMMDD
+  return `date:r:${lo}0101:${hi}1231`;
+}
+
+function deriveCountryParamFromJurisdiction(j?: string): { cr?: string; gl?: string } {
+  const t = (j || "").trim();
+  if (!t) return {};
+  if (/^[a-z]{2}$/i.test(t)) {
+    const cc = t.toUpperCase();
+    return { cr: `country${cc}`, gl: cc };
+  }
+  return {};
+}
+
+export async function googleSearch(
+  q: string,
+  page: number = 1,
+  opts: GoogleSearchOpts = {},
+) {
   const key = process.env.GOOGLE_CSE_KEY;
   const cx = process.env.GOOGLE_CSE_CX;
 
@@ -13,28 +76,66 @@ export async function googleSearch(q: string, page: number = 1) {
     throw new Error(msg);
   }
 
-  // Google CSE supports start index up to ~91 for 10-per-page (max 100 results)
   const safePage = Number.isFinite(page) ? Math.max(1, Math.min(10, page)) : 1;
   const start = (safePage - 1) * 10 + 1;
+
+  const siteHost = opts.site ? normalizeHost(opts.site) : "";
+  const derived = deriveCountryParamFromJurisdiction(opts.jurisdiction);
+  const cr = opts.cr || derived.cr;
+  const gl = opts.gl || derived.gl;
+
+  // If we’re using siteSearch, strip matching `site:` operators from q to avoid double filtering.
+  let qClean = (q || "").trim();
+  if (siteHost) {
+    const candidates = [
+      siteHost,
+      siteHost.replace(/^www\./i, ""),
+      `www.${siteHost.replace(/^www\./i, "")}`,
+    ]
+      .filter(Boolean)
+      .map((s) => s.toLowerCase());
+
+    for (const c of Array.from(new Set(candidates))) {
+      qClean = qClean.replace(
+        new RegExp(`\\bsite:${escapeRegExp(c)}\\b\\s*`, "gi"),
+        "",
+      );
+    }
+    qClean = qClean.trim();
+  }
+
+  // AND constraints via `hq` (keeps user query semantics intact)
+  const hqParts = [opts.jurisdiction, opts.region]
+    .map((s) => (typeof s === "string" ? quoteIfNeeded(s) : ""))
+    .filter(Boolean);
+  const hq = hqParts.length ? hqParts.join(" ") : undefined;
+
+  const sort = sortRangeForYears(opts.yearFrom, opts.yearTo);
 
   const startedAt = Date.now();
   try {
     const resp = await axios.get(GOOGLE_CSE_URL, {
       params: {
-        q,
+        q: qClean,
         key,
         cx,
         num: 10,
-        start, // <-- pagination
+        start,
         safe: "off",
         prettyPrint: false,
+
+        ...(siteHost ? { siteSearch: siteHost, siteSearchFilter: "i" } : {}),
+        ...(opts.fileType ? { fileType: opts.fileType } : {}),
+        ...(opts.lr ? { lr: opts.lr } : {}),
+        ...(cr ? { cr } : {}),
+        ...(gl ? { gl } : {}),
+        ...(hq ? { hq } : {}),
+        ...(sort ? { sort } : {}),
       },
       validateStatus: (s) => s >= 200 && s < 300,
     });
 
-    const items: any[] = Array.isArray(resp?.data?.items)
-      ? resp.data.items
-      : [];
+    const items: any[] = Array.isArray(resp?.data?.items) ? resp.data.items : [];
     const results = items.map((item: any) => ({
       title: item?.title ?? "",
       url: item?.link ?? "",
@@ -43,11 +144,8 @@ export async function googleSearch(q: string, page: number = 1) {
 
     const nextStart: unknown = resp?.data?.queries?.nextPage?.[0]?.startIndex;
     const nextPageCandidate =
-      typeof nextStart === "number"
-        ? Math.floor((nextStart - 1) / 10) + 1
-        : null;
+      typeof nextStart === "number" ? Math.floor((nextStart - 1) / 10) + 1 : null;
 
-    // Clamp to Google CSE hard limit (max 100 results => 10 pages) and prevent non-forward pagination.
     const nextPage =
       typeof nextPageCandidate === "number" &&
       nextPageCandidate >= 1 &&
@@ -65,7 +163,14 @@ export async function googleSearch(q: string, page: number = 1) {
           : null;
 
     log.info("cse.search.ok", {
-      query: q,
+      query: qClean,
+      hq,
+      siteSearch: siteHost || undefined,
+      fileType: opts.fileType,
+      lr: opts.lr,
+      cr,
+      gl,
+      sort,
       cx: mask(cx),
       page: safePage,
       start,
@@ -84,11 +189,12 @@ export async function googleSearch(q: string, page: number = 1) {
 
     let hint = "";
     if (status === 403) hint = "check key/cx validity and daily quota";
-    else if (status === 400) hint = "check your query or cx id";
+    else if (status === 400) hint = "check your query/cx or filter params";
 
     log.error("cse.search.fail", {
       query: q,
-      cx: mask(cx),
+      hq,
+      siteSearch: siteHost || undefined,
       status,
       reason,
       hint,

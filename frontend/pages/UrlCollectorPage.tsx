@@ -32,9 +32,25 @@ function sleep(ms: number, signal?: AbortSignal) {
 
 type SortKey = "original" | "title" | "domain";
 
+/**
+ * Collector "scope" filters.
+ * NOTE: This page applies these filters by adding standard Google query operators
+ * into the query string (after:/before:/filetype:). This works without changing lib/api.ts.
+ * Later, when you wire backend params (yearFrom/yearTo/etc), you can switch to structured params.
+ */
+type CollectorScope = {
+  yearFrom: string; // YYYY
+  yearTo: string; // YYYY
+  jurisdiction: string; // free text (e.g. IN / India / California)
+  region: string; // free text (e.g. Delhi / EU / South Asia)
+  format: "any" | "pdfOnly" | "excludePdf";
+};
+
 type PersistShape = {
   website: string;
   keywords: string;
+  scope?: CollectorScope;
+
   results?: SearchResult[];
   selected: string[]; // persist Set<string> as array
   sortKey?: SortKey;
@@ -44,6 +60,24 @@ type PersistShape = {
   nextPage?: number | null;
   totalResults?: number | null;
 };
+
+function toYYYY(s: string): string {
+  const t = (s || "").trim();
+  if (!t) return "";
+  // allow user to type 2024, or 2024-xx (we’ll take first 4 digits)
+  const m = t.match(/^(\d{4})/);
+  return m ? m[1] : "";
+}
+
+function quoteIfNeeded(s: string): string {
+  const t = (s || "").trim();
+  if (!t) return "";
+  const alreadyQuoted =
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"));
+  if (alreadyQuoted) return t;
+  return t.includes(" ") ? `"${t}"` : t;
+}
 
 const UrlCollectorPage: React.FC = () => {
   // ---------- Persistence guardrails (avoid localStorage quota issues) ----------
@@ -105,8 +139,32 @@ const UrlCollectorPage: React.FC = () => {
   const urlSite = params.get("site") ?? "";
   const urlKeywords = params.get("q") ?? "";
 
+  // Optional filter params (shareable links)
+  const urlYearFrom = params.get("yearFrom") ?? "";
+  const urlYearTo = params.get("yearTo") ?? "";
+  const urlJurisdiction = params.get("jurisdiction") ?? "";
+  const urlRegion = params.get("region") ?? "";
+  const urlFormat = (params.get("format") ?? "any") as CollectorScope["format"];
+
+  const hasUrlParams =
+    !!urlSite ||
+    !!urlKeywords ||
+    !!urlYearFrom ||
+    !!urlYearTo ||
+    !!urlJurisdiction ||
+    !!urlRegion ||
+    (urlFormat && urlFormat !== "any");
+
   const [website, setWebsite] = useState(urlSite);
   const [keywords, setKeywords] = useState(urlKeywords);
+
+  const [scope, setScope] = useState<CollectorScope>({
+    yearFrom: urlYearFrom,
+    yearTo: urlYearTo,
+    jurisdiction: urlJurisdiction,
+    region: urlRegion,
+    format: urlFormat,
+  });
 
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -146,6 +204,9 @@ const UrlCollectorPage: React.FC = () => {
 
   /* ---------- Restore persisted state ---------- */
   useEffect(() => {
+    // If URL includes params, treat it as authoritative (shareable links should win)
+    if (hasUrlParams) return;
+
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return;
@@ -153,6 +214,7 @@ const UrlCollectorPage: React.FC = () => {
 
       if (p.website) setWebsite(p.website);
       if (p.keywords) setKeywords(p.keywords);
+      if (p.scope) setScope((prev) => ({ ...prev, ...p.scope }));
       if (p.results) setSearchResults(p.results);
       if (p.selected) setSelectedUrls(new Set(p.selected));
       if (p.sortKey) setSortKey(p.sortKey);
@@ -166,7 +228,7 @@ const UrlCollectorPage: React.FC = () => {
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [hasUrlParams]);
 
   /* ---------- Persist state (quota-safe) ---------- */
   useEffect(() => {
@@ -174,6 +236,7 @@ const UrlCollectorPage: React.FC = () => {
     const full: PersistShape = {
       website,
       keywords,
+      scope,
       results: minifyResults(searchResults),
       selected: Array.from(selectedUrls),
       sortKey,
@@ -187,6 +250,7 @@ const UrlCollectorPage: React.FC = () => {
     const noResults: PersistShape = {
       website,
       keywords,
+      scope,
       selected: Array.from(selectedUrls),
       sortKey,
       lastRunAt: hasSearched ? new Date().toISOString() : undefined,
@@ -199,6 +263,7 @@ const UrlCollectorPage: React.FC = () => {
     const minimal: PersistShape = {
       website,
       keywords,
+      scope,
       selected: [],
       sortKey,
       lastRunAt: hasSearched ? new Date().toISOString() : undefined,
@@ -210,6 +275,7 @@ const UrlCollectorPage: React.FC = () => {
   }, [
     website,
     keywords,
+    scope,
     searchResults,
     selectedUrls,
     sortKey,
@@ -235,11 +301,61 @@ const UrlCollectorPage: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  function buildQuery(site: string, kws: string, sc: CollectorScope): string {
+    const parts: string[] = [];
+
+    const sitePart = site ? `site:${site}` : "";
+    if (sitePart) parts.push(sitePart);
+
+    if (kws) parts.push(kws);
+
+    const yFrom = toYYYY(sc.yearFrom);
+    const yTo = toYYYY(sc.yearTo);
+
+    if (yFrom) parts.push(`after:${yFrom}-01-01`);
+    if (yTo) parts.push(`before:${yTo}-12-31`);
+
+    // Honest format filter: PDF only is reliable; "exclude PDFs" approximates HTML-heavy results.
+    if (sc.format === "pdfOnly") parts.push("filetype:pdf");
+    if (sc.format === "excludePdf") parts.push("-filetype:pdf");
+
+    const j = quoteIfNeeded(sc.jurisdiction);
+    const r = quoteIfNeeded(sc.region);
+    if (j) parts.push(j);
+    if (r) parts.push(r);
+
+    return parts.join(" ").trim();
+  }
+
+  function syncUrl(site: string, kws: string, sc: CollectorScope) {
+    const sp = new URLSearchParams();
+    if (site) sp.set("site", site);
+    if (kws) sp.set("q", kws);
+
+    const yFrom = toYYYY(sc.yearFrom);
+    const yTo = toYYYY(sc.yearTo);
+    if (yFrom) sp.set("yearFrom", yFrom);
+    if (yTo) sp.set("yearTo", yTo);
+    if (sc.jurisdiction.trim()) sp.set("jurisdiction", sc.jurisdiction.trim());
+    if (sc.region.trim()) sp.set("region", sc.region.trim());
+    if (sc.format !== "any") sp.set("format", sc.format);
+
+    navigate({ search: sp.toString() ? `?${sp.toString()}` : "" }, { replace: true });
+  }
+
   /* ---------- Search handler (working fetch + abort) ---------- */
   const handleSearch = useCallback(
     async (siteArg?: string, kwArg?: string) => {
       const site = (siteArg ?? website).trim();
       const kws = normalizeKeywords(kwArg ?? keywords);
+
+      const yFrom = toYYYY(scope.yearFrom);
+      const yTo = toYYYY(scope.yearTo);
+      if (yFrom && yTo && Number(yFrom) > Number(yTo)) {
+        setError("Year from must be ≤ Year to.");
+        setHasSearched(true);
+        return;
+      }
 
       const now = Date.now();
       if (now < rateLimitUntilRef.current) {
@@ -269,16 +385,11 @@ const UrlCollectorPage: React.FC = () => {
       setError(null);
       setHasSearched(true);
 
-      // keep URL in sync
-      navigate(
-        {
-          search: `?site=${encodeURIComponent(site)}&q=${encodeURIComponent(kws)}`,
-        },
-        { replace: true },
-      );
+      // keep URL in sync (shareable)
+      syncUrl(site, kws, scope);
 
       try {
-        const q = `${site ? `site:${site} ` : ""}${kws}`.trim();
+        const q = buildQuery(site, kws, scope);
 
         // Helper to fetch a specific page from the backend
         const fetchPage = async (page: number) => {
@@ -306,7 +417,7 @@ const UrlCollectorPage: React.FC = () => {
 
         if (p1.rows.length === 0) {
           setError(
-            "No results found. Try different keywords or remove the site: filter.",
+            "No results found. Try different keywords, widen filters, or remove the site: filter.",
           );
           return;
         }
@@ -384,7 +495,7 @@ const UrlCollectorPage: React.FC = () => {
         setPrefetchCount(0);
       }
     },
-    [navigate, website, keywords],
+    [navigate, website, keywords, scope],
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -481,6 +592,14 @@ const UrlCollectorPage: React.FC = () => {
     setLastQuery("");
     setWebsite("");
     setKeywords("");
+    setScope({
+      yearFrom: "",
+      yearTo: "",
+      jurisdiction: "",
+      region: "",
+      format: "any",
+    });
+
     try {
       localStorage.removeItem(LS_KEY);
     } catch {}
@@ -542,6 +661,138 @@ const UrlCollectorPage: React.FC = () => {
             onWebsiteChange={setWebsite}
             onKeywordsChange={setKeywords}
           />
+
+          {/* Scope filters */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div className="md:col-span-2">
+              <label
+                htmlFor="uc-year-from"
+                className="block text-xs text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Year from
+              </label>
+              <input
+                id="uc-year-from"
+                type="number"
+                inputMode="numeric"
+                placeholder="e.g. 2015"
+                className="input w-full"
+                value={scope.yearFrom}
+                onChange={(e) =>
+                  setScope((p) => ({ ...p, yearFrom: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label
+                htmlFor="uc-year-to"
+                className="block text-xs text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Year to
+              </label>
+              <input
+                id="uc-year-to"
+                type="number"
+                inputMode="numeric"
+                placeholder="e.g. 2024"
+                className="input w-full"
+                value={scope.yearTo}
+                onChange={(e) =>
+                  setScope((p) => ({ ...p, yearTo: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="md:col-span-4">
+              <label
+                htmlFor="uc-jurisdiction"
+                className="block text-xs text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Jurisdiction
+              </label>
+              <input
+                id="uc-jurisdiction"
+                type="text"
+                placeholder="e.g. IN / India / California"
+                className="input w-full"
+                value={scope.jurisdiction}
+                onChange={(e) =>
+                  setScope((p) => ({ ...p, jurisdiction: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="md:col-span-4">
+              <label
+                htmlFor="uc-region"
+                className="block text-xs text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Area / region
+              </label>
+              <input
+                id="uc-region"
+                type="text"
+                placeholder="e.g. Delhi / EU / South Asia"
+                className="input w-full"
+                value={scope.region}
+                onChange={(e) =>
+                  setScope((p) => ({ ...p, region: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="md:col-span-3">
+              <label
+                htmlFor="uc-format"
+                className="block text-xs text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Document format
+              </label>
+              <select
+                id="uc-format"
+                className="input w-full"
+                value={scope.format}
+                onChange={(e) =>
+                  setScope((p) => ({
+                    ...p,
+                    format: e.target.value as CollectorScope["format"],
+                  }))
+                }
+              >
+                <option value="any">Any</option>
+                <option value="pdfOnly">PDF only</option>
+                <option value="excludePdf">Exclude PDFs</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-9 flex items-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary rounded-full px-4 py-2"
+                onClick={() =>
+                  setScope({
+                    yearFrom: "",
+                    yearTo: "",
+                    jurisdiction: "",
+                    region: "",
+                    format: "any",
+                  })
+                }
+                title="Clear scope filters"
+              >
+                Clear filters
+              </button>
+
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                These filters narrow search by adding operators like{" "}
+                <span className="font-mono">after:</span>,{" "}
+                <span className="font-mono">before:</span>,{" "}
+                <span className="font-mono">filetype:</span>.
+              </div>
+            </div>
+          </div>
+
           <div
             className="mt-3 flex flex-wrap items-center gap-3"
             role="status"

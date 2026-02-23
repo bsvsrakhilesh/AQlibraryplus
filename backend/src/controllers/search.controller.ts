@@ -2,6 +2,16 @@ import { Request, Response, NextFunction } from "express";
 import { googleSearch } from "../services/search.service";
 import { log } from "../utils/logger";
 
+function numOrUndef(v: unknown): number | undefined {
+  const n = typeof v === "string" || typeof v === "number" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function strOrUndef(v: unknown): string | undefined {
+  const s = String(v ?? "").trim();
+  return s ? s : undefined;
+}
+
 export async function searchHandler(
   req: Request,
   res: Response,
@@ -15,9 +25,21 @@ export async function searchHandler(
     return res.status(400).json({ error: "Missing query parameter `q`" });
   }
 
+  const opts = {
+    site: strOrUndef(req.query.site),
+    yearFrom: numOrUndef(req.query.yearFrom),
+    yearTo: numOrUndef(req.query.yearTo),
+    jurisdiction: strOrUndef(req.query.jurisdiction),
+    region: strOrUndef(req.query.region),
+    fileType: strOrUndef(req.query.fileType) as "pdf" | "html" | undefined,
+    lr: strOrUndef(req.query.lr),
+    cr: strOrUndef(req.query.cr),
+    gl: strOrUndef(req.query.gl),
+  };
+
   const startedAt = Date.now();
   try {
-    const { results, nextPage, totalResults } = await googleSearch(q, page);
+    const { results, nextPage, totalResults } = await googleSearch(q, page, opts);
 
     if (typeof nextPage === "number")
       res.setHeader("x-next-page", String(nextPage));
@@ -26,10 +48,12 @@ export async function searchHandler(
     if (typeof totalResults === "number" && !Number.isNaN(totalResults)) {
       res.setHeader("x-total-results", String(totalResults));
     }
+
     log.info("search.response.ok", {
       items_count: results.length,
       ms: Date.now() - startedAt,
     });
+
     return res.json(results);
   } catch (err: any) {
     log.error("search.response.error", {

@@ -6,7 +6,11 @@ const rawBase = (import.meta as any)?.env?.VITE_API_URL || "";
 const isBrowser = typeof window !== "undefined";
 const host = isBrowser ? window.location.hostname : "";
 const isRemoteHost =
-  isBrowser && host && host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+  isBrowser &&
+  host &&
+  host !== "localhost" &&
+  host !== "127.0.0.1" &&
+  host !== "::1";
 
 const looksLikeLocalhost =
   typeof rawBase === "string" &&
@@ -64,19 +68,41 @@ async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
 }
 
+export type SearchWebOptions = {
+  site?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  jurisdiction?: string;
+  region?: string;
+  fileType?: "pdf" | "html";
+  lr?: string; // e.g. lang_en
+  cr?: string; // e.g. countryIN
+  gl?: string; // e.g. IN
+};
+
 // ---------- Web Search API (URL Collector) ----------
 export async function searchWeb(
   q: string,
   page = 1,
   signal?: AbortSignal,
+  opts?: SearchWebOptions,
 ): Promise<{
   rows: SearchResult[];
   nextPage: number | null;
   totalResults: number | null;
 }> {
   try {
+    const params: Record<string, any> = { q, page };
+    if (opts) {
+      for (const [k, v] of Object.entries(opts)) {
+        if (v === undefined || v === null) continue;
+        if (typeof v === "string" && v.trim() === "") continue;
+        params[k] = v;
+      }
+    }
+
     const res = await api.get("/api/search", {
-      params: { q, page },
+      params,
       headers: { Accept: "application/json" },
       signal,
     });
@@ -90,7 +116,6 @@ export async function searchWeb(
         }))
       : [];
 
-    // axios lowercases header keys
     const npRaw = res.headers?.["x-next-page"];
     const nextPage = npRaw ? Number(npRaw) : null;
 
@@ -99,13 +124,10 @@ export async function searchWeb(
 
     return { rows, nextPage, totalResults };
   } catch (err: any) {
-    // AbortController cancellation in axios v1
     if (err?.code === "ERR_CANCELED") throw err;
-
     const status = err?.response?.status;
     if (status === 429) throw new Error("RATE_LIMITED");
 
-    // Keep error shape similar to the old fetch() implementation
     const body = err?.response?.data;
     const text =
       typeof body === "string" ? body : body ? JSON.stringify(body) : "";
