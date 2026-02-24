@@ -45,9 +45,18 @@ _THIS_DIR = pathlib.Path(__file__).parent.resolve()
 _WS = re.compile(r"\s+")
 
 # Direction / Order identifiers (kept conservative to reduce false positives)
-_RE_DIR_NO = re.compile(r"\bDirection\s*No\.?\s*[:\-]?\s*([A-Za-z0-9./()\-\]{4,})", re.IGNORECASE)
-_RE_ORDER_NO = re.compile(r"\bOrder\s*No\.?\s*[:\-]?\s*([A-Za-z0-9./()\-\]{4,})", re.IGNORECASE)
-_RE_REF_NO = re.compile(r"\b(?:F\.?\s*No\.?|Ref\.?\s*No\.?|File\s*No\.?)\s*[:\-]?\s*([A-Za-z0-9./()\-\]{4,})", re.IGNORECASE)
+_RE_DIR_NO = re.compile(
+    r"\bDirection\s*No\.?\s*[:\-]?\s*([A-Za-z0-9./()\-\[\]]{4,})",
+    re.IGNORECASE,
+)
+_RE_ORDER_NO = re.compile(
+    r"\bOrder\s*No\.?\s*[:\-]?\s*([A-Za-z0-9./()\-\[\]]{4,})",
+    re.IGNORECASE,
+)
+_RE_REF_NO = re.compile(
+    r"\b(?:F\.?\s*No\.?|Ref\.?\s*No\.?|File\s*No\.?)\s*[:\-]?\s*([A-Za-z0-9./()\-\[\]]{4,})",
+    re.IGNORECASE,
+)
 
 # Dates: 12/02/2024, 12-02-2024
 _RE_DATE_DMY = re.compile(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b")
