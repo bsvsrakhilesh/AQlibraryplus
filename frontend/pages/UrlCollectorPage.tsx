@@ -107,29 +107,38 @@ const UrlCollectorPage: React.FC = () => {
     const s = (raw || "").trim();
     if (!s) return "";
 
-    // Only apply special handling when user actually used commas
-    if (!s.includes(",")) return s;
+    // Optional: remove literal AND tokens users type
+    const cleaned = s.replace(/\bAND\b/gi, " ").trim();
 
-    const parts = s
-      .split(",")
-      .map((p) => p.trim())
+    // Support OR groups with |
+    // Example: smog tower, delhi | air purifier, delhi
+    const orGroups = cleaned
+      .split("|")
+      .map((g) => g.trim())
       .filter(Boolean);
 
-    if (parts.length === 0) return "";
+    const groupQueries = orGroups.map((group) => {
+      // Comma-separated = MUST include all (AND)
+      const parts = group
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
 
-    const q = parts
-      .map((p) => {
-        // Quote phrases with spaces unless already quoted
+      const terms = parts.map((p) => {
         const alreadyQuoted =
           (p.startsWith('"') && p.endsWith('"')) ||
           (p.startsWith("'") && p.endsWith("'"));
         if (alreadyQuoted) return p;
-        return p.includes(" ") ? `"${p}"` : p;
-      })
-      .join(" OR ");
+        return p.includes(" ") ? `"${p}"` : p; // quote phrases
+      });
 
-    // Wrap in parens to keep it as a unit if website/site scoping is added later
-    return parts.length > 1 ? `(${q})` : q;
+      // AND is default in Google/CSE when space-separated
+      return terms.join(" ");
+    });
+
+    return groupQueries.length > 1
+      ? `(${groupQueries.join(") OR (")})`
+      : groupQueries[0];
   }
 
   const navigate = useNavigate();
@@ -340,7 +349,10 @@ const UrlCollectorPage: React.FC = () => {
     if (sc.region.trim()) sp.set("region", sc.region.trim());
     if (sc.format !== "any") sp.set("format", sc.format);
 
-    navigate({ search: sp.toString() ? `?${sp.toString()}` : "" }, { replace: true });
+    navigate(
+      { search: sp.toString() ? `?${sp.toString()}` : "" },
+      { replace: true },
+    );
   }
 
   /* ---------- Search handler (working fetch + abort) ---------- */
