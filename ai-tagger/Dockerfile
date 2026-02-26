@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ai-tagger/Dockerfile
 # Use 3.12 for best compatibility with spaCy + common ML libs
 FROM python:3.12-slim
@@ -30,7 +31,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # ---- Dependencies first (better layer caching) ----
 COPY requirements.txt /app/requirements.txt
-RUN pip install -r /app/requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r /app/requirements.txt
 
 # ---- spaCy model (required for noun_chunks + NER) ----
 RUN python -m spacy download en_core_web_sm

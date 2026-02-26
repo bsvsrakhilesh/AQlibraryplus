@@ -102,6 +102,7 @@ services:
       - backend
 
   ai-tagger:
+    image: smartscrape-ai-tagger:dev
     build:
       context: ./ai-tagger
       dockerfile: Dockerfile
@@ -123,6 +124,7 @@ services:
     command: uvicorn app:app --host 0.0.0.0 --port 7071
 
   ai-tagger-worker:
+    image: smartscrape-ai-tagger:dev
     build:
       context: ./ai-tagger
       dockerfile: Dockerfile
