@@ -106,6 +106,14 @@ export type ChatAnswer = {
   suggested: string[];
 };
 
+export type PagedResult<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalBytes?: number;
+};
+
 export interface NotebookClient {
   listNotebooks(): Promise<Notebook[]>;
   createNotebook(p: { title: string; description?: string }): Promise<Notebook>;
@@ -147,12 +155,36 @@ export interface NotebookClient {
   ): Promise<NBNote>;
   deleteNote(notebookId: ID, noteId: ID): Promise<void>;
 
-  // existing endpoints in your backend
+  // existing resources (SourcePicker)
+  listUrlPicker(p?: {
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PagedResult<any>>;
+  listFilePicker(p?: {
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PagedResult<any>>;
+
+  // legacy endpoints (raw arrays)
   listAllUrls(): Promise<any[]>;
   listAllFiles(): Promise<any[]>;
 }
 
 const BASE = "/api";
+
+function toQuery(params: Record<string, any>) {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v === undefined || v === null) continue;
+    const s = String(v);
+    if (!s) continue;
+    usp.set(k, s);
+  }
+  const qs = usp.toString();
+  return qs ? `?${qs}` : "";
+}
 
 async function j<T = any>(
   method: string,
@@ -259,7 +291,43 @@ export const notebookClient: NotebookClient = {
     return j<void>("DELETE", `/notebooks/${notebookId}/notes/${noteId}`);
   },
 
-  // existing resources
+  // existing resources (SourcePicker)
+  async listUrlPicker(p) {
+    const q = toQuery({
+      q: p?.q,
+      page: p?.page ?? 1,
+      pageSize: p?.pageSize ?? 50,
+    });
+    const data: any = await j<any>("GET", `/urls${q}`);
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        total: data.length,
+        page: 1,
+        pageSize: data.length,
+      };
+    }
+    return data as PagedResult<any>;
+  },
+  async listFilePicker(p) {
+    const q = toQuery({
+      q: p?.q,
+      page: p?.page ?? 1,
+      pageSize: p?.pageSize ?? 50,
+    });
+    const data: any = await j<any>("GET", `/files${q}`);
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        total: data.length,
+        page: 1,
+        pageSize: data.length,
+      };
+    }
+    return data as PagedResult<any>;
+  },
+
+  // legacy endpoints (raw arrays)
   listAllUrls() {
     return j<any[]>("GET", `/urls`);
   },

@@ -101,6 +101,84 @@ export async function getAllUrls(opts: GetAllOpts) {
   })) as any;
 }
 
+// ------------------------------ pagination + search ------------------------------
+
+export type GetPagedUrlsOpts = GetAllOpts & {
+  q?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+/**
+ * Paged URL listing for large libraries (SourcePicker, etc.)
+ * - Supports q (search over title/url/snippet)
+ * - Supports year/tags/sortKey/sortOrder
+ * - Returns { items, total, page, pageSize }
+ */
+export async function getUrlsPaged(opts: GetPagedUrlsOpts) {
+  const where: Prisma.UrlWhereInput = {};
+
+  const yearWhere = buildYearWhere(opts.year);
+  if (yearWhere) Object.assign(where, yearWhere);
+
+  if (opts.tags && opts.tags.length) {
+    const tags = opts.tags.map((t) => t.trim()).filter(Boolean);
+    if (tags.length) where.tags = { hasEvery: tags };
+  }
+
+  if (opts.q && String(opts.q).trim()) {
+    const term = String(opts.q).trim();
+    where.OR = [
+      { title: { contains: term, mode: "insensitive" } },
+      { url: { contains: term, mode: "insensitive" } },
+      { snippet: { contains: term, mode: "insensitive" } },
+    ];
+  }
+
+  const orderBy = buildOrderBy(opts.sortKey, opts.sortOrder);
+
+  const pageSize = Math.max(1, Math.min(Number(opts.pageSize ?? 50), 200));
+  const page = Math.max(1, Number(opts.page ?? 1));
+  const skip = (page - 1) * pageSize;
+
+  const [urls, total] = await Promise.all([
+    prisma.url.findMany({ where, orderBy, skip, take: pageSize }),
+    prisma.url.count({ where }),
+  ]);
+
+  // Attach latest snapshot info (if any) — only for the returned page
+  const ids = urls.map((u) => u.id);
+  if (ids.length === 0) {
+    return { items: [] as any[], total, page, pageSize };
+  }
+
+  const snaps = await prisma.storedFile.findMany({
+    where: { urlId: { in: ids } },
+    select: {
+      id: true,
+      urlId: true,
+      fileName: true,
+      captureType: true,
+      createdAt: true,
+      sha256: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const latestByUrl = new Map<number, any>();
+  for (const s of snaps) {
+    if (!latestByUrl.has(s.urlId as number))
+      latestByUrl.set(s.urlId as number, s);
+  }
+
+  const items = urls.map((u) => ({
+    ...u,
+    latestSnapshot: latestByUrl.get(u.id) ?? null,
+  })) as any;
+
+  return { items, total, page, pageSize };
+}
+
 /** Get one URL by id */
 export async function getUrlById(id: number) {
   const rec = await prisma.url.findUnique({ where: { id } });

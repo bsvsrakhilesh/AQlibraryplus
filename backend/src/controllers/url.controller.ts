@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import {
   getAllUrls,
+  getUrlsPaged,
   getUrlById,
   createManyUrls,
   urlsExist,
@@ -11,6 +12,7 @@ import {
   retryFailedUrlTagging,
   CreateUrlInput,
   GetAllOpts,
+  GetPagedUrlsOpts,
   UpdateUrlInput,
   getUrlSnapshots,
 } from "../services/url.service";
@@ -144,9 +146,30 @@ export async function getUrlsHandler(
       year,
       sortKey = "createdAt",
       sortOrder = "desc",
-    } = req.query as Partial<GetAllOpts>;
+      q,
+      page,
+      pageSize,
+    } = req.query as Partial<GetPagedUrlsOpts> as any;
+
     const tags = parseTagsQuery(req.query.tags);
 
+    const hasPagination =
+      Number.isInteger(Number(page)) && Number.isInteger(Number(pageSize));
+
+    if (hasPagination) {
+      const out = await getUrlsPaged({
+        year,
+        q: typeof q === "string" ? q : undefined,
+        page: Number(page),
+        pageSize: Number(pageSize),
+        sortKey: (sortKey as GetAllOpts["sortKey"]) ?? "createdAt",
+        sortOrder: (sortOrder as GetAllOpts["sortOrder"]) ?? "desc",
+        tags,
+      });
+      return res.json(out);
+    }
+
+    // Back-compat (older clients expect an array)
     const data = await getAllUrls({
       year,
       sortKey: (sortKey as GetAllOpts["sortKey"]) ?? "createdAt",
@@ -154,7 +177,24 @@ export async function getUrlsHandler(
       tags,
     });
 
-    res.json(data);
+    // Optional: client-side search without pagination (only for small libraries)
+    if (typeof q === "string" && q.trim()) {
+      const term = q.trim().toLowerCase();
+      const match = (u: any) =>
+        String(u.title ?? "")
+          .toLowerCase()
+          .includes(term) ||
+        String(u.url ?? "")
+          .toLowerCase()
+          .includes(term) ||
+        String(u.snippet ?? "")
+          .toLowerCase()
+          .includes(term);
+
+      return res.json(data.filter(match));
+    }
+
+    return res.json(data);
   } catch (err) {
     next(err);
   }

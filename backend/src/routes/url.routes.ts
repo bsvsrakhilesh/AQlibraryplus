@@ -52,9 +52,19 @@ const urlRevisionsQuery = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
 });
 
+const listUrlsQuery = z.object({
+  q: z.string().optional(),
+  year: z.string().optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
+  sortKey: z.enum(["createdAt", "updatedAt", "title"]).optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().positive().max(200).optional(),
+});
+
 // Mounted at /api
 r.post("/urls/preview", validate({ body: previewUrlBody }), previewUrlHandler);
-r.get("/urls", getUrlsHandler);
+r.get("/urls", validate({ query: listUrlsQuery }), getUrlsHandler);
 
 r.get("/urls/tagging/summary", getUrlTaggingSummaryHandler);
 r.post(
