@@ -78,10 +78,14 @@ export default function ChatPanel({
   notebookId,
   sourceIds,
   totalSources,
+  scopeIncludedCount,
+  notReadyIncludedCount,
 }: {
   notebookId: string | null;
-  sourceIds?: string[];
-  totalSources?: number;
+  sourceIds?: string[]; // ready ids only
+  totalSources?: number; // total sources in notebook
+  scopeIncludedCount?: number; // included by scope (ready + not ready)
+  notReadyIncludedCount?: number; // included but not ready
 }) {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -103,8 +107,10 @@ export default function ChatPanel({
     import("../../lib/notebookClient").Citation | null
   >(null);
 
-  const includedCount = sourceIds?.length ?? 0;
-  const totalCount = totalSources ?? includedCount;
+  const readyCount = sourceIds?.length ?? 0;
+  const scopeCount = scopeIncludedCount ?? readyCount;
+  const totalCount = totalSources ?? scopeCount;
+  const blockedCount = notReadyIncludedCount ?? 0;
 
   // Persist chat history per notebook (so refresh doesn't wipe the conversation)
   const historyKey = notebookId ? `nb:chatHistory:${notebookId}` : null;
@@ -407,12 +413,28 @@ export default function ChatPanel({
       <div className="px-4 md:px-6 py-3 border-b border-emerald-200/70 bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/40">
         <div className="flex items-center gap-2">
           <span className="text-[11px] px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-700">
-            Using {includedCount}/{totalCount} sources
+            Using {readyCount}/{Math.max(scopeCount, 0)} ready sources
           </span>
 
-          {totalCount > 0 && includedCount === 0 ? (
+          {blockedCount > 0 ? (
+            <span
+              className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1"
+              title="These sources are included by scope but are still indexing or failed indexing, so they are excluded from chat for reliability."
+            >
+              {blockedCount} not ready
+            </span>
+          ) : null}
+
+          {totalCount > 0 && scopeCount === 0 ? (
             <span className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2.5 py-1">
-              No sources selected — answers may be weak.
+              No sources selected — include sources to get cited answers.
+            </span>
+          ) : null}
+
+          {scopeCount > 0 && readyCount === 0 ? (
+            <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">
+              Sources are still indexing — chat will work once at least one is
+              “Ready”.
             </span>
           ) : null}
 

@@ -107,8 +107,11 @@ async function retrieveRelevantChunkIdsVector(p: {
   }
   const qVec = toPgVectorLiteral(qEmbedding);
 
-  const rows = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT sc."id"
+  const maxDist = env.RETRIEVAL_MAX_COSINE_DISTANCE ?? 0.42;
+
+  const rows = await prisma.$queryRaw<{ id: string; dist: number }[]>`
+    SELECT sc."id",
+           (sc."embedding" <=> ${qVec}::vector)::float8 AS dist
     FROM "SourceChunk" sc
     JOIN "NotebookSource" ns ON ns."id" = sc."sourceId"
     JOIN "SourceRevision" sr ON sr."id" = sc."revisionId"
@@ -120,11 +123,11 @@ async function retrieveRelevantChunkIdsVector(p: {
           ? Prisma.sql`AND sc."sourceId" IN (${Prisma.join(p.sourceIds)})`
           : Prisma.empty
       }
-    ORDER BY sc."embedding" <=> ${qVec}::vector
+    ORDER BY dist ASC
     LIMIT ${p.limit}
   `;
 
-  return rows.map((r) => r.id);
+  return rows.filter((r) => Number(r.dist) <= maxDist).map((r) => r.id);
 }
 
 async function retrieveRelevantChunkIdsKeywordFTS(p: {
@@ -171,21 +174,27 @@ async function retrieveRelevantChunkIdsKeywordFTS(p: {
     });
 
     const kws = extractKeywords(q);
-    const scored = rows
-      .map((c) => {
-        const t = c.text.toLowerCase();
-        let s = 0;
-        for (const k of kws) {
-          const hits = t.split(k).length - 1;
-          s += hits * 3;
-          if (t.slice(0, 200).includes(k)) s += 2;
-        }
-        return { id: c.id, score: s };
-      })
-      .sort((a, b) => b.score - a.score)
-      .map((x) => x.id);
+    if (!kws.length) return [];
 
-    return scored.slice(0, p.limit);
+    const scored = rows.map((c) => {
+      const t = c.text.toLowerCase();
+      let s = 0;
+      for (const k of kws) {
+        const hits = t.split(k).length - 1;
+        s += hits * 3;
+        if (t.slice(0, 200).includes(k)) s += 2;
+      }
+      return { id: c.id, score: s };
+    });
+
+    const maxScore = scored.reduce((m, x) => Math.max(m, x.score), 0);
+    if (maxScore <= 0) return [];
+
+    return scored
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, p.limit)
+      .map((x) => x.id);
   }
 }
 
@@ -448,6 +457,37 @@ export async function runNotebookChat(p: {
       answer: `**Draft answer (backend)**\n\nYou asked: _${message}_`,
       citations: await buildFallbackCitations(candidateChunkIds, 2),
       suggested: [],
+    };
+  }
+
+  if (candidateChunkIds.length === 0) {
+    // If user passed sourceIds and none are ready/indexed, give a clear message
+    const requested = Array.isArray(p.sourceIds) ? p.sourceIds : null;
+
+    // If sources were explicitly scoped and none are selected:
+    if (requested && requested.length === 0) {
+      return {
+        answer:
+          "No sources are selected. Include at least one **Ready** source to get cited answers.",
+        citations: [],
+        suggested: [
+          "Open Manage → include a source",
+          "Add a URL or File source",
+          "Ask: “Summarize the included sources with citations”",
+        ],
+      };
+    }
+
+    return {
+      answer:
+        "I couldn’t find any relevant passages in the **Ready** sources for your question. " +
+        "Try rephrasing with more specific keywords, or include more sources (and wait for indexing to reach **Ready**).",
+      citations: [],
+      suggested: [
+        "Rephrase using key terms that appear in the sources",
+        "Ask for a source summary first (with citations)",
+        "Include additional sources related to this question",
+      ],
     };
   }
 

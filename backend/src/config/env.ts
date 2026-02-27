@@ -23,6 +23,9 @@ const EnvSchema = z.object({
 
   // OCR if disabled we will FAIL loudly on scanned PDFs
   OCR_ENABLED: BoolFromEnv,
+
+  // Retrieval tuning (pgvector cosine distance; lower = more similar)
+  RETRIEVAL_MAX_COSINE_DISTANCE: z.coerce.number().optional().default(0.42),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

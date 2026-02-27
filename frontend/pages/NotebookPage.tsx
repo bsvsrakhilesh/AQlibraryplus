@@ -300,10 +300,23 @@ export default function NotebookPage() {
   // ===== Sources Library computed list =====
   const sources: NBSource[] = (sourcesQ.data || []) as NBSource[];
 
-  const includedSourceIds = useMemo(
-    () => sources.filter((s) => !excludedSourceIds.has(s.id)).map((s) => s.id),
-    [sources, excludedSourceIds],
-  );
+  const isSourceReady = (s: NBSource) => {
+    const ing = s.ingestionJob?.status ?? "NONE";
+    const emb = s.embeddingJob?.status ?? "NONE";
+    return ing === "SUCCESS" && emb === "SUCCESS";
+  };
+
+  const { includedSourceIds, readySourceIds, notReadyIncludedCount } =
+    useMemo(() => {
+      const included = sources.filter((s) => !excludedSourceIds.has(s.id));
+      const ready = included.filter(isSourceReady);
+
+      return {
+        includedSourceIds: included.map((s) => s.id),
+        readySourceIds: ready.map((s) => s.id),
+        notReadyIncludedCount: Math.max(0, included.length - ready.length),
+      };
+    }, [sources, excludedSourceIds]);
 
   const includedCount = includedSourceIds.length;
   const excludedCount = Math.max(0, sources.length - includedCount);
@@ -1005,8 +1018,10 @@ export default function NotebookPage() {
 
             <ChatPanel
               notebookId={activeId}
-              sourceIds={includedSourceIds}
+              sourceIds={readySourceIds}
               totalSources={sources.length}
+              scopeIncludedCount={includedSourceIds.length}
+              notReadyIncludedCount={notReadyIncludedCount}
             />
           </div>
 
