@@ -4,6 +4,7 @@ import {
   notebookClient as api,
   Notebook,
   NBSource,
+  type SourceDiagnostics,
 } from "../lib/notebookClient";
 import UrlIcon from "../components/icons/UrlIcon";
 import FolderIcon from "../components/icons/FolderIcon";
@@ -50,6 +51,8 @@ export default function NotebookPage() {
   const [picker, setPicker] = useState<null | "url" | "file">(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const [fixSourceId, setFixSourceId] = useState<string | null>(null);
+
   // mobile panel switcher state
   const [mobileTab, setMobileTab] = useState<"sources" | "chat" | "notes">(
     "chat",
@@ -64,7 +67,7 @@ export default function NotebookPage() {
   const [sourceKind, setSourceKind] = useState<"all" | "URL" | "FILE">("all");
   const [sourceSort, setSourceSort] = useState<"recent" | "name">("recent");
 
-  // ===== NotebookLM-style scope control (include/exclude sources) =====
+  // ===== scope control (include/exclude sources) =====
   const scopeKey = activeId ? `nb:scope:excluded:${activeId}` : null;
   const [excludedSourceIds, setExcludedSourceIds] = useState<Set<string>>(
     new Set(),
@@ -344,6 +347,107 @@ export default function NotebookPage() {
     onSuccess: (_data, vars) =>
       qc.invalidateQueries({ queryKey: ["nb:sources", vars.notebookId] }),
   });
+
+  // =======================
+  // Source diagnostics + repair
+  // =======================
+  async function apiReq<T>(
+    method: string,
+    path: string,
+    body?: any,
+  ): Promise<T> {
+    const res = await fetch(`/api${path}`, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!res.ok) {
+      const raw = await res.text().catch(() => "");
+      let msg = raw || `HTTP ${res.status}`;
+      try {
+        const j = raw ? JSON.parse(raw) : null;
+        if (
+          j &&
+          typeof j === "object" &&
+          typeof (j as any).message === "string"
+        ) {
+          msg = (j as any).message;
+        }
+      } catch {
+        // ignore
+      }
+      throw new Error(msg);
+    }
+
+    return res.json();
+  }
+
+  const diagQ = useQuery({
+    queryKey: ["nb:sourceDiag", activeId, fixSourceId],
+    queryFn: () =>
+      apiReq<SourceDiagnostics>(
+        "GET",
+        `/notebooks/${activeId!}/sources/${fixSourceId!}/diagnostics?maxChars=20000`,
+      ),
+    enabled: !!activeId && !!fixSourceId,
+  });
+
+  const retryIngestionM = useMutation({
+    mutationFn: (vars: { notebookId: string; sourceId: string }) =>
+      apiReq<NBSource>(
+        "POST",
+        `/notebooks/${vars.notebookId}/sources/${vars.sourceId}/retry-ingestion`,
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["nb:sources", vars.notebookId] });
+      qc.invalidateQueries({
+        queryKey: ["nb:sourceDiag", vars.notebookId, vars.sourceId],
+      });
+      notify({ text: "Retrying ingestion…", kind: "success" });
+    },
+    onError: (e: any) =>
+      notify({
+        text: e?.message || "Failed to retry ingestion",
+        kind: "error",
+      }),
+  });
+
+  const retryEmbeddingM = useMutation({
+    mutationFn: (vars: { notebookId: string; sourceId: string }) =>
+      apiReq<NBSource>(
+        "POST",
+        `/notebooks/${vars.notebookId}/sources/${vars.sourceId}/retry-embedding`,
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["nb:sources", vars.notebookId] });
+      qc.invalidateQueries({
+        queryKey: ["nb:sourceDiag", vars.notebookId, vars.sourceId],
+      });
+      notify({ text: "Retrying indexing…", kind: "success" });
+    },
+    onError: (e: any) =>
+      notify({ text: e?.message || "Failed to retry indexing", kind: "error" }),
+  });
+
+  const rebuildEmbeddingM = useMutation({
+    mutationFn: (vars: { notebookId: string; sourceId: string }) =>
+      apiReq<NBSource>(
+        "POST",
+        `/notebooks/${vars.notebookId}/sources/${vars.sourceId}/rebuild-embedding`,
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["nb:sources", vars.notebookId] });
+      qc.invalidateQueries({
+        queryKey: ["nb:sourceDiag", vars.notebookId, vars.sourceId],
+      });
+      notify({ text: "Rebuilding index…", kind: "success" });
+    },
+    onError: (e: any) =>
+      notify({ text: e?.message || "Failed to rebuild index", kind: "error" }),
+  });
+
+  const diag = diagQ.data as SourceDiagnostics | undefined;
 
   const active: Notebook | null = detailQ.data?.notebook ?? null;
 
@@ -823,7 +927,7 @@ export default function NotebookPage() {
                       <span className="truncate">{n.title}</span>
                     </button>
 
-                    {/* Delete affordance (ChatGPT-style hover) */}
+                    {/* Delete affordance */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1088,6 +1192,21 @@ export default function NotebookPage() {
 
                             <div className="mt-2 flex items-center gap-2">
                               {renderIndexBadge(s)}
+                              {(s.ingestionJob?.status === "FAILED" ||
+                                s.embeddingJob?.status === "FAILED") &&
+                              activeId ? (
+                                <button
+                                  type="button"
+                                  onClick={(e: any) => {
+                                    e?.stopPropagation?.();
+                                    setFixSourceId(s.id);
+                                  }}
+                                  className="text-[10px] px-2.5 py-0.5 rounded-full border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100"
+                                  title="See error + retry"
+                                >
+                                  Fix
+                                </button>
+                              ) : null}
                               <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-white text-slate-600">
                                 {isUrl ? "URL" : "FILE"}
                               </span>
@@ -1257,6 +1376,240 @@ export default function NotebookPage() {
             notebookId={activeId}
             onClose={() => setPicker(null)}
           />
+
+          {/* Repair modal */}
+          {activeId && fixSourceId ? (
+            <div
+              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[1px] flex items-center justify-center"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setFixSourceId(null);
+              }}
+            >
+              <div
+                className="w-[900px] max-w-[94vw] max-h-[78vh] bg-white rounded-2xl border border-slate-200/80 shadow-2xl overflow-hidden flex flex-col"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="px-4 py-3 border-b border-slate-200/70 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/60 flex items-center gap-2">
+                  <div className="font-extrabold tracking-tight text-slate-900">
+                    Repair source
+                  </div>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFixSourceId(null)}
+                      className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 min-h-0 overflow-auto p-4">
+                  {diagQ.isLoading ? (
+                    <div className="text-sm text-slate-600">
+                      Loading diagnostics…
+                    </div>
+                  ) : diagQ.isError ? (
+                    <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">
+                      {(diagQ.error as any)?.message ||
+                        "Failed to load diagnostics."}
+                    </div>
+                  ) : diag ? (
+                    <>
+                      {/* Summary */}
+                      <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                        <div className="text-sm font-semibold text-slate-900 truncate">
+                          {diag.source.kind === "URL"
+                            ? diag.source.url?.title ||
+                              diag.source.url?.url ||
+                              "URL"
+                            : diag.source.file?.fileName || "File"}
+                        </div>
+                        <div className="mt-1 text-[12px] text-slate-500 truncate">
+                          {diag.source.kind === "URL"
+                            ? diag.source.url?.url || ""
+                            : diag.source.file?.mimeType || "file"}
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="text-slate-500">Pages</div>
+                            <div className="font-semibold text-slate-900">
+                              {diag.counts.pageCount}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="text-slate-500">Chunks</div>
+                            <div className="font-semibold text-slate-900">
+                              {diag.counts.chunkCount}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="text-slate-500">Embedded</div>
+                            <div className="font-semibold text-slate-900">
+                              {diag.counts.embeddedCount}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              retryIngestionM.mutate({
+                                notebookId: activeId,
+                                sourceId: fixSourceId,
+                              })
+                            }
+                            disabled={retryIngestionM.isPending}
+                            className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+                          >
+                            Retry ingestion
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              retryEmbeddingM.mutate({
+                                notebookId: activeId,
+                                sourceId: fixSourceId,
+                              })
+                            }
+                            disabled={retryEmbeddingM.isPending}
+                            className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+                          >
+                            Retry indexing
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              rebuildEmbeddingM.mutate({
+                                notebookId: activeId,
+                                sourceId: fixSourceId,
+                              })
+                            }
+                            disabled={rebuildEmbeddingM.isPending}
+                            className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100 disabled:opacity-60"
+                            title="Clears embeddings for this source and re-embeds all chunks"
+                          >
+                            Rebuild index
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const txt = [
+                                "Ingestion:",
+                                diag.jobs.ingestion?.status ?? "NONE",
+                                diag.jobs.ingestion?.error ?? "",
+                                "\nIndexing:",
+                                diag.jobs.embedding?.status ?? "NONE",
+                                diag.jobs.embedding?.error ?? "",
+                              ].join(" ");
+                              try {
+                                await navigator.clipboard.writeText(txt.trim());
+                                notify({
+                                  text: "Copied error details.",
+                                  kind: "success",
+                                });
+                              } catch {
+                                notify({
+                                  text: "Copy failed (browser blocked).",
+                                  kind: "error",
+                                });
+                              }
+                            }}
+                            className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50"
+                          >
+                            Copy error
+                          </button>
+                        </div>
+
+                        {/* Errors */}
+                        {(diag.jobs.ingestion?.error ||
+                          diag.jobs.embedding?.error) && (
+                          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+                              <div className="text-[12px] font-semibold text-rose-900">
+                                Ingestion
+                              </div>
+                              <div className="mt-1 text-[12px] text-rose-800 whitespace-pre-wrap">
+                                {diag.jobs.ingestion?.error || "—"}
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+                              <div className="text-[12px] font-semibold text-rose-900">
+                                Indexing
+                              </div>
+                              <div className="mt-1 text-[12px] text-rose-800 whitespace-pre-wrap">
+                                {diag.jobs.embedding?.error || "—"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Preview */}
+                      <div className="mt-3 rounded-2xl border border-slate-200/80 bg-white p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-semibold text-slate-900">
+                            Extracted text preview
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(
+                                  diag.textPreview || "",
+                                );
+                                notify({
+                                  text: "Copied preview text.",
+                                  kind: "success",
+                                });
+                              } catch {
+                                notify({
+                                  text: "Copy failed (browser blocked).",
+                                  kind: "error",
+                                });
+                              }
+                            }}
+                            className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50"
+                          >
+                            Copy preview
+                          </button>
+                        </div>
+
+                        {diag.pagePreviews?.length ? (
+                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {diag.pagePreviews.map((p) => (
+                              <div
+                                key={p.pageNumber}
+                                className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                              >
+                                <div className="text-[12px] font-semibold text-slate-900">
+                                  Page {p.pageNumber} ·{" "}
+                                  {p.charCount.toLocaleString()} chars
+                                </div>
+                                <div className="mt-1 text-[12px] text-slate-700 whitespace-pre-wrap">
+                                  {p.preview}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <pre className="mt-2 text-[12px] whitespace-pre-wrap text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-[280px] overflow-auto">
+                            {diag.textPreview || "No extracted text available."}
+                          </pre>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

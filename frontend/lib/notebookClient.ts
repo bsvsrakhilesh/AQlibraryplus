@@ -67,6 +67,47 @@ export type SourcePage = {
   globalEnd: number;
 };
 
+export type SourceDiagnostics = {
+  source: {
+    id: ID;
+    notebookId: ID;
+    kind: SourceKind;
+    url?: { id: ID; url: string; title?: string | null } | null;
+    file?: { id: ID; fileName: string; mimeType?: string | null } | null;
+    createdAt: string;
+  };
+  jobs: {
+    ingestion: {
+      status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+      error?: string | null;
+      updatedAt: string;
+      attemptCount: number;
+    } | null;
+    embedding: {
+      status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+      error?: string | null;
+      updatedAt: string;
+      attemptCount: number;
+    } | null;
+  };
+  activeRevision: {
+    id: ID;
+    ordinal: number;
+    contentHash?: string | null;
+    createdAt: string;
+    pipelineConfig?: {
+      name: string;
+      version: string;
+      configHash: string;
+    } | null;
+  } | null;
+  counts: { pageCount: number; chunkCount: number; embeddedCount: number };
+  textPreview: string;
+  pagePreviews:
+    | { pageNumber: number; charCount: number; preview: string }[]
+    | null;
+};
+
 export type NBNote = {
   id: ID;
   notebookId: ID;
@@ -143,6 +184,16 @@ export interface NotebookClient {
   getChunk(chunkId: ID): Promise<ChunkDetail>;
   getChunkReader(chunkId: ID, radius?: number): Promise<ChunkReader>;
   getSourcePage(sourceId: ID, pageNumber: number): Promise<SourcePage>;
+
+  // repair + diagnostics
+  getSourceDiagnostics(
+    notebookId: ID,
+    sourceId: ID,
+    maxChars?: number,
+  ): Promise<SourceDiagnostics>;
+  retrySourceIngestion(notebookId: ID, sourceId: ID): Promise<NBSource>;
+  retrySourceEmbedding(notebookId: ID, sourceId: ID): Promise<NBSource>;
+  rebuildSourceEmbedding(notebookId: ID, sourceId: ID): Promise<NBSource>;
 
   createNote(
     notebookId: ID,
@@ -255,6 +306,34 @@ export const notebookClient: NotebookClient = {
   },
   async deleteSource(notebookId, sourceId) {
     await j<void>("DELETE", `/notebooks/${notebookId}/sources/${sourceId}`);
+  },
+
+  // B3: repair + diagnostics
+  getSourceDiagnostics(notebookId, sourceId, maxChars = 20000) {
+    return j<SourceDiagnostics>(
+      "GET",
+      `/notebooks/${notebookId}/sources/${sourceId}/diagnostics?maxChars=${encodeURIComponent(
+        String(maxChars),
+      )}`,
+    );
+  },
+  retrySourceIngestion(notebookId, sourceId) {
+    return j<NBSource>(
+      "POST",
+      `/notebooks/${notebookId}/sources/${sourceId}/retry-ingestion`,
+    );
+  },
+  retrySourceEmbedding(notebookId, sourceId) {
+    return j<NBSource>(
+      "POST",
+      `/notebooks/${notebookId}/sources/${sourceId}/retry-embedding`,
+    );
+  },
+  rebuildSourceEmbedding(notebookId, sourceId) {
+    return j<NBSource>(
+      "POST",
+      `/notebooks/${notebookId}/sources/${sourceId}/rebuild-embedding`,
+    );
   },
 
   // chat

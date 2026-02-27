@@ -13,6 +13,10 @@ import {
   updateNote,
   deleteNote,
   pickNotebookCitations,
+  getSourceDiagnostics,
+  retrySourceIngestion,
+  retrySourceEmbedding,
+  rebuildSourceEmbedding,
 } from "../services/notebook.service";
 
 import { runNotebookChat } from "../services/notebookChat.service";
@@ -121,6 +125,66 @@ export async function deleteNotebookSourceHandler(
   try {
     await deleteSource(req.params.id, req.params.sourceId);
     res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function postNotebookSourceRetryIngestionHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const data = await retrySourceIngestion(req.params.id, req.params.sourceId);
+    res.json(data);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function postNotebookSourceRetryEmbeddingHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const data = await retrySourceEmbedding(req.params.id, req.params.sourceId);
+    res.json(data);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function postNotebookSourceRebuildEmbeddingHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const data = await rebuildSourceEmbedding(
+      req.params.id,
+      req.params.sourceId,
+    );
+    res.json(data);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function getNotebookSourceDiagnosticsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const maxChars = req.query?.maxChars ? Number(req.query.maxChars) : 20000;
+    const data = await getSourceDiagnostics(
+      req.params.id,
+      req.params.sourceId,
+      Number.isFinite(maxChars) ? maxChars : 20000,
+    );
+    res.json(data);
   } catch (e) {
     next(e);
   }

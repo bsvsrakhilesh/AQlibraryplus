@@ -72,6 +72,250 @@ export async function listSources(notebookId: string) {
   });
 }
 
+// =======================
+// Source repair + diagnostics
+// =======================
+
+const SOURCE_INCLUDE = {
+  url: true,
+  file: true,
+  ingestionJob: { select: { status: true, error: true, updatedAt: true } },
+  embeddingJob: { select: { status: true, error: true, updatedAt: true } },
+} as const;
+
+async function assertSourceInNotebook(notebookId: string, sourceId: string) {
+  const src = await prisma.notebookSource.findUnique({
+    where: { id: sourceId },
+    include: SOURCE_INCLUDE,
+  });
+
+  if (!src || src.notebookId !== notebookId) {
+    const err: any = new Error("Source not found");
+    err.status = 404;
+    throw err;
+  }
+  return src;
+}
+
+function clampPreview(s: string, maxChars: number) {
+  const t = (s || "").replace(/\u0000/g, "");
+  if (t.length <= maxChars) return t;
+  return t.slice(0, Math.max(0, maxChars - 1)) + "…";
+}
+
+export async function getSourceDiagnostics(
+  notebookId: string,
+  sourceId: string,
+  maxChars = 20000,
+) {
+  const src = await prisma.notebookSource.findUnique({
+    where: { id: sourceId },
+    include: {
+      url: true,
+      file: true,
+      ingestionJob: {
+        select: { status: true, error: true, updatedAt: true, attemptCount: true },
+      },
+      embeddingJob: {
+        select: { status: true, error: true, updatedAt: true, attemptCount: true },
+      },
+      activeRevision: {
+        select: {
+          id: true,
+          ordinal: true,
+          contentHash: true,
+          createdAt: true,
+          pipelineConfig: { select: { name: true, version: true, configHash: true } },
+        },
+      },
+    },
+  });
+
+  if (!src || src.notebookId !== notebookId) {
+    const err: any = new Error("Source not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const revisionId = src.activeRevisionId || null;
+
+  const [pageCount, chunkCount, embeddedCount] = revisionId
+    ? await Promise.all([
+        prisma.sourcePage.count({ where: { sourceId, revisionId } }),
+        prisma.sourceChunk.count({ where: { sourceId, revisionId } }),
+        prisma.sourceChunk.count({
+          where: { sourceId, revisionId, embeddedAt: { not: null } },
+        }),
+      ])
+    : [0, 0, 0];
+
+  // Preview text (prefer pages for PDFs)
+  let textPreview = "";
+  let pagePreviews:
+    | { pageNumber: number; charCount: number; preview: string }[]
+    | null = null;
+
+  if (revisionId && pageCount > 0) {
+    const pages = await prisma.sourcePage.findMany({
+      where: { sourceId, revisionId },
+      orderBy: { pageNumber: "asc" },
+      take: 8,
+      select: { pageNumber: true, text: true },
+    });
+
+    pagePreviews = pages.map((p) => ({
+      pageNumber: p.pageNumber,
+      charCount: (p.text || "").length,
+      preview: clampPreview((p.text || "").trim(), 900),
+    }));
+
+    let acc = "";
+    for (const p of pages) {
+      if (acc.length >= maxChars) break;
+      const header = `\n\n--- Page ${p.pageNumber} ---\n`;
+      acc += header + (p.text || "").trim();
+    }
+    textPreview = clampPreview(acc.trim(), maxChars);
+  } else if (revisionId && chunkCount > 0) {
+    const chunks = await prisma.sourceChunk.findMany({
+      where: { sourceId, revisionId },
+      orderBy: { idx: "asc" },
+      take: 12,
+      select: { idx: true, text: true },
+    });
+
+    const acc = chunks
+      .map((c) => `\n\n--- Chunk ${c.idx} ---\n${(c.text || "").trim()}`)
+      .join("")
+      .trim();
+
+    textPreview = clampPreview(acc, maxChars);
+  }
+
+  return {
+    source: {
+      id: src.id,
+      notebookId: src.notebookId,
+      kind: src.kind,
+      url: src.url,
+      file: src.file,
+      createdAt: src.createdAt,
+    },
+    jobs: {
+      ingestion: src.ingestionJob
+        ? {
+            status: src.ingestionJob.status,
+            error: src.ingestionJob.error,
+            updatedAt: src.ingestionJob.updatedAt,
+            attemptCount: src.ingestionJob.attemptCount,
+          }
+        : null,
+      embedding: src.embeddingJob
+        ? {
+            status: src.embeddingJob.status,
+            error: src.embeddingJob.error,
+            updatedAt: src.embeddingJob.updatedAt,
+            attemptCount: src.embeddingJob.attemptCount,
+          }
+        : null,
+    },
+    activeRevision: src.activeRevision,
+    counts: { pageCount, chunkCount, embeddedCount },
+    textPreview,
+    pagePreviews,
+  };
+}
+
+export async function retrySourceIngestion(notebookId: string, sourceId: string) {
+  await assertSourceInNotebook(notebookId, sourceId);
+
+  await prisma.ingestionJob.upsert({
+    where: { sourceId },
+    create: { sourceId, status: "PENDING", attemptCount: 0 },
+    update: { status: "PENDING", error: null },
+  });
+
+  await enqueueIngestionJob(sourceId);
+
+  return prisma.notebookSource.findUnique({
+    where: { id: sourceId },
+    include: SOURCE_INCLUDE,
+  });
+}
+
+export async function retrySourceEmbedding(notebookId: string, sourceId: string) {
+  const src = await assertSourceInNotebook(notebookId, sourceId);
+
+  if (!env.OPENAI_ENABLED) {
+    const err: any = new Error("Embeddings are disabled (OPENAI_ENABLED=false).");
+    err.status = 400;
+    throw err;
+  }
+  if (!src.activeRevisionId) {
+    const err: any = new Error("This source has no active revision yet. Ingest it first.");
+    err.status = 400;
+    throw err;
+  }
+  if (src.ingestionJob?.status !== "SUCCESS") {
+    const err: any = new Error("Ingestion is not complete. Fix ingestion first.");
+    err.status = 400;
+    throw err;
+  }
+
+  await prisma.embeddingJob.upsert({
+    where: { sourceId },
+    create: { sourceId, status: "PENDING", attemptCount: 0 },
+    update: { status: "PENDING", error: null },
+  });
+
+  await enqueueEmbeddingJob(sourceId);
+
+  return prisma.notebookSource.findUnique({
+    where: { id: sourceId },
+    include: SOURCE_INCLUDE,
+  });
+}
+
+export async function rebuildSourceEmbedding(notebookId: string, sourceId: string) {
+  const src = await assertSourceInNotebook(notebookId, sourceId);
+
+  if (!env.OPENAI_ENABLED) {
+    const err: any = new Error("Embeddings are disabled (OPENAI_ENABLED=false).");
+    err.status = 400;
+    throw err;
+  }
+  if (!src.activeRevisionId) {
+    const err: any = new Error("This source has no active revision yet. Ingest it first.");
+    err.status = 400;
+    throw err;
+  }
+
+  const revId = src.activeRevisionId;
+
+  // prisma.updateMany can't set unsupported vector field -> raw SQL.
+  await prisma.$executeRaw`
+    UPDATE "SourceChunk"
+    SET "embedding" = NULL,
+        "embeddingModel" = NULL,
+        "embeddedAt" = NULL
+    WHERE "sourceId" = ${sourceId}
+      AND "revisionId" = ${revId}
+  `;
+
+  await prisma.embeddingJob.upsert({
+    where: { sourceId },
+    create: { sourceId, status: "PENDING", attemptCount: 0 },
+    update: { status: "PENDING", error: null },
+  });
+
+  await enqueueEmbeddingJob(sourceId);
+
+  return prisma.notebookSource.findUnique({
+    where: { id: sourceId },
+    include: SOURCE_INCLUDE,
+  });
+}
+
 export async function attachUrlSource(notebookId: string, urlId: number) {
   const url = await prisma.url.findUnique({ where: { id: urlId } });
   if (!url) {

@@ -13,6 +13,10 @@ import {
   postNotebookNoteHandler,
   patchNotebookNoteHandler,
   deleteNotebookNoteHandler,
+  postNotebookSourceRetryIngestionHandler,
+  postNotebookSourceRetryEmbeddingHandler,
+  postNotebookSourceRebuildEmbeddingHandler,
+  getNotebookSourceDiagnosticsHandler,
 } from "../controllers/notebook.controller";
 import { z } from "zod";
 import { validate } from "../middlewares/validate";
@@ -92,6 +96,43 @@ r.delete(
     params: z.object({ id: z.string().min(1), sourceId: z.string().min(1) }),
   }),
   deleteNotebookSourceHandler,
+);
+
+r.get(
+  "/notebooks/:id/sources/:sourceId/diagnostics",
+  validate({
+    params: z.object({ id: z.string().min(1), sourceId: z.string().min(1) }),
+    query: z
+      .object({
+        maxChars: z.coerce.number().int().min(1000).max(200000).optional(),
+      })
+      .optional(),
+  }),
+  getNotebookSourceDiagnosticsHandler,
+);
+
+r.post(
+  "/notebooks/:id/sources/:sourceId/retry-ingestion",
+  validate({
+    params: z.object({ id: z.string().min(1), sourceId: z.string().min(1) }),
+  }),
+  postNotebookSourceRetryIngestionHandler,
+);
+
+r.post(
+  "/notebooks/:id/sources/:sourceId/retry-embedding",
+  validate({
+    params: z.object({ id: z.string().min(1), sourceId: z.string().min(1) }),
+  }),
+  postNotebookSourceRetryEmbeddingHandler,
+);
+
+r.post(
+  "/notebooks/:id/sources/:sourceId/rebuild-embedding",
+  validate({
+    params: z.object({ id: z.string().min(1), sourceId: z.string().min(1) }),
+  }),
+  postNotebookSourceRebuildEmbeddingHandler,
 );
 
 r.post(
