@@ -22,6 +22,7 @@ type Msg = {
   id: string;
   ts: number;
   role: "user" | "assistant";
+  text: string;
   html: string;
   citations?: import("../../lib/notebookClient").Citation[];
   suggested?: string[];
@@ -43,6 +44,19 @@ function renderMarkdown(md: string) {
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\_(.+?)\_/g, "<em>$1</em>")
     .replace(/\n/g, "<br/>");
+}
+
+function htmlToText(html: string) {
+  return String(html ?? "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trimEnd();
 }
 
 function clsx(...a: (string | false | null | undefined)[]) {
@@ -102,8 +116,32 @@ export default function ChatPanel({
         return;
       }
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setMessages(parsed as Msg[]);
-      else setMessages([]);
+      if (Array.isArray(parsed)) {
+        const upgraded: Msg[] = parsed.map((m: any) => {
+          const html = String(m?.html ?? "");
+          const role: "user" | "assistant" =
+            m?.role === "assistant" ? "assistant" : "user";
+
+          const text =
+            typeof m?.text === "string" && m.text.trim()
+              ? String(m.text)
+              : htmlToText(html) || html;
+
+          return {
+            id: String(m?.id ?? uid()),
+            ts: Number(m?.ts ?? Date.now()),
+            role,
+            text,
+            html,
+            citations: m?.citations,
+            suggested: m?.suggested,
+          };
+        });
+
+        setMessages(upgraded);
+      } else {
+        setMessages([]);
+      }
     } catch {
       setMessages([]);
     }
@@ -178,9 +216,10 @@ export default function ChatPanel({
     setReaderOpen(true);
   };
 
-  const addToNotes = (html: string) => {
-    const md = html.replace(/<br\/?>/g, "\n");
-    window.dispatchEvent(new CustomEvent("nb:add-note", { detail: md }));
+  const addToNotes = (md: string) => {
+    const clean = String(md ?? "").trim();
+    if (!clean) return;
+    window.dispatchEvent(new CustomEvent("nb:add-note", { detail: clean }));
   };
 
   const send = useCallback(
@@ -197,6 +236,7 @@ export default function ChatPanel({
         id: uid(),
         ts: Date.now(),
         role: "user",
+        text: question,
         html: question,
       };
 
@@ -218,6 +258,7 @@ export default function ChatPanel({
           id: assistantId,
           ts: Date.now(),
           role: "assistant",
+          text: res.answer,
           html: "",
           citations: res.citations,
           suggested: res.suggested,
@@ -260,9 +301,10 @@ export default function ChatPanel({
             id: uid(),
             ts: Date.now(),
             role: "assistant",
+            text: `Error: ${String(e?.message || "Chat failed. Please try again.")}`,
             html: `<div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                    <strong> Error:</strong> ${msg}
-                  </div>`,
+          <strong> Error:</strong> ${msg}
+        </div>`,
           },
         ]);
       } finally {
@@ -327,7 +369,7 @@ export default function ChatPanel({
       .reverse()
       .find(({ m }) => m.role === "user")?.j;
     if (prevUserIndex == null) return;
-    const q = messages[prevUserIndex].html;
+    const q = messages[prevUserIndex].text;
     if (q) send(q);
   };
 
@@ -535,7 +577,7 @@ export default function ChatPanel({
                     {/* Actions */}
                     {m.role === "assistant" ? (
                       <MessageActions
-                        content={m.html}
+                        text={m.text}
                         onRegenerate={() => onRegenerate(i)}
                         onAddToNotes={addToNotes}
                       />
