@@ -62,6 +62,93 @@ function isDangerousMimetype(mime: string | undefined): boolean {
   );
 }
 
+function parsePdfDate(raw: unknown): Date | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // pdf-parse often gives "D:YYYYMMDDHHmmSSOHH'mm'" formats
+  // Examples: "D:20220101123000Z", "D:20220101123000+05'30'"
+  const m = s.match(
+    /^D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?(Z|([+\-])(\d{2})'?(\d{2})'?)?/,
+  );
+  if (m) {
+    const year = Number(m[1]);
+    const mon = Number(m[2] || "01");
+    const day = Number(m[3] || "01");
+    const hh = Number(m[4] || "00");
+    const mm = Number(m[5] || "00");
+    const ss = Number(m[6] || "00");
+
+    // Build as UTC first
+    let dt = new Date(Date.UTC(year, mon - 1, day, hh, mm, ss));
+
+    // Apply offset if present
+    const z = m[7];
+    if (z && z !== "Z") {
+      const sign = m[8] === "-" ? -1 : 1;
+      const oh = Number(m[9] || "00");
+      const om = Number(m[10] || "00");
+      const offsetMin = sign * (oh * 60 + om);
+      dt = new Date(dt.getTime() - offsetMin * 60_000);
+    }
+    return dt;
+  }
+
+  // Fall back to Date parsing (handles ISO-like strings)
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function uniqAuthors(input: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const a of input) {
+    const t = String(a || "").trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+async function extractPdfFileMetadata(filePath: string): Promise<{
+  sourcePublishedAt: Date | null;
+  sourceAuthors: string[];
+}> {
+  try {
+    const buf = fs.readFileSync(filePath);
+    const parsed: any = await pdfParse(buf);
+
+    // pdf-parse returns { info, metadata, ... } but shape varies
+    const info = parsed?.info || {};
+    const meta = parsed?.metadata || {};
+
+    const author =
+      info?.Author || info?.author || meta?.Author || meta?.author || null;
+
+    const creation =
+      info?.CreationDate ||
+      info?.creationDate ||
+      meta?.CreationDate ||
+      meta?.creationDate ||
+      null;
+
+    const mod =
+      info?.ModDate || info?.modDate || meta?.ModDate || meta?.modDate || null;
+
+    const sourcePublishedAt = parsePdfDate(creation) || parsePdfDate(mod);
+
+    const sourceAuthors = uniqAuthors(author ? [String(author)] : []);
+
+    return { sourcePublishedAt, sourceAuthors };
+  } catch {
+    return { sourcePublishedAt: null, sourceAuthors: [] };
+  }
+}
+
 const r = Router();
 
 const STORAGE_DIR =
@@ -666,6 +753,24 @@ r.post("/files/finalize", async (req, res, next) => {
 
     const sha256 = await sha256File(finalPath);
 
+    // Best-effort file metadata extraction (PDF only)
+    let sourcePublishedAt: Date | null = null;
+    let sourceAuthors: string[] = [];
+
+    const finalMime = inferMimeType(
+      safeFileName,
+      mimeType || "application/octet-stream",
+    );
+
+    if (
+      finalMime.includes("pdf") ||
+      safeFileName.toLowerCase().endsWith(".pdf")
+    ) {
+      const meta = await extractPdfFileMetadata(finalPath);
+      sourcePublishedAt = meta.sourcePublishedAt;
+      sourceAuthors = meta.sourceAuthors;
+    }
+
     const updateData: any = {
       fileName: safeFileName,
       mimeType: inferMimeType(
@@ -673,6 +778,8 @@ r.post("/files/finalize", async (req, res, next) => {
         mimeType || "application/octet-stream",
       ),
       size: stat.size,
+      sourcePublishedAt,
+      sourceAuthors,
       description,
       uploaderId,
       uploaderName,
@@ -688,6 +795,8 @@ r.post("/files/finalize", async (req, res, next) => {
         mimeType || "application/octet-stream",
       ),
       size: stat.size,
+      sourcePublishedAt,
+      sourceAuthors,
       description,
       uploaderId,
       uploaderName,
@@ -951,8 +1060,12 @@ r.get("/files/:id", async (req, res, next) => {
       captureType: f.captureType,
       sourceUrl: f.sourceUrl ?? null,
       urlId: f.urlId ?? null,
-      sourcePublishedAt: (f as any).url?.publishedAt ?? null,
-      sourceAuthors: (f as any).url?.authors ?? [],
+      sourcePublishedAt:
+        (f as any).sourcePublishedAt ?? (f as any).url?.publishedAt ?? null,
+      sourceAuthors:
+        ((f as any).sourceAuthors?.length ? (f as any).sourceAuthors : null) ??
+        (f as any).url?.authors ??
+        [],
       sha256: f.sha256 ?? null,
       contentHash: f.contentHash ?? null,
       taggerVersion: f.taggerVersion ?? null,

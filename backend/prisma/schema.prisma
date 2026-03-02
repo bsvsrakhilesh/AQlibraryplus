@@ -108,6 +108,8 @@ model StoredFile {
   captureType CaptureType @default(UPLOAD)
   sha256      String?
   sourceUrl   String?
+  sourcePublishedAt DateTime?
+  sourceAuthors     String[]  @default([])
 
   documentRevision    DocumentRevision?
   primaryForDocuments Document[]
