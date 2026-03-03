@@ -26,7 +26,11 @@ export async function ensureDocumentRevisionForStoredFile(
     },
   });
 
-  if (!f) throw new Error(`StoredFile not found: ${storedFileId}`);
+  if (!f) {
+    const err: any = new Error(`StoredFile not found: ${storedFileId}`);
+    err.status = 404;
+    throw err;
+  }
 
   // Already linked?
   const existing = await prisma.documentRevision.findUnique({

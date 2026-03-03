@@ -1228,6 +1228,13 @@ r.post("/files/:id/refresh-metadata", async (req, res, next) => {
 r.get("/files/:id/revisions", async (req, res, next) => {
   try {
     const id = String(req.params.id || "").trim();
+    if (id.startsWith("folder:")) {
+      return res.status(400).json({
+        code: "BAD_REQUEST",
+        message: "Folders do not have revision history.",
+        requestId: (req as any)?.requestId ?? null,
+      });
+    }
     const limitRaw = req.query.limit;
     const limit = typeof limitRaw === "string" ? Number(limitRaw) : undefined;
 

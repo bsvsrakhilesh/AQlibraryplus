@@ -70,6 +70,16 @@ export default function EvidenceInspector({ file }: Props) {
   useEffect(() => {
     if (!file?.id) return;
 
+    const isFolder =
+      file.mimeType === "folder" || String(file.id).startsWith("folder:");
+
+    if (isFolder) {
+      setRevisions([]);
+      setRevError(null);
+      setRevLoading(false);
+      return;
+    }
+
     (async () => {
       try {
         setRevLoading(true);
@@ -82,7 +92,7 @@ export default function EvidenceInspector({ file }: Props) {
         setRevLoading(false);
       }
     })();
-  }, [file?.id]);
+  }, [file?.id, file?.mimeType]);
 
   return (
     <aside className="rounded-2xl border border-[hsl(var(--border))] bg-white/80 shadow-sm backdrop-blur">
