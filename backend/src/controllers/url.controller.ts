@@ -286,6 +286,10 @@ export async function createUrlsHandler(
             r.snippet && String(r.snippet).trim() ? r.snippet : meta.snippet,
           authors: meta.authors,
           publishedAt: meta.publishedAt,
+          tagsMeta: {
+            ...(r as any).tagsMeta,
+            publishedAtMeta: meta.publishedAtMeta,
+          },
         } as any);
       } catch {
         enriched.push(r);

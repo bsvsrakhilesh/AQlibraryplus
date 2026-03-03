@@ -1,7 +1,7 @@
 // backend/src/services/aiTagUrlAuto.service.ts
 import { TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
-import { createJobFromUrl, getJob } from "./pyTaggerClient";
+import { createJobFromFile, createJobFromUrl, getJob } from "./pyTaggerClient";
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "false").toLowerCase() === "true";
@@ -45,7 +45,28 @@ export async function runAiTagForUrl(
     return { skipped: true as const, reason: "already_tagged" as const };
   }
 
-  const { jobId } = await createJobFromUrl(rec.url, TOPK, USE_LLM);
+  // Prefer tagging from the latest stored snapshot for this URL (especially PDFs).
+  // This avoids timeouts / redirects / paywalls and guarantees we tag what we saved.
+  const latestSnapshot = await prisma.storedFile.findFirst({
+    where: { urlId },
+    orderBy: { createdAt: "desc" },
+    select: { storagePath: true, mimeType: true, captureType: true },
+  });
+
+  let jobId: string;
+
+  if (latestSnapshot?.storagePath) {
+    const created = await createJobFromFile(
+      latestSnapshot.storagePath,
+      TOPK,
+      USE_LLM,
+    );
+    jobId = created.jobId;
+  } else {
+    const created = await createJobFromUrl(rec.url, TOPK, USE_LLM);
+    jobId = created.jobId;
+  }
+  
   await prisma.url.update({
     where: { id: urlId },
     data: {
@@ -111,7 +132,7 @@ export async function runAiTagForUrl(
               jobId,
               updatedAt: new Date().toISOString(),
             },
-            
+
             aiTagger: { phrases, unigrams },
           } as any,
           taggingStatus: TaggingStatus.SUCCESS,

@@ -77,6 +77,9 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   const [publishedAt, setPublishedAt] = useState<string | null>(
     (url as any).publishedAt ?? null,
   );
+  const [publishedAtMeta, setPublishedAtMeta] = useState<any | null>(
+    (url as any)?.tagsMeta?.publishedAtMeta ?? null,
+  );
   const [authors, setAuthors] = useState<string[]>(
     Array.isArray((url as any).authors) ? (url as any).authors : [],
   );
@@ -84,6 +87,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   // keep in sync when the modal receives a different URL
   useEffect(() => {
     setPublishedAt((url as any).publishedAt ?? null);
+    setPublishedAtMeta((url as any)?.tagsMeta?.publishedAtMeta ?? null);
     setAuthors(Array.isArray((url as any).authors) ? (url as any).authors : []);
   }, [url.id]);
 
@@ -381,6 +385,9 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       const fresh = await getUrlById(Number(url.id));
                       onUrlHydrate?.(fresh);
                       setPublishedAt((fresh as any).publishedAt ?? null);
+                      setPublishedAtMeta(
+                        (fresh as any)?.tagsMeta?.publishedAtMeta ?? null,
+                      );
                       setAuthors(
                         Array.isArray((fresh as any).authors)
                           ? (fresh as any).authors
@@ -414,7 +421,23 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                 </div>
                 <div>
                   <strong>Published:</strong>{" "}
-                  {publishedAt ? formatDate(publishedAt) : "—"}
+                  <span className="inline-flex items-center gap-2">
+                    <span>{publishedAt ? formatDate(publishedAt) : "—"}</span>
+
+                    {publishedAt &&
+                      publishedAtMeta?.source &&
+                      publishedAtMeta.source !== "unknown" &&
+                      publishedAtMeta.source !== "jsonld" && (
+                        <span
+                          className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold bg-gray-50"
+                          title={`Inferred from: ${publishedAtMeta.source}\nConfidence: ${Math.round(
+                            (publishedAtMeta.confidence ?? 0) * 100,
+                          )}%`}
+                        >
+                          Inferred
+                        </span>
+                      )}
+                  </span>
                 </div>
                 <div>
                   <strong>Authors:</strong>{" "}

@@ -11,6 +11,7 @@ export type CreateUrlInput = {
   snippet?: string | null;
   publishedAt?: Date | null;
   authors?: string[] | null;
+  tagsMeta?: any | null;
 };
 
 /** Update payload */
@@ -260,6 +261,7 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
       snippet: r0.snippet ?? null,
       publishedAt: r0.publishedAt ?? null,
       authors: Array.isArray(r0.authors) ? r0.authors : [],
+      tagsMeta: (r0 as any).tagsMeta ?? undefined,
     };
 
     try {
