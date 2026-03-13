@@ -117,10 +117,17 @@ const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
+const PDF_INTERCEPT_MAX_BYTES = Math.max(
+  10 * 1024 * 1024,
+  Number(process.env.PDF_INTERCEPT_MAX_BYTES || 250 * 1024 * 1024),
+);
+
+const DISABLE_PDF_SNAPSHOT_FALLBACK_FOR_PDF_URLS =
+  String(
+    process.env.DISABLE_PDF_SNAPSHOT_FALLBACK_FOR_PDF_URLS ?? "true",
+  ).toLowerCase() !== "false";
+
 function resolveWrappedPdfToDirect(u: URL): string | null {
-  // Handles wrappers like:
-  // https://api.sci.gov.in/pdfdate/index1.php?filename=supremecourt/.../x.pdf&...
-  // -> https://api.sci.gov.in/supremecourt/.../x.pdf
   const fn = u.searchParams.get("filename");
   if (!fn) return null;
 
@@ -772,6 +779,20 @@ export async function crawlPdfHandler(
 
     // --------- Guardrails END ---------
 
+    let pdfProbe: Awaited<ReturnType<typeof probeUrlKind>> | null = null;
+    let requireOriginalPdf = looksLikePdfUrl(__u);
+
+    try {
+      pdfProbe = await probeUrlKind(__u.toString());
+      if (pdfProbe.kind === "pdf") requireOriginalPdf = true;
+    } catch (e) {
+      log.info("crawl_pdf_probe_failed", {
+        ...requestMeta(req),
+        url,
+        error: String((e as any)?.message || e),
+      });
+    }
+
     // Common post-processing (copy URL tags + schedule ai-tag + respond)
     const postProcessAndRespond = async (fileRec: any) => {
       // Copy tags from the source URL if provided
@@ -814,7 +835,15 @@ export async function crawlPdfHandler(
     try {
       const direct = resolveWrappedPdfToDirect(__u);
 
-      const candidates = [...(direct && direct !== url ? [direct] : []), url];
+      const candidates = Array.from(
+        new Set(
+          [
+            pdfProbe?.kind === "pdf" ? pdfProbe.finalUrl : null,
+            direct && direct !== url ? direct : null,
+            url,
+          ].filter((v): v is string => Boolean(v)),
+        ),
+      );
 
       for (const candidate of candidates) {
         let cu: URL;
@@ -874,6 +903,13 @@ export async function crawlPdfHandler(
             captureType: "URL_PDF",
             sourceUrl: url, // keep wrapper as provenance
             urlId: typeof urlId === "number" ? urlId : null,
+            captureMeta: {
+              method: "direct_fetch",
+              capturedUrl: candidate,
+              contentDisposition: cd,
+              contentType: full.headers.get("content-type"),
+              bytes: pdfBytes.length,
+            },
           },
         );
 
@@ -961,8 +997,8 @@ export async function crawlPdfHandler(
               const bytes = await (resp as any).buffer();
               if (!bytes || bytes.length < 1024) return;
 
-              // hard cap (avoid OOM on huge downloads)
-              if (bytes.length > 50 * 1024 * 1024) return;
+              /// configurable cap (large public PDFs are common in regulatory/government workflows)
+              if (bytes.length > PDF_INTERCEPT_MAX_BYTES) return;
 
               if (!isPdfMagic(bytes)) return;
 
@@ -992,7 +1028,7 @@ export async function crawlPdfHandler(
           await new Promise((r) => setTimeout(r, 700));
         }
 
-        // ===== Step 5: try to discover & fetch real PDFs linked/embedded on the page =====
+        // ===== try to discover & fetch real PDFs linked/embedded on the page =====
         try {
           const cookie = await cookieHeaderFor(page, url);
           const candidates = await extractPdfCandidates(page, url);
@@ -1082,6 +1118,13 @@ export async function crawlPdfHandler(
               captureType: "URL_PDF",
               sourceUrl: url,
               urlId: typeof urlId === "number" ? urlId : null,
+              captureMeta: {
+                method: "puppeteer_intercept",
+                capturedUrl: hit.pdfUrl,
+                contentDisposition: hit.cd,
+                contentType: "application/pdf",
+                bytes: hit.bytes.length,
+              },
             },
           );
 
@@ -1103,6 +1146,21 @@ export async function crawlPdfHandler(
         ...requestMeta(req),
         url,
         error: String((e as any)?.message || e),
+      });
+    }
+
+    if (requireOriginalPdf && DISABLE_PDF_SNAPSHOT_FALLBACK_FOR_PDF_URLS) {
+      return res.status(422).json({
+        code: "PDF_ORIGINAL_FETCH_REQUIRED",
+        message:
+          "Could not fetch the original PDF bytes for this PDF URL. Snapshot fallback was blocked because browser-printing PDF viewers often produces a black or blank single-page PDF.",
+        url,
+        probe: pdfProbe,
+        hints: [
+          "Verify the source URL is directly reachable from the backend container.",
+          "If the site serves the PDF only after browser interaction, keep using the intercept path but increase PDF_INTERCEPT_MAX_BYTES for very large files.",
+          "Avoid page-print fallback for PDF-like URLs unless you explicitly want a visual snapshot rather than the original document.",
+        ],
       });
     }
 
@@ -1186,7 +1244,7 @@ export async function crawlPdfHandler(
     );
     const desc = `PDF snapshot from ${url}`;
 
-    // 1) Persist file
+    //Persist file
     const fileRec = await persistFile(
       pdfBuf,
       finalName,
@@ -1196,10 +1254,17 @@ export async function crawlPdfHandler(
         captureType: "URL_PDF",
         sourceUrl: url,
         urlId: typeof urlId === "number" ? urlId : null,
+        captureMeta: {
+          method: "page_print",
+          capturedUrl: url,
+          contentType: "application/pdf",
+          bytes: Buffer.isBuffer(pdfBuf) ? pdfBuf.length : pdfBuf.byteLength,
+          notes: "Browser page-print snapshot fallback",
+        },
       },
     );
 
-    // 2) Copy tags from the source URL if provided
+    //Copy tags from the source URL if provided
     if (urlId !== undefined && urlId !== null) {
       const idNum = typeof urlId === "string" ? parseInt(urlId, 10) : urlId;
       if (!Number.isNaN(idNum)) {
@@ -1225,10 +1290,10 @@ export async function crawlPdfHandler(
       }
     }
 
-    // 3) Background auto-tagging (Python ai-tagger)
+    //Background auto-tagging (Python ai-tagger)
     scheduleAiTagForFile(String(fileRec.id));
 
-    // 4) Return latest
+    //Return latest
     const latest = await prisma.storedFile.findUnique({
       where: { id: fileRec.id },
     });

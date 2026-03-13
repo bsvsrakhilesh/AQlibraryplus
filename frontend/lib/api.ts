@@ -28,6 +28,22 @@ const api = axios.create({
   withCredentials: true,
 });
 
+function normalizeApiError(err: any, fallback: string): never {
+  const status = err?.response?.status;
+  const body = err?.response?.data;
+  const message =
+    body?.message ||
+    (Array.isArray(body?.hints) && body.hints.length
+      ? `${fallback}: ${body.hints.join(" ")}`
+      : null) ||
+    (typeof body === "string" ? body : null) ||
+    err?.message ||
+    fallback;
+
+  const code = body?.code ? ` [${body.code}]` : "";
+  throw new Error(`${message}${status ? ` (HTTP ${status})` : ""}${code}`);
+}
+
 // Build an absolute URL that respects VITE_API_URL / axios baseURL.
 // Safe for same-origin (baseURL="") and cross-origin (baseURL="https://host").
 export function apiUrl(p: string) {
@@ -603,14 +619,18 @@ export async function crawlSaveText(
   fileName?: string,
   urlId?: number,
 ) {
-  const res = await api.post("/api/crawl/text", {
-    url,
-    folderId,
-    fileName,
-    urlId,
-  });
+  try {
+    const res = await api.post("/api/crawl/text", {
+      url,
+      folderId,
+      fileName,
+      urlId,
+    });
 
-  return toFileItem(res.data as BackendStoredFile);
+    return toFileItem(res.data as BackendStoredFile);
+  } catch (err: any) {
+    normalizeApiError(err, "Text capture failed");
+  }
 }
 
 export async function crawlSavePdf(
@@ -621,16 +641,20 @@ export async function crawlSavePdf(
   reader?: boolean,
   urlId?: number,
 ) {
-  const res = await api.post("/api/crawl/pdf", {
-    url,
-    folderId,
-    fileName,
-    fullPage,
-    reader,
-    urlId,
-  });
+  try {
+    const res = await api.post("/api/crawl/pdf", {
+      url,
+      folderId,
+      fileName,
+      fullPage,
+      reader,
+      urlId,
+    });
 
-  return toFileItem(res.data as BackendStoredFile);
+    return toFileItem(res.data as BackendStoredFile);
+  } catch (err: any) {
+    normalizeApiError(err, "PDF capture failed");
+  }
 }
 
 // ---------- Favorites + File detail ----------
