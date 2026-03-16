@@ -6,6 +6,10 @@ import {
   getJob,
   healthCheck,
 } from "../services/pyTaggerClient";
+import {
+  getAiTaggingUnavailableMessage,
+  getFileCapability,
+} from "../utils/fileCapabilities";
 
 const r = Router();
 
@@ -29,6 +33,25 @@ r.post("/files/:id/auto-tags", async (req, res, next) => {
     if (!rec) return res.status(404).json({ message: "File not found" });
     if (!rec.storagePath)
       return res.status(400).json({ message: "Missing storagePath" });
+
+    const capability = getFileCapability(rec.fileName, rec.mimeType);
+    if (!capability.aiTagSupported) {
+      const msg = getAiTaggingUnavailableMessage(rec.fileName, rec.mimeType);
+
+      await prisma.storedFile.update({
+        where: { id },
+        data: {
+          taggingStatus: "NONE",
+          taggingJobId: null,
+          taggingError: msg,
+        },
+      });
+
+      return res.status(409).json({
+        code: "AI_TAGGING_UNSUPPORTED",
+        message: msg,
+      });
+    }
 
     const { jobId } = await createJobFromFile(rec.storagePath, TOPK, USE_LLM);
 

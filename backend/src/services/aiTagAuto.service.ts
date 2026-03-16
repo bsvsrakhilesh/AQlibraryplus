@@ -1,6 +1,10 @@
 import { TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { createJobFromFile, getJob } from "./pyTaggerClient";
+import {
+  getAiTaggingUnavailableMessage,
+  getFileCapability,
+} from "../utils/fileCapabilities";
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "false").toLowerCase() === "true";
@@ -38,6 +42,26 @@ export async function runAiTagForFile(
   if (!rec) throw new Error(`StoredFile not found: ${fileId}`);
   if (!rec.storagePath)
     throw new Error(`StoredFile.storagePath missing: ${fileId}`);
+
+  const capability = getFileCapability(rec.fileName, rec.mimeType);
+  if (!capability.aiTagSupported) {
+    const msg = getAiTaggingUnavailableMessage(rec.fileName, rec.mimeType);
+
+    await prisma.storedFile.update({
+      where: { id: String(fileId) },
+      data: {
+        taggingStatus: "NONE",
+        taggingJobId: null,
+        taggingError: msg,
+      },
+    });
+
+    return {
+      skipped: true as const,
+      reason: "unsupported_type" as const,
+      message: msg,
+    };
+  }
 
   // Avoid duplicate work unless forced
   if (

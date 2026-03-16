@@ -5,6 +5,12 @@ import { formatBytes } from "../../utils/fileHelpers";
 // Chunk size for resumable upload (1MB)
 const CHUNK_SIZE = 1 * 1024 * 1024;
 
+const FILE_INPUT_ACCEPT =
+  ".pdf,.docx,.html,.htm,.txt,.md,.csv,.json,.xml,.png,.jpg,.jpeg,.webp,.gif,.svg";
+
+const FILE_INPUT_HINT =
+  "PDF, DOCX, HTML, TXT, MD, CSV, JSON, XML, and common image files";
+
 type UploadStatus =
   | "pending"
   | "uploading"
@@ -47,6 +53,20 @@ const loadStoredState = (): StoredState => {
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
+  }
+};
+
+const readErrorMessage = async (resp: Response) => {
+  try {
+    const data = await resp.json();
+    return (
+      data?.message ||
+      data?.detail ||
+      data?.error ||
+      `${resp.status} ${resp.statusText || "Request failed"}`
+    );
+  } catch {
+    return `${resp.status} ${resp.statusText || "Request failed"}`;
   }
 };
 
@@ -269,9 +289,8 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
       });
 
       if (!resp.ok) {
-        throw new Error(
-          `Chunk ${index} failed: ${resp.statusText || resp.status}`,
-        );
+        const msg = await readErrorMessage(resp);
+        throw new Error(`Chunk ${index} failed: ${msg}`);
       }
       uploadedChunks.add(index);
       persistUploadedChunks(fingerprint, uploadedChunks, file);
@@ -299,7 +318,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
         if (progressRef.current[fingerprint]?.status === "cancelled") return;
 
         if (finalizeUrl) {
-          await fetch(finalizeUrl, {
+          const finalizeResp = await fetch(finalizeUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -309,6 +328,11 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
             }),
             signal: controller.signal,
           });
+
+          if (!finalizeResp.ok) {
+            const msg = await readErrorMessage(finalizeResp);
+            throw new Error(msg);
+          }
         }
 
         const cleaned = loadStoredState();
@@ -611,6 +635,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
                 ref={inputRef}
                 type="file"
                 multiple
+                accept={FILE_INPUT_ACCEPT}
                 className="hidden"
                 onChange={(e) => handleFiles(e.target.files)}
               />
@@ -621,7 +646,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
                 <div className="text-sm">
                   <div className="font-medium">Add files</div>
                   <div className="text-xs text-neutral-500">
-                    Drag & drop or click to select
+                    Drag & drop or click to select • {FILE_INPUT_HINT}
                   </div>
                 </div>
               </div>
@@ -708,7 +733,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
           <div className="min-w-0">
             <div className="font-medium">Upload files</div>
             <div className="text-xs text-neutral-500">
-              Drag & drop or click to select multiple files
+              Drag & drop or click to select multiple files • {FILE_INPUT_HINT}
             </div>
           </div>
         </div>
@@ -717,6 +742,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
           ref={inputRef}
           type="file"
           multiple
+          accept={FILE_INPUT_ACCEPT}
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />

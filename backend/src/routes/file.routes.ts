@@ -13,6 +13,11 @@ import crypto from "crypto";
 import unzipper from "unzipper";
 import pdfParse from "pdf-parse";
 import { extractUrlMetadata } from "../services/extract.service";
+import {
+  getAiTaggingUnavailableMessage,
+  getFileCapability,
+  inferCanonicalMime,
+} from "../utils/fileCapabilities";
 
 // ===== Upload hardening =====
 const MAX_UPLOAD_BYTES = Number(
@@ -309,26 +314,101 @@ async function stitchChunksToFile(
 }
 
 function inferMimeType(fileName: string, fallback: string): string {
-  // If we already have a specific type (not generic), use it
-  if (fallback && fallback !== "application/octet-stream") return fallback;
-  const ext = path.extname(fileName).toLowerCase();
-  switch (ext) {
-    case ".pdf":
-      return "application/pdf";
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".gif":
-      return "image/gif";
-    case ".webp":
-      return "image/webp";
-    case ".svg":
-      return "image/svg+xml";
-    default:
-      return fallback || "application/octet-stream";
+  return inferCanonicalMime(fileName, fallback);
+}
+
+function readHeadBytes(filePath: string, length = 4096): Buffer {
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const buf = Buffer.alloc(length);
+    const bytesRead = fs.readSync(fd, buf, 0, length, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    fs.closeSync(fd);
   }
+}
+
+function looksBinarySample(sample: Buffer): boolean {
+  if (!sample.length) return false;
+
+  let nulCount = 0;
+  let suspiciousControlCount = 0;
+
+  for (const b of sample) {
+    if (b === 0) {
+      nulCount += 1;
+      continue;
+    }
+
+    const isTabOrLineBreak = b === 9 || b === 10 || b === 13;
+    const isAsciiPrintable = b >= 32 && b <= 126;
+    const isExtendedByte = b >= 128; // allow utf-8 / unicode bytes
+
+    if (!isTabOrLineBreak && !isAsciiPrintable && !isExtendedByte) {
+      suspiciousControlCount += 1;
+    }
+  }
+
+  return nulCount > 0 || suspiciousControlCount / sample.length > 0.1;
+}
+
+async function validateFinalizedUpload(
+  filePath: string,
+  fileName: string,
+  fallbackMime: string,
+): Promise<
+  | {
+      ok: true;
+      effectiveMime: string;
+      capability: ReturnType<typeof getFileCapability>;
+    }
+  | {
+      ok: false;
+      code: "UNSUPPORTED_MEDIA";
+      message: string;
+    }
+> {
+  const capability = getFileCapability(fileName, fallbackMime);
+  const effectiveMime = inferMimeType(fileName, fallbackMime);
+
+  if (!capability.uploadAllowed) {
+    return {
+      ok: false,
+      code: "UNSUPPORTED_MEDIA",
+      message: "Unsupported file type",
+    };
+  }
+
+  if (capability.validation === "magic") {
+    const { fileTypeFromFile } = await import("file-type");
+    const ft = await fileTypeFromFile(filePath);
+    const actualMime = String(ft?.mime || "").toLowerCase();
+
+    if (!actualMime || actualMime !== capability.canonicalMime) {
+      return {
+        ok: false,
+        code: "UNSUPPORTED_MEDIA",
+        message: `Uploaded content does not match ${capability.canonicalMime}`,
+      };
+    }
+  }
+
+  if (capability.validation === "text-sniff") {
+    const head = readHeadBytes(filePath, 4096);
+    if (looksBinarySample(head)) {
+      return {
+        ok: false,
+        code: "UNSUPPORTED_MEDIA",
+        message: "Expected a text-like file but received binary content",
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    effectiveMime,
+    capability,
+  };
 }
 
 // ---- Archive safety limits (DoS hardening) ----
@@ -461,22 +541,17 @@ r.post(
 
         await stitchChunksToFile(dir, total, finalPath);
 
-        // 2) Then validate magic bytes on the stitched file
-        const { fileTypeFromFile } = await import("file-type");
-        const ft = await fileTypeFromFile(finalPath);
+        // Validate the stitched file against the canonical capability matrix
+        const validation = await validateFinalizedUpload(
+          finalPath,
+          safeFileName,
+          req.file?.mimetype || "application/octet-stream",
+        );
 
-        const okExt = /\.(pdf|png|jpe?g|webp|gif|svg)$/i.test(safeFileName);
-        const okMime =
-          ft &&
-          /^(application\/pdf|image\/(png|jpeg|webp|gif|svg\+xml))$/.test(
-            ft.mime,
-          );
-
-        if (!okExt || !okMime) {
+        if (!validation.ok) {
           try {
             fs.unlinkSync(finalPath);
           } catch {}
-          // cleanup chunk dir
           for (let i = 0; i < total; i++) {
             try {
               fs.unlinkSync(path.join(dir, `${i}.part`));
@@ -485,13 +560,20 @@ r.post(
           try {
             fs.rmdirSync(dir);
           } catch {}
+
           return res.status(415).json({
-            code: "UNSUPPORTED_MEDIA",
-            message: "Unsupported file type",
+            code: validation.code,
+            message: validation.message,
           });
         }
 
-        // 3) Cleanup chunks on success
+        const canonicalMime = validation.effectiveMime;
+        const capability = validation.capability;
+        const aiTaggingError = capability.aiTagSupported
+          ? null
+          : getAiTaggingUnavailableMessage(safeFileName, canonicalMime);
+
+        // Cleanup chunks on success
         for (let i = 0; i < total; i++) {
           try {
             fs.unlinkSync(path.join(dir, `${i}.part`));
@@ -518,34 +600,30 @@ r.post(
 
         const updateData: any = {
           fileName: safeFileName,
-          mimeType: inferMimeType(
-            safeFileName,
-            req.file?.mimetype || "application/octet-stream",
-          ),
+          mimeType: canonicalMime,
           size: stat.size,
           uploaderId: "self",
           uploaderName: "You",
           storagePath: finalPath,
           sha256,
           contentHash: sha256,
-          taggingStatus: "PENDING",
+          taggingStatus: capability.aiTagSupported ? "PENDING" : "NONE",
           taggingJobId: null,
-          taggingError: null,
+          taggingError: aiTaggingError,
         };
-
         const createData: any = {
           id: safeFingerprint,
           fileName: safeFileName,
-          mimeType: updateData.mimeType,
+          mimeType: canonicalMime,
           size: stat.size,
           uploaderId: updateData.uploaderId,
           uploaderName: updateData.uploaderName,
           storagePath: finalPath,
           sha256,
           contentHash: sha256,
-          taggingStatus: "PENDING",
+          taggingStatus: capability.aiTagSupported ? "PENDING" : "NONE",
           taggingJobId: null,
-          taggingError: null,
+          taggingError: aiTaggingError,
         };
 
         if (prismaSupportsFolders()) {
@@ -582,11 +660,14 @@ r.post(
           requestId: (req as any)?.requestId ?? null,
         });
 
-        // Kick async tagging via Python ai-tagger (does not block API)
+        // Kick async tagging only for file types supported by the current extractor
         try {
-          const { scheduleAiTagForFile } =
-            await import("../services/aiTagAuto.service");
-          scheduleAiTagForFile(String(rec.id));
+          const capability = getFileCapability(rec.fileName, rec.mimeType);
+          if (capability.aiTagSupported) {
+            const { scheduleAiTagForFile } =
+              await import("../services/aiTagAuto.service");
+            scheduleAiTagForFile(String(rec.id));
+          }
         } catch (e) {
           console.error("aiTagAuto import failed", e);
         }
@@ -761,16 +842,33 @@ r.post("/files/finalize", async (req, res, next) => {
       });
     }
 
+    const validation = await validateFinalizedUpload(
+      finalPath,
+      safeFileName,
+      mimeType || "application/octet-stream",
+    );
+
+    if (!validation.ok) {
+      try {
+        fs.unlinkSync(finalPath);
+      } catch {}
+      return res.status(415).json({
+        code: validation.code,
+        message: validation.message,
+      });
+    }
+
+    const finalMime = validation.effectiveMime;
+    const capability = validation.capability;
+    const aiTaggingError = capability.aiTagSupported
+      ? null
+      : getAiTaggingUnavailableMessage(safeFileName, finalMime);
+
     const sha256 = await sha256File(finalPath);
 
     // Best-effort file metadata extraction (PDF only)
     let sourcePublishedAt: Date | null = null;
     let sourceAuthors: string[] = [];
-
-    const finalMime = inferMimeType(
-      safeFileName,
-      mimeType || "application/octet-stream",
-    );
 
     if (
       finalMime.includes("pdf") ||
@@ -783,10 +881,7 @@ r.post("/files/finalize", async (req, res, next) => {
 
     const updateData: any = {
       fileName: safeFileName,
-      mimeType: inferMimeType(
-        safeFileName,
-        mimeType || "application/octet-stream",
-      ),
+      mimeType: finalMime,
       size: stat.size,
       sourcePublishedAt,
       sourceAuthors,
@@ -796,18 +891,14 @@ r.post("/files/finalize", async (req, res, next) => {
       storagePath: finalPath,
       sha256,
       contentHash: sha256,
-      taggingStatus: "PENDING",
+      taggingStatus: capability.aiTagSupported ? "PENDING" : "NONE",
       taggingJobId: null,
-      taggingError: null,
+      taggingError: aiTaggingError,
     };
-
     const createData: any = {
       id: fingerprint,
       fileName: safeFileName,
-      mimeType: inferMimeType(
-        safeFileName,
-        mimeType || "application/octet-stream",
-      ),
+      mimeType: finalMime,
       size: stat.size,
       sourcePublishedAt,
       sourceAuthors,
@@ -817,10 +908,11 @@ r.post("/files/finalize", async (req, res, next) => {
       storagePath: finalPath,
       sha256,
       contentHash: sha256,
-      taggingStatus: "PENDING",
+      taggingStatus: capability.aiTagSupported ? "PENDING" : "NONE",
       taggingJobId: null,
-      taggingError: null,
+      taggingError: aiTaggingError,
     };
+
     if (prismaSupportsFolders()) {
       updateData.folderId =
         typeof folderId === "string" && folderId.trim()
@@ -855,11 +947,14 @@ r.post("/files/finalize", async (req, res, next) => {
 
     res.json(record);
 
-    // Kick async tagging via Python ai-tagger (does not block API)
+    // Kick async tagging only for file types supported by the current extractor
     try {
-      const { scheduleAiTagForFile } =
-        await import("../services/aiTagAuto.service");
-      scheduleAiTagForFile(String(record.id));
+      const capability = getFileCapability(record.fileName, record.mimeType);
+      if (capability.aiTagSupported) {
+        const { scheduleAiTagForFile } =
+          await import("../services/aiTagAuto.service");
+        scheduleAiTagForFile(String(record.id));
+      }
     } catch (e) {
       console.error("aiTagAuto import failed", e);
     }
