@@ -69,6 +69,15 @@ const getThumb = (f: FileItem): string | null => {
 const fileDisplayName = (f: FileItem) =>
   (f as any).title || (f as any).fileName || "";
 
+const canRetryAiTag = (f: FileItem): boolean => {
+  if (isFolder(f)) return false;
+
+  const status = String((f as any).taggingStatus || "NONE").toUpperCase();
+  const err = String((f as any).taggingError || "").trim();
+
+  return status === "FAILED" || Boolean(err);
+};
+
 const getTaggingInfo = (
   f: FileItem,
 ): {
@@ -202,6 +211,7 @@ type Props = {
   onPreview?: (f: FileItem, opts?: any) => void;
   onDownload?: (f: FileItem) => void;
   onShowProperties?: (f: FileItem) => void;
+  onRetryAiTag?: (f: FileItem) => void;
   onNew?: (kind: "folder" | "file") => void;
   onRefresh?: () => void;
 
@@ -252,6 +262,7 @@ export default function Large_IconView({
   onPreview,
   onDownload,
   onShowProperties,
+  onRetryAiTag,
   onNew,
   onRefresh,
   onOpenVirtual,
@@ -488,6 +499,16 @@ export default function Large_IconView({
           label: "Download",
           onSelect: () => onDownload?.(file),
         },
+        ...(canRetryAiTag(file) && onRetryAiTag
+          ? [
+              {
+                type: "item" as const,
+                id: "retry_ai",
+                label: "Retry AI extraction",
+                onSelect: () => onRetryAiTag(file),
+              },
+            ]
+          : []),
         ...(onRestore || onRestoreMany
           ? [
               {
@@ -571,6 +592,7 @@ export default function Large_IconView({
       onDelete,
       onDeleteMany,
       onShowProperties,
+      onRetryAiTag,
       onOpenVirtual,
       currentFolderId,
     ],
@@ -694,6 +716,7 @@ export default function Large_IconView({
           const folder = isFolder(f);
           const size = getSize(f);
           const title = getTitle(f);
+          const canRetry = canRetryAiTag(f);
           const tagging = getTaggingInfo(f);
 
           const titleAttr = [
@@ -769,6 +792,22 @@ export default function Large_IconView({
                     >
                       {tagging.label}
                     </span>
+                  </div>
+                )}
+
+                {canRetry && onRetryAiTag && (
+                  <div className="ex-tile-retry">
+                    <button
+                      type="button"
+                      className="fm-mini-pill fm-mini-pill--ghost fm-inline-action"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRetryAiTag(f);
+                      }}
+                      title="Retry AI extraction"
+                    >
+                      Retry AI
+                    </button>
                   </div>
                 )}
 

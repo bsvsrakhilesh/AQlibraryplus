@@ -2467,6 +2467,57 @@ export default function FileManagerPage() {
     [notify, refresh],
   );
 
+  const handleRetryAiTag = useCallback(
+    async (file: FileItem) => {
+      const id = String((file as any)?.id ?? "");
+      const label = String(
+        (file as any)?.title ||
+          (file as any)?.fileName ||
+          (file as any)?.name ||
+          id ||
+          "file",
+      );
+
+      if (!id) return;
+
+      if (isFolderId(id) || isZipDirId(id) || isZipFileId(id)) {
+        notify("AI retry is only supported for real files.", "info");
+        return;
+      }
+
+      patchFileEverywhere(id, {
+        taggingStatus: "RUNNING",
+        taggingError: null,
+        taggingJobId: null,
+      });
+
+      try {
+        const { jobId } = await startFileTagJob(id);
+
+        patchFileEverywhere(id, {
+          taggingStatus: "RUNNING",
+          taggingError: null,
+          taggingJobId: jobId,
+        });
+
+        notify(`Retrying AI extraction for ${label}`, "info");
+
+        void refreshPendingTaggingFiles([id]);
+      } catch (e: any) {
+        const msg = e?.message || "Failed to restart AI extraction";
+
+        patchFileEverywhere(id, {
+          taggingStatus: "FAILED",
+          taggingError: msg,
+          taggingJobId: null,
+        });
+
+        notify(msg, "error");
+      }
+    },
+    [notify, patchFileEverywhere, refreshPendingTaggingFiles],
+  );
+
   // Bulk AI auto-tag selected files (progress + cancel + proper errors)
   const onAutoTagSelected = useCallback(
     async (ids: string[]) => {
@@ -3497,6 +3548,9 @@ export default function FileManagerPage() {
                           const latest = await getFileById(fileId);
                           applyLatestFileEverywhere(latest);
                         }}
+                        onRetryAiTag={async (file) => {
+                          await handleRetryAiTag(file);
+                        }}
                       />
 
                       {!isLoading && !error && visibleFiles.length > 0 && (
@@ -3565,6 +3619,9 @@ export default function FileManagerPage() {
                               sortDir={sortDir}
                               onShowProperties={(f: FileItem) => {
                                 void openProperties(f);
+                              }}
+                              onRetryAiTag={(f: FileItem) => {
+                                void handleRetryAiTag(f);
                               }}
                               onDownload={(f) => {
                                 const id = String((f as any).id);
@@ -3701,6 +3758,10 @@ export default function FileManagerPage() {
 
                                 onShowProperties: (f: FileItem) => {
                                   void openProperties(f);
+                                },
+
+                                onRetryAiTag: (f: FileItem) => {
+                                  void handleRetryAiTag(f);
                                 },
 
                                 onDownload: (f: any) => {

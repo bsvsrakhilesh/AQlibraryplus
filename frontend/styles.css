@@ -2821,6 +2821,12 @@ body,
   text-align: center;
 }
 
+.ex-tile-retry {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
 .ex-tile-status {
   display: flex;
   justify-content: center;
@@ -3037,10 +3043,6 @@ body,
     justify-content: flex-start;
   }
 }
-
-/* ===========================
-   Landing v2 (designer-grade)
-   =========================== */
 
 @layer components {
   .landing-topbar {
@@ -4500,6 +4502,19 @@ body,
   background: rgba(248, 250, 252, 1);
   color: #475569;
   border-color: rgba(148, 163, 184, 0.2);
+}
+
+.fm-inline-action {
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.12s ease;
+}
+
+.fm-inline-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .fm-state-pill--amber {

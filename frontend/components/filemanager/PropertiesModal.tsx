@@ -11,6 +11,7 @@ type PropertiesModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onRefreshMetadata: (fileId: string) => Promise<void>;
+  onRetryAiTag?: (file: FileItem) => Promise<void> | void;
 };
 
 const PropertiesModal: React.FC<PropertiesModalProps> = ({
@@ -18,12 +19,16 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
   isOpen,
   onClose,
   onRefreshMetadata,
+  onRetryAiTag,
 }) => {
   if (!isOpen || !file) return null;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
-
   const taggingStatus = file.taggingStatus ?? "NONE";
+  const [isRetryingTag, setIsRetryingTag] = useState(false);
+
+  const canRetryAiTag =
+    taggingStatus === "FAILED" || Boolean(file.taggingError);
 
   const taggingLabel =
     taggingStatus === "SUCCESS"
@@ -252,11 +257,32 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
                   </div>
                 </div>
 
-                <span
-                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${taggingTone}`}
-                >
-                  {taggingLabel}
-                </span>
+                <div className="flex items-center gap-2">
+                  {canRetryAiTag && onRetryAiTag && (
+                    <button
+                      type="button"
+                      className="btn-ghost text-xs px-3 h-8"
+                      disabled={isRetryingTag}
+                      onClick={async () => {
+                        try {
+                          setIsRetryingTag(true);
+                          await onRetryAiTag(file);
+                        } finally {
+                          setIsRetryingTag(false);
+                        }
+                      }}
+                      title="Retry AI extraction for this file"
+                    >
+                      {isRetryingTag ? "Retrying…" : "Retry AI extraction"}
+                    </button>
+                  )}
+
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${taggingTone}`}
+                  >
+                    {taggingLabel}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-[140px_1fr] gap-3 items-start">

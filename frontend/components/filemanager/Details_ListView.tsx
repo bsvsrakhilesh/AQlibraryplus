@@ -254,6 +254,17 @@ const getTypeLabel = (f: FileItem): string => {
 const getTagList = (f: FileItem): string[] =>
   Array.isArray((f as any).tags) ? ((f as any).tags as string[]) : [];
 
+const canRetryAiTag = (f: FileItem): boolean => {
+  const mime = String((f as any).mimeType || "").toLowerCase();
+  const folder = Boolean((f as any).isFolder) || mime === "folder";
+  if (folder) return false;
+
+  const status = String((f as any).taggingStatus || "NONE").toUpperCase();
+  const err = String((f as any).taggingError || "").trim();
+
+  return status === "FAILED" || Boolean(err);
+};
+
 const renderTypeIcon = (f: FileItem) => {
   const name = fileDisplayName(f).toLowerCase();
   const mime = ((f as any).mimeType || (f as any).type || "").toLowerCase();
@@ -298,6 +309,7 @@ type Props = {
   onDownload?: (f: FileItem) => void;
   onOpenVirtual?: (ctx: { zipId: string; prefix: string }) => void;
   onShowProperties?: (file: FileItem) => void;
+  onRetryAiTag?: (file: FileItem) => void;
 
   /** drag & drop */
   onDragStart?: (ids: string[]) => void;
@@ -345,6 +357,7 @@ export default function Details_ListView({
   onDownload,
   onOpenVirtual,
   onShowProperties,
+  onRetryAiTag,
   onDragStart,
   onDragEnd,
   onDrop,
@@ -659,6 +672,16 @@ export default function Details_ListView({
           label: "Download",
           onSelect: () => onDownload?.(file),
         },
+        ...(canRetryAiTag(file) && onRetryAiTag
+          ? [
+              {
+                type: "item" as const,
+                id: "retry_ai",
+                label: "Retry AI extraction",
+                onSelect: () => onRetryAiTag(file),
+              },
+            ]
+          : []),
       ];
 
       if (isZip(file) && onOpenVirtual) {
@@ -786,6 +809,7 @@ export default function Details_ListView({
       onPreview,
       onOpenVirtual,
       onShowProperties,
+      onRetryAiTag,
       setSelectedIds,
     ],
   );
@@ -925,6 +949,7 @@ export default function Details_ListView({
       const revision = getRevisionInfo(f);
       const typeLabel = getTypeLabel(f);
       const tagList = getTagList(f);
+      const canRetry = canRetryAiTag(f);
       const tagging = getTaggingInfo(f);
       const sourceUrl =
         (f as any).sourceUrl || (f as any).captureEvent?.sourceUrl;
@@ -1021,7 +1046,7 @@ export default function Details_ListView({
           </div>
 
           <div className="fm-td fm-td--tags">
-            {tagging || tagList.length ? (
+            {tagging || tagList.length || canRetry ? (
               <div className="fm-inline-pills">
                 {tagging && (
                   <span
@@ -1050,6 +1075,20 @@ export default function Details_ListView({
                     No labels
                   </span>
                 ) : null}
+
+                {canRetry && onRetryAiTag && (
+                  <button
+                    type="button"
+                    className="fm-mini-pill fm-mini-pill--ghost fm-inline-action"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRetryAiTag(f);
+                    }}
+                    title="Retry AI extraction"
+                  >
+                    Retry AI
+                  </button>
+                )}
               </div>
             ) : (
               <span className="fm-cell-subtle">No tags</span>
@@ -1065,6 +1104,7 @@ export default function Details_ListView({
       const isSel = selectedIds.has(id);
 
       const dateLabel = getDateLabel(f);
+      const canRetry = canRetryAiTag(f);
       const tagging = getTaggingInfo(f);
 
       return (
@@ -1138,6 +1178,20 @@ export default function Details_ListView({
 
           {/* Right: quick menu button */}
           <div className="fm-row-actions">
+            {canRetry && onRetryAiTag && (
+              <button
+                type="button"
+                className="fm-mini-pill fm-mini-pill--ghost fm-inline-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRetryAiTag(f);
+                }}
+                title="Retry AI extraction"
+              >
+                Retry AI
+              </button>
+            )}
+
             <button
               type="button"
               className="fm-iconbtn"
