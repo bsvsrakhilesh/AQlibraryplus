@@ -7,6 +7,7 @@ import type {
   NoteProvenanceBundle,
   ChatHistoryRun,
   GroundingReport,
+  ClaimCitationLink,
 } from "../../lib/notebookClient";
 import { Loader2 } from "lucide-react";
 import CitationBadge from "./CitationBadge";
@@ -42,6 +43,7 @@ type Msg = {
   model?: string | null;
   latencyMs?: number | null;
   grounding?: GroundingReport | null;
+  claimLinks?: ClaimCitationLink[];
 };
 
 function uid() {
@@ -112,6 +114,12 @@ function groundingTone(g: GroundingReport) {
   return "border-rose-200 bg-rose-50 text-rose-800";
 }
 
+function claimLinkTone(status: ClaimCitationLink["status"]) {
+  return status === "linked"
+    ? "border-slate-200 bg-white/70"
+    : "border-amber-200 bg-amber-50";
+}
+
 function historyRunsToMessages(runs: ChatHistoryRun[]): Msg[] {
   const out: Msg[] = [];
 
@@ -142,6 +150,7 @@ function historyRunsToMessages(runs: ChatHistoryRun[]): Msg[] {
         model: run.model ?? null,
         latencyMs: run.latencyMs ?? null,
         grounding: run.grounding ?? null,
+        claimLinks: run.claimLinks ?? [],
       });
       continue;
     }
@@ -162,6 +171,7 @@ function historyRunsToMessages(runs: ChatHistoryRun[]): Msg[] {
       model: run.model ?? null,
       latencyMs: run.latencyMs ?? null,
       grounding: run.grounding ?? null,
+      claimLinks: run.claimLinks ?? [],
     });
   }
 
@@ -396,6 +406,7 @@ export default function ChatPanel({
           model: res.model ?? null,
           latencyMs: res.latencyMs ?? null,
           grounding: res.grounding ?? null,
+          claimLinks: res.claimLinks ?? [],
         };
 
         setMessages((m) => [...m, base]);
@@ -423,6 +434,10 @@ export default function ChatPanel({
                       evidence:
                         Array.isArray(res.evidence) && res.evidence.length
                           ? res.evidence
+                          : undefined,
+                      claimLinks:
+                        Array.isArray(res.claimLinks) && res.claimLinks.length
+                          ? res.claimLinks
                           : undefined,
                     },
                   ],
@@ -794,6 +809,64 @@ export default function ChatPanel({
                       </div>
                     ) : null}
 
+                    {/* Claim-to-citation map (Draft / Briefing) */}
+                    {m.role === "assistant" &&
+                    !m.evidence?.length &&
+                    m.claimLinks?.length ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="text-[11px] font-semibold tracking-wide text-slate-600">
+                          Claim-to-citation map
+                        </div>
+
+                        {m.claimLinks.map((link, linkIdx) => (
+                          <div
+                            key={`${m.id}_cl_${linkIdx}`}
+                            className={clsx(
+                              "rounded-2xl border px-4 py-3 shadow-sm",
+                              claimLinkTone(link.status),
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-sm text-slate-900 leading-[1.5]">
+                                <span className="font-semibold mr-2">
+                                  {linkIdx + 1}.
+                                </span>
+                                {link.claim}
+                              </div>
+
+                              <div className="shrink-0 text-[11px] text-slate-500 tabular-nums">
+                                {Math.round((link.supportScore ?? 0) * 100)}%
+                              </div>
+                            </div>
+
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              {link.source === "derived"
+                                ? "Linked from answer text"
+                                : "Linked from evidence block"}
+                            </div>
+
+                            {link.citations?.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {link.citations.map((c, idx) => (
+                                  <CitationBadge
+                                    key={`${linkIdx}_${c.chunkId}_${idx}`}
+                                    index={idx + 1}
+                                    citation={c}
+                                    onOpenSource={openSource}
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-[12px] text-amber-700">
+                                No direct citations could be confidently linked
+                                to this claim yet.
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
                     {/* Evidence blocks (Evidence mode) */}
                     {m.role === "assistant" && m.evidence?.length ? (
                       <div className="mt-2 space-y-2">
@@ -853,6 +926,7 @@ export default function ChatPanel({
                         citations={m.citations}
                         mode={m.mode}
                         evidence={m.evidence}
+                        claimLinks={m.claimLinks}
                         runId={m.runId}
                         promptVersion={m.promptVersion}
                         model={m.model}

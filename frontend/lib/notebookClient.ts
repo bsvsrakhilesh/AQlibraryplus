@@ -159,6 +159,14 @@ export type GroundingReport = {
   claims: GroundingClaim[];
 };
 
+export type ClaimCitationLink = {
+  claim: string;
+  status: "linked" | "review_needed";
+  source: "evidence" | "derived";
+  supportScore: number;
+  citations: Citation[];
+};
+
 export type NoteProvenanceArtifact = {
   kind: "chat-answer";
   runId?: string | null;
@@ -170,6 +178,7 @@ export type NoteProvenanceArtifact = {
   answer: string;
   citations: Citation[];
   evidence?: EvidenceBlock[];
+  claimLinks?: ClaimCitationLink[];
 };
 
 export type NoteProvenanceBundle = {
@@ -184,6 +193,7 @@ export type ChatAnswer = {
   evidence?: EvidenceBlock[];
   suggested: string[];
   grounding?: GroundingReport | null;
+  claimLinks?: ClaimCitationLink[];
 
   runId?: string;
   promptVersion?: string;
@@ -202,6 +212,7 @@ export type ChatHistoryRun = {
   evidence?: EvidenceBlock[];
   suggested: string[];
   grounding?: GroundingReport | null;
+  claimLinks?: ClaimCitationLink[];
   error?: string | null;
   promptVersion?: string | null;
   model?: string | null;

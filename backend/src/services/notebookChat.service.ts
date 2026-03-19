@@ -39,6 +39,7 @@ export type NotebookChatHistoryRun = {
   model: string | null;
   latencyMs: number | null;
   grounding?: GroundingReport | null;
+  claimLinks?: ClaimCitationLink[];
 };
 
 type GroundingClaimStatus = "supported" | "review_needed";
@@ -63,6 +64,16 @@ type GroundingReport = {
   claims: GroundingClaim[];
 };
 
+type ClaimLinkStatus = "linked" | "review_needed";
+
+type ClaimCitationLink = {
+  claim: string;
+  status: ClaimLinkStatus;
+  source: "evidence" | "derived";
+  supportScore: number;
+  citations: any[];
+};
+
 type PersistedChatResult = {
   mode: AnswerMode;
   answer: string;
@@ -70,6 +81,7 @@ type PersistedChatResult = {
   evidence?: any[];
   suggested: string[];
   grounding?: GroundingReport | null;
+  claimLinks?: ClaimCitationLink[];
 };
 
 type ChatRunContext = {
@@ -129,6 +141,8 @@ async function succeedNotebookChatRun(p: {
       unsupportedClaimsCount:
         p.result.grounding?.unsupportedClaimsCount ?? null,
       grounding: asJson(p.result.grounding ?? null),
+      claimLinksVersion: p.result.claimLinks?.length ? "claim-links-v1" : null,
+      claimLinks: asJson(p.result.claimLinks ?? []),
       retrievedChunkIds: p.candidateChunkIds ?? [],
       finalChunkIds: p.finalChunkIds ?? [],
       sourceRevisionIds: p.sourceRevisionIds ?? [],
@@ -144,6 +158,7 @@ async function succeedNotebookChatRun(p: {
     model: env.OPENAI_ENABLED ? defaultModel() : null,
     latencyMs,
     grounding: p.result.grounding ?? null,
+    claimLinks: p.result.claimLinks ?? [],
   };
 }
 
@@ -214,6 +229,7 @@ export async function listNotebookChatRuns(p: {
       model: true,
       latencyMs: true,
       grounding: true,
+      claimLinks: true,
     },
   });
 
@@ -237,6 +253,7 @@ export async function listNotebookChatRuns(p: {
     model: r.model ?? null,
     latencyMs: r.latencyMs ?? null,
     grounding: (r.grounding ?? null) as GroundingReport | null,
+    claimLinks: (r.claimLinks ?? []) as ClaimCitationLink[],
   }));
 }
 
@@ -694,6 +711,22 @@ function extractGroundingNumbers(input: string) {
   );
 }
 
+function dedupeCitations(raw: any[]) {
+  const seen = new Set<string>();
+  const out: any[] = [];
+
+  for (const c of raw ?? []) {
+    const chunkId = String(c?.chunkId ?? "").trim();
+    const quote = String(c?.quote ?? "").trim();
+    const key = `${chunkId}::${quote}`;
+    if (!chunkId || !quote || seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+
+  return out;
+}
+
 function splitAnswerIntoClaims(answer: string) {
   const rawParts = String(answer ?? "")
     .split(/\n+/g)
@@ -870,6 +903,93 @@ function buildGroundingReport(p: {
     unsupportedClaimsCount,
     claims,
   };
+}
+
+function buildClaimCitationLinks(p: {
+  answer: string;
+  mode: AnswerMode;
+  citations: any[];
+  evidence: any[];
+  byChunkId: Map<string, any>;
+}): ClaimCitationLink[] {
+  const scoreSingleCitationForClaim = (claim: string, citation: any) => {
+    const chunk = citation?.chunkId ? p.byChunkId.get(citation.chunkId) : null;
+    const { supportScore, numberCoverage } = scoreClaimSupport(claim, [
+      String(citation?.quote ?? ""),
+      String(chunk?.text ?? "").slice(0, 1400),
+    ]);
+    return { supportScore, numberCoverage };
+  };
+
+  // Evidence mode already has explicit claim->citation structure.
+  if (p.mode === "evidence" && Array.isArray(p.evidence) && p.evidence.length) {
+    return p.evidence
+      .map((b: any): ClaimCitationLink => {
+        const claim = String(b?.claim ?? "").trim();
+        const citations = dedupeCitations(
+          Array.isArray(b?.citations) ? b.citations : [],
+        ).slice(0, 4);
+
+        const scored = citations.map((c) =>
+          scoreSingleCitationForClaim(claim, c),
+        );
+        const best = scored.length
+          ? Math.max(...scored.map((x) => x.supportScore))
+          : 0;
+
+        const status: ClaimLinkStatus = citations.length
+          ? "linked"
+          : "review_needed";
+
+        return {
+          claim,
+          status,
+          source: "evidence" as const,
+          supportScore: Number(best.toFixed(3)),
+          citations,
+        };
+      })
+      .filter((x) => x.claim)
+      .slice(0, 12);
+  }
+
+  // Draft / briefing mode: derive claim links from the final flat citation set.
+  const claims = splitAnswerIntoClaims(p.answer).slice(0, 12);
+
+  return claims.map((claim): ClaimCitationLink => {
+    const claimHasNumbers = extractGroundingNumbers(claim).length > 0;
+
+    const scored = dedupeCitations(p.citations ?? [])
+      .map((citation) => {
+        const { supportScore, numberCoverage } = scoreSingleCitationForClaim(
+          claim,
+          citation,
+        );
+        return {
+          citation,
+          supportScore,
+          numberCoverage,
+        };
+      })
+      .filter((x) => x.supportScore >= 0.32)
+      .filter((x) => (claimHasNumbers ? x.numberCoverage : true))
+      .sort((a, b) => b.supportScore - a.supportScore);
+
+    const citations = scored.slice(0, 4).map((x) => x.citation);
+    const best = scored.length ? scored[0].supportScore : 0;
+
+    const status: ClaimLinkStatus = citations.length
+      ? "linked"
+      : "review_needed";
+
+    return {
+      claim,
+      status,
+      source: "derived" as const,
+      supportScore: Number(best.toFixed(3)),
+      citations,
+    };
+  });
 }
 
 function formatContext(
@@ -1261,6 +1381,14 @@ export async function runNotebookChat(p: {
       byChunkId,
     });
 
+    const claimLinks = buildClaimCitationLinks({
+      answer: out.answer,
+      mode: (out.mode ?? mode) as AnswerMode,
+      citations: validatedCitations,
+      evidence,
+      byChunkId,
+    });
+
     return await succeedNotebookChatRun({
       runId: run.id,
       startedAtMs,
@@ -1277,6 +1405,7 @@ export async function runNotebookChat(p: {
         evidence,
         suggested: out.suggested ?? [],
         grounding,
+        claimLinks,
       },
     });
   } catch (error) {

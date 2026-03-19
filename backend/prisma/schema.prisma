@@ -342,6 +342,9 @@ model NotebookChatRun {
   unsupportedClaimsCount Int?
   grounding              Json?
 
+  claimLinksVersion String?
+  claimLinks        Json?
+
   error     String?
   latencyMs Int?
 

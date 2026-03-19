@@ -3,6 +3,7 @@ import type {
   Citation,
   EvidenceBlock,
   NoteProvenanceBundle,
+  ClaimCitationLink,
 } from "../../lib/notebookClient";
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
   citations?: Citation[];
   mode?: AnswerMode;
   evidence?: EvidenceBlock[];
+  claimLinks?: ClaimCitationLink[];
 
   runId?: string;
   promptVersion?: string;
@@ -57,6 +59,7 @@ function buildNoteProvenance(p: {
   text: string;
   citations?: Citation[];
   evidence?: EvidenceBlock[];
+  claimLinks?: ClaimCitationLink[];
   mode?: AnswerMode;
   runId?: string;
   promptVersion?: string;
@@ -67,6 +70,7 @@ function buildNoteProvenance(p: {
   const safeText = String(p.text ?? "").trim();
   const safeCitations = Array.isArray(p.citations) ? p.citations : [];
   const safeEvidence = Array.isArray(p.evidence) ? p.evidence : [];
+  const safeClaimLinks = Array.isArray(p.claimLinks) ? p.claimLinks : [];
 
   if (!safeText && !safeCitations.length && !safeEvidence.length) return null;
 
@@ -84,6 +88,7 @@ function buildNoteProvenance(p: {
         answer: safeText,
         citations: safeCitations,
         evidence: safeEvidence.length ? safeEvidence : undefined,
+        claimLinks: safeClaimLinks.length ? safeClaimLinks : undefined,
       },
     ],
   };
@@ -94,6 +99,7 @@ export default function MessageActions({
   citations,
   mode,
   evidence,
+  claimLinks,
   runId,
   promptVersion,
   model,
@@ -153,6 +159,7 @@ export default function MessageActions({
                 text,
                 citations,
                 evidence,
+                claimLinks,
                 mode,
                 runId,
                 promptVersion,
