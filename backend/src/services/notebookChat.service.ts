@@ -281,9 +281,8 @@ const ChatAnswerSchema = z.object({
     ),
   evidence: z
     .array(EvidenceBlockSchema)
-    .optional()
     .describe(
-      "If mode=evidence, provide a list of atomic claims with their supporting citations. If not evidence mode, omit or return an empty array.",
+      "If mode=evidence, provide a list of atomic claims with their supporting citations. If not evidence mode, return an empty array [].",
     ),
   suggested: z
     .array(z.string().min(1))
