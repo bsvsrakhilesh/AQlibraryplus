@@ -140,6 +140,36 @@ type SavedFilter = "all" | "saved" | "unsaved";
 type SortKey = "original" | "title" | "domain";
 type SortDir = "asc" | "desc";
 
+const DOC_TYPE_LABELS: Record<string, string> = {
+  court_order: "Court order",
+  notification: "Notification",
+  report: "Report",
+  news_article: "News article",
+  parliamentary_material: "Parliament",
+  affidavit_filing: "Affidavit / filing",
+  guideline_circular: "Guideline / circular",
+  official_document: "Official document",
+  other: "Other",
+};
+
+const DOC_TYPE_BADGE: Record<string, string> = {
+  court_order: "bg-violet-50 text-violet-700 border-violet-200",
+  notification: "bg-amber-50 text-amber-700 border-amber-200",
+  report: "bg-sky-50 text-sky-700 border-sky-200",
+  news_article: "bg-rose-50 text-rose-700 border-rose-200",
+  parliamentary_material: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  affidavit_filing: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  guideline_circular: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  official_document: "bg-teal-50 text-teal-700 border-teal-200",
+  other: "bg-gray-50 text-gray-700 border-gray-200",
+};
+
+const CONFIDENCE_DOT: Record<string, string> = {
+  high: "bg-green-500",
+  medium: "bg-amber-500",
+  low: "bg-gray-400",
+};
+
 /* ---------------- component ---------------- */
 
 const ResultsTable: React.FC<ResultsTableProps> = ({
@@ -718,7 +748,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
       const msg = `Captured ${method}${src}`.replace(/\s+/g, " ").trim();
 
       pushNotice("success", msg || "Captured and saved successfully.");
-
     } catch (e: any) {
       console.error(e);
       const msg = e?.message ?? "Unknown error";
@@ -1107,7 +1136,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                     <ExternalIcon className="mt-[2px] h-3.5 w-3.5 text-gray-400 opacity-0 transition-opacity group-hover/title:opacity-100" />
                   </div>
 
-                  <div className="mt-1 inline-flex items-center gap-2 text-xs text-gray-700">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-700">
                     <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/90 px-2 py-0.5">
                       <img
                         src={favicon(r.url)}
@@ -1124,6 +1153,29 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                       <span className="text-gray-400">·</span>
                       <span className="text-gray-500">{nicePath(r.url)}</span>
                     </span>
+
+                    {r.intelligence?.docType && (
+                      <span
+                        className={[
+                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium",
+                          DOC_TYPE_BADGE[r.intelligence.docType] ||
+                            DOC_TYPE_BADGE.other,
+                        ].join(" ")}
+                        title={
+                          r.intelligence.reason ||
+                          "AI-assisted document type guess"
+                        }
+                      >
+                        <span
+                          className={[
+                            "h-1.5 w-1.5 rounded-full",
+                            CONFIDENCE_DOT[r.intelligence.confidence] ||
+                              CONFIDENCE_DOT.low,
+                          ].join(" ")}
+                        />
+                        {DOC_TYPE_LABELS[r.intelligence.docType] || "Other"}
+                      </span>
+                    )}
 
                     {dupN > 0 && (
                       <span

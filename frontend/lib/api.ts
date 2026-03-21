@@ -163,6 +163,7 @@ export async function searchWeb(
           title: it?.title ?? "(no title)",
           url: it?.url ?? "",
           snippet: it?.snippet ?? "",
+          intelligence: it?.intelligence,
         }))
       : [];
 

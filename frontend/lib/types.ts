@@ -1,7 +1,35 @@
+export type SearchResultDocType =
+  | "court_order"
+  | "notification"
+  | "report"
+  | "news_article"
+  | "parliamentary_material"
+  | "affidavit_filing"
+  | "guideline_circular"
+  | "official_document"
+  | "other";
+
+export type SearchResultSourceType =
+  | "court"
+  | "government"
+  | "parliament"
+  | "news"
+  | "research"
+  | "other";
+
+export type SearchResultConfidence = "high" | "medium" | "low";
+
 export interface SearchResult {
   title: string;
   url: string;
   snippet?: string;
+  intelligence?: {
+    docType: SearchResultDocType;
+    sourceType: SearchResultSourceType;
+    fileTypeHint: "pdf" | "html" | "doc" | "other";
+    confidence: SearchResultConfidence;
+    reason?: string;
+  };
 }
 
 export type Page = "url-collector" | "saved-urls" | "file-manager" | "notebook";

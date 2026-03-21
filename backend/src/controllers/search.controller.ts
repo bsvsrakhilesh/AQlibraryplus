@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { googleSearch } from "../services/search.service";
 import { planCollectorQuery } from "../services/searchPlanner.service";
+import { enrichSearchResults } from "../services/searchResultIntelligence.service";
 import { log } from "../utils/logger";
 
 function numOrUndef(v: unknown): number | undefined {
@@ -46,6 +47,8 @@ export async function searchHandler(
       opts,
     );
 
+    const enrichedResults = await enrichSearchResults(results);
+
     if (typeof nextPage === "number")
       res.setHeader("x-next-page", String(nextPage));
     res.setHeader("x-has-more", typeof nextPage === "number" ? "1" : "0");
@@ -55,11 +58,11 @@ export async function searchHandler(
     }
 
     log.info("search.response.ok", {
-      items_count: results.length,
+      items_count: enrichedResults.length,
       ms: Date.now() - startedAt,
     });
 
-    return res.json(results);
+    return res.json(enrichedResults);
   } catch (err: any) {
     log.error("search.response.error", {
       ms: Date.now() - startedAt,
