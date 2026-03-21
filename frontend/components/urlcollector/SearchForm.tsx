@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import SearchIcon from "../icons/SearchIcon";
 import { PlusButton } from "../ui/PlusButton";
 import FormField from "../forms/FormField";
+import { Sparkles } from "lucide-react";
 
 interface SearchFormProps {
   onSearch: (website: string, keywords: string) => void;
@@ -11,6 +12,26 @@ interface SearchFormProps {
   onWebsiteChange?: (v: string) => void;
   onKeywordsChange?: (v: string) => void;
   builtQuery?: string;
+  currentScope?: {
+    yearFrom: string;
+    yearTo: string;
+    jurisdiction: string;
+    region: string;
+    format: "any" | "pdfOnly" | "excludePdf";
+  };
+  onAiAssist?: (draft: {
+    website: string;
+    keywords: string;
+    scope: {
+      yearFrom: string;
+      yearTo: string;
+      jurisdiction: string;
+      region: string;
+      format: "any" | "pdfOnly" | "excludePdf";
+    };
+  }) => Promise<void> | void;
+  aiAssistLoading?: boolean;
+  aiAssistRationale?: string;
 }
 
 const SearchForm: React.FC<SearchFormProps> = ({
@@ -21,6 +42,10 @@ const SearchForm: React.FC<SearchFormProps> = ({
   onWebsiteChange,
   onKeywordsChange,
   builtQuery,
+  currentScope,
+  onAiAssist,
+  aiAssistLoading = false,
+  aiAssistRationale,
 }) => {
   const [website, setWebsite] = useState(initialWebsite);
   const [keywords, setKeywords] = useState(initialKeywords);
@@ -62,6 +87,22 @@ const SearchForm: React.FC<SearchFormProps> = ({
   const handleKeywords = (v: string) => {
     setKeywords(v);
     onKeywordsChange?.(v);
+  };
+
+  const runAiAssist = async () => {
+    if (!onAiAssist) return;
+
+    await onAiAssist({
+      website,
+      keywords,
+      scope: currentScope ?? {
+        yearFrom: "",
+        yearTo: "",
+        jurisdiction: "",
+        region: "",
+        format: "any",
+      },
+    });
   };
 
   return (
@@ -107,21 +148,50 @@ const SearchForm: React.FC<SearchFormProps> = ({
         </div>
       </FormField>
 
-      {/* Submit */}
-      <div className="sm:self-end mt-2">
-        <PlusButton
-          type="submit"
-          size="lg"
-          variant="solid"
-          loading={isLoading}
-          className="w-full md:w-auto rounded-full min-h-[44px] px-5"
-          aria-label="Search the web"
-          title="Search the web"
-        >
-          <SearchIcon className="h-4 w-4" />
-          Search
-        </PlusButton>
+      {/* Actions */}
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <PlusButton
+            type="submit"
+            size="lg"
+            variant="solid"
+            loading={isLoading}
+            className="w-full md:w-auto rounded-full min-h-[44px] px-5"
+            aria-label="Search the web"
+            title="Search the web"
+          >
+            <SearchIcon className="h-4 w-4" />
+            Search
+          </PlusButton>
+
+          <PlusButton
+            type="button"
+            size="lg"
+            variant="outline"
+            loading={aiAssistLoading}
+            disabled={!keywords.trim() || isLoading}
+            className="w-full md:w-auto rounded-full min-h-[44px] px-5"
+            aria-label="Use AI to improve the search plan"
+            title="Use AI to improve the search plan"
+            onClick={runAiAssist}
+          >
+            <Sparkles className="h-4 w-4" />
+            AI assist
+          </PlusButton>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          AI assist sharpens domains, keywords, date hints, and PDF/news bias
+          before you search.
+        </p>
       </div>
+
+      {aiAssistRationale && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+          <span className="font-medium">AI assist</span>
+          <span className="ml-2">{aiAssistRationale}</span>
+        </div>
+      )}
 
       {/* Built query display — shown after first search so researchers can verify what ran */}
       {builtQuery && (

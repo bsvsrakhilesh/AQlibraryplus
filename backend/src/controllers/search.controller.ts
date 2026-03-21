@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { googleSearch } from "../services/search.service";
+import { planCollectorQuery } from "../services/searchPlanner.service";
 import { log } from "../utils/logger";
 
 function numOrUndef(v: unknown): number | undefined {
@@ -39,7 +40,11 @@ export async function searchHandler(
 
   const startedAt = Date.now();
   try {
-    const { results, nextPage, totalResults } = await googleSearch(q, page, opts);
+    const { results, nextPage, totalResults } = await googleSearch(
+      q,
+      page,
+      opts,
+    );
 
     if (typeof nextPage === "number")
       res.setHeader("x-next-page", String(nextPage));
@@ -57,6 +62,39 @@ export async function searchHandler(
     return res.json(results);
   } catch (err: any) {
     log.error("search.response.error", {
+      ms: Date.now() - startedAt,
+      reason: err?.message,
+    });
+    return next(err);
+  }
+}
+
+export async function searchPlanHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const startedAt = Date.now();
+
+  try {
+    const plan = await planCollectorQuery({
+      website: strOrUndef(req.body?.website),
+      keywords: strOrUndef(req.body?.keywords) ?? "",
+      yearFrom: strOrUndef(req.body?.yearFrom),
+      yearTo: strOrUndef(req.body?.yearTo),
+      jurisdiction: strOrUndef(req.body?.jurisdiction),
+      region: strOrUndef(req.body?.region),
+      format: strOrUndef(req.body?.format) as
+        | "any"
+        | "pdfOnly"
+        | "excludePdf"
+        | undefined,
+    });
+
+    log.info("search.plan.ok", { ms: Date.now() - startedAt });
+    return res.json(plan);
+  } catch (err: any) {
+    log.error("search.plan.error", {
       ms: Date.now() - startedAt,
       reason: err?.message,
     });

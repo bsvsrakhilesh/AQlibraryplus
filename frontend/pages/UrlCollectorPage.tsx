@@ -3,7 +3,7 @@ import SearchForm from "../components/urlcollector/SearchForm";
 import ResultsTable from "../components/urlcollector/ResultsTable";
 import Spinner from "../components/urlcollector/Spinner";
 import { SearchResult } from "../lib/types";
-import { searchWeb } from "../lib/api";
+import { planCollectorQuery, searchWeb } from "../lib/api";
 import { useLocation, useNavigate } from "react-router-dom";
 import SmartCard from "../components/ui/SmartCard";
 
@@ -176,6 +176,8 @@ const UrlCollectorPage: React.FC = () => {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [aiAssistLoading, setAiAssistLoading] = useState(false);
+  const [aiAssistRationale, setAiAssistRationale] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -510,6 +512,47 @@ const UrlCollectorPage: React.FC = () => {
     [navigate, website, keywords, scope],
   );
 
+  const handleAiAssist = useCallback(
+    async (draft: {
+      website: string;
+      keywords: string;
+      scope: CollectorScope;
+    }) => {
+      setAiAssistLoading(true);
+      setError(null);
+
+      try {
+        const plan = await planCollectorQuery({
+          website: draft.website,
+          keywords: draft.keywords,
+          yearFrom: draft.scope.yearFrom,
+          yearTo: draft.scope.yearTo,
+          jurisdiction: draft.scope.jurisdiction,
+          region: draft.scope.region,
+          format: draft.scope.format,
+        });
+
+        setWebsite(plan.website || draft.website);
+        setKeywords(plan.keywords || draft.keywords);
+        setScope({
+          yearFrom: plan.yearFrom || draft.scope.yearFrom,
+          yearTo: plan.yearTo || draft.scope.yearTo,
+          jurisdiction: plan.jurisdiction || draft.scope.jurisdiction,
+          region: plan.region || draft.scope.region,
+          format: plan.format || draft.scope.format,
+        });
+        setAiAssistRationale(
+          plan.rationale || "AI assist updated the search plan.",
+        );
+      } catch (e: any) {
+        setError(e?.message || "AI assist failed");
+      } finally {
+        setAiAssistLoading(false);
+      }
+    },
+    [],
+  );
+
   const handleLoadMore = useCallback(async () => {
     if (!nextPage || !lastQuery) return;
 
@@ -697,6 +740,10 @@ const UrlCollectorPage: React.FC = () => {
             onWebsiteChange={setWebsite}
             onKeywordsChange={setKeywords}
             builtQuery={hasSearched && lastQuery ? lastQuery : undefined}
+            currentScope={scope}
+            onAiAssist={handleAiAssist}
+            aiAssistLoading={aiAssistLoading}
+            aiAssistRationale={aiAssistRationale}
           />
 
           {/* Scope filters */}

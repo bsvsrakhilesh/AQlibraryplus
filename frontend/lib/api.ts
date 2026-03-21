@@ -96,6 +96,40 @@ export type SearchWebOptions = {
   gl?: string; // e.g. IN
 };
 
+export type CollectorAssistRequest = {
+  website?: string;
+  keywords: string;
+  yearFrom?: string;
+  yearTo?: string;
+  jurisdiction?: string;
+  region?: string;
+  format?: "any" | "pdfOnly" | "excludePdf";
+};
+
+export type CollectorAssistResponse = {
+  website: string;
+  keywords: string;
+  yearFrom: string;
+  yearTo: string;
+  jurisdiction: string;
+  region: string;
+  format: "any" | "pdfOnly" | "excludePdf";
+  rationale: string;
+};
+
+export async function planCollectorQuery(
+  payload: CollectorAssistRequest,
+): Promise<CollectorAssistResponse> {
+  try {
+    const res = await api.post("/api/search/plan", payload, {
+      headers: { Accept: "application/json" },
+    });
+    return res.data as CollectorAssistResponse;
+  } catch (err: any) {
+    normalizeApiError(err, "Collector AI assist failed");
+  }
+}
+
 // ---------- Web Search API (URL Collector) ----------
 export async function searchWeb(
   q: string,

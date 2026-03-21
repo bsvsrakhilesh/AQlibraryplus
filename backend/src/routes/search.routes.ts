@@ -1,9 +1,35 @@
 import { Router } from "express";
 import { z } from "zod";
 import { validate } from "../middlewares/validate";
-import { searchHandler } from "../controllers/search.controller";
+import {
+  searchHandler,
+  searchPlanHandler,
+} from "../controllers/search.controller";
 
 const router = Router();
+
+const planBodySchema = z
+  .object({
+    website: z.string().trim().max(255).optional(),
+    keywords: z.string().trim().min(2, "keywords must be at least 2 chars"),
+    yearFrom: z.string().trim().max(10).optional(),
+    yearTo: z.string().trim().max(10).optional(),
+    jurisdiction: z.string().trim().max(120).optional(),
+    region: z.string().trim().max(120).optional(),
+    format: z.enum(["any", "pdfOnly", "excludePdf"]).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const y1 = Number(String(v.yearFrom ?? "").slice(0, 4));
+    const y2 = Number(String(v.yearTo ?? "").slice(0, 4));
+
+    if (Number.isFinite(y1) && Number.isFinite(y2) && y1 > y2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "yearFrom must be <= yearTo",
+        path: ["yearFrom"],
+      });
+    }
+  });
 
 const querySchema = z
   .object({
@@ -38,5 +64,6 @@ const querySchema = z
   });
 
 router.get("/", validate({ query: querySchema }), searchHandler);
+router.post("/plan", validate({ body: planBodySchema }), searchPlanHandler);
 
 export default router;
