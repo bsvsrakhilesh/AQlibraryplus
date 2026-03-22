@@ -971,7 +971,7 @@ r.post("/files/finalize", async (req, res, next) => {
 // Supports optional filtering and pagination
 // Query: q, tags (csv), mimeTypes (csv), visibility, favoritesOnly,
 // captureKind (all|upload|web), integrity (all|verified|hashed|pending),
-// revision (all|revisioned|base), sourceDomain,
+// revision (all|revisioned|base), sourceDomain, taggingStatus, metadataState,
 // sortKey (createdAt|fileName|size), sortOrder (asc|desc), page, pageSize, folderId
 r.get("/files", async (req, res, next) => {
   try {
@@ -985,6 +985,8 @@ r.get("/files", async (req, res, next) => {
       integrity,
       revision,
       sourceDomain,
+      taggingStatus,
+      metadataState,
       sortKey = "createdAt",
       sortOrder = "desc",
       page,
@@ -1069,6 +1071,31 @@ r.get("/files", async (req, res, next) => {
           contains: sourceDomain.trim(),
           mode: "insensitive",
         },
+      });
+    }
+
+    if (
+      taggingStatus &&
+      ["NONE", "PENDING", "RUNNING", "SUCCESS", "FAILED"].includes(
+        taggingStatus,
+      )
+    ) {
+      andClauses.push({ taggingStatus: taggingStatus as any });
+    }
+
+    if (metadataState === "missing") {
+      andClauses.push({
+        OR: [
+          { sourcePublishedAt: null },
+          { sourceAuthors: { isEmpty: true } },
+          { tags: { isEmpty: true } },
+        ],
+      });
+    } else if (metadataState === "complete") {
+      andClauses.push({
+        sourcePublishedAt: { not: null },
+        sourceAuthors: { isEmpty: false },
+        tags: { isEmpty: false },
       });
     }
 

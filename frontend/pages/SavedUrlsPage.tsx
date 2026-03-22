@@ -39,9 +39,38 @@ import {
   setUrlCollections,
 } from "../utils/collections";
 import { StaggerList, StaggerItem } from "../components/motion/StaggerList";
+import {
+  loadReviewStampMap,
+  saveReviewStampMap,
+  markReviewedEntries,
+  isUpdatedSinceReview,
+  type ReviewStampMap,
+} from "../utils/reviewState";
 
 type SortKey = "createdAt" | "updatedAt" | "title";
 type SortOrder = "asc" | "desc";
+
+type SavedUrlQueueId =
+  | "all"
+  | "never-captured"
+  | "stale-capture"
+  | "ai-failed"
+  | "metadata-missing"
+  | "updated-since-review";
+
+type SavedUrlSearchPreset = {
+  id: string;
+  name: string;
+  filter: UrlFilterState;
+  sortKey: SortKey;
+  sortOrder: SortOrder;
+  year: string;
+  selectedCollectionId?: string;
+  queueId: SavedUrlQueueId;
+};
+
+const SAVED_URLS_REVIEWED_KEY = "saved-urls:reviewed-at";
+const SAVED_URLS_SEARCHES_KEY = "saved-urls:saved-searches";
 
 type SavedUrlsViewMode = "registry" | "cards";
 
@@ -108,6 +137,22 @@ function toUISaved(row: BackendUrlRow): UISavedUrl {
   };
 }
 
+function urlHasMissingMetadata(u: UISavedUrl) {
+  return !u.publishedAt || !u.authors?.length || !u.tags?.length;
+}
+
+function loadSavedUrlSearchPresets(): SavedUrlSearchPreset[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(SAVED_URLS_SEARCHES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 const SavedUrlsPage: React.FC = () => {
   // Data
   const [urls, setUrls] = useState<UISavedUrl[]>([]);
@@ -135,13 +180,40 @@ const SavedUrlsPage: React.FC = () => {
     visibility: "all",
     dateFrom: "",
     dateTo: "",
-    snapshotStatus: "all" as any,
+    snapshotStatus: "all",
+    taggingStatus: "all",
+    metadataState: "all",
   });
 
   // Sort + Year
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [year, setYear] = useState<string>("all"); // 'all' or 'YYYY'
+
+  const [activeQueueId, setActiveQueueId] = useState<SavedUrlQueueId>("all");
+
+  const [reviewedAtById, setReviewedAtById] = useState<ReviewStampMap>(() =>
+    loadReviewStampMap(SAVED_URLS_REVIEWED_KEY),
+  );
+
+  useEffect(() => {
+    saveReviewStampMap(SAVED_URLS_REVIEWED_KEY, reviewedAtById);
+  }, [reviewedAtById]);
+
+  const [savedSearches, setSavedSearches] = useState<SavedUrlSearchPreset[]>(
+    () => loadSavedUrlSearchPresets(),
+  );
+  const [activeSavedSearchId, setActiveSavedSearchId] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(
+      SAVED_URLS_SEARCHES_KEY,
+      JSON.stringify(savedSearches),
+    );
+  }, [savedSearches]);
 
   const [viewMode, setViewMode] = useState<SavedUrlsViewMode>(() => {
     if (typeof window === "undefined") return "registry";
@@ -421,6 +493,23 @@ const SavedUrlsPage: React.FC = () => {
       )
         return false;
       if (filter.favoritesOnly && !u.isFavorited) return false;
+
+      if (
+        filter.taggingStatus &&
+        filter.taggingStatus !== "all" &&
+        (u.taggingStatus ?? "NONE") !== filter.taggingStatus
+      ) {
+        return false;
+      }
+
+      if (filter.metadataState === "missing" && !urlHasMissingMetadata(u)) {
+        return false;
+      }
+
+      if (filter.metadataState === "complete" && urlHasMissingMetadata(u)) {
+        return false;
+      }
+
       if (filter.query) {
         const q = filter.query.toLowerCase();
         const hay = `${u.title} ${u.url} ${u.description ?? ""}`.toLowerCase();
@@ -460,13 +549,35 @@ const SavedUrlsPage: React.FC = () => {
     );
   }, [filteredByForm, selectedCollectionId]);
 
+  const queueFiltered = useMemo(() => {
+    const nowMs = Date.now();
+
+    return filteredByCollection.filter((u) => {
+      if (activeQueueId === "all") return true;
+      if (activeQueueId === "never-captured") return isSnapshotMissing(u);
+      if (activeQueueId === "stale-capture") {
+        return !isSnapshotMissing(u) && isSnapshotStale(u, nowMs);
+      }
+      if (activeQueueId === "ai-failed") {
+        return (u.taggingStatus ?? "NONE") === "FAILED";
+      }
+      if (activeQueueId === "metadata-missing") {
+        return urlHasMissingMetadata(u);
+      }
+      if (activeQueueId === "updated-since-review") {
+        return isUpdatedSinceReview(u.updatedAt, reviewedAtById[u.id]);
+      }
+      return true;
+    });
+  }, [filteredByCollection, activeQueueId, reviewedAtById]);
+
   // Year filter + sort
   const yearFiltered = useMemo(() => {
-    if (year === "all") return filteredByCollection;
-    return filteredByCollection.filter(
+    if (year === "all") return queueFiltered;
+    return queueFiltered.filter(
       (u) => String(new Date(u.createdAt).getFullYear()) === year,
     );
-  }, [filteredByCollection, year]);
+  }, [queueFiltered, year]);
 
   const sorted = useMemo(() => {
     const dir = sortOrder === "asc" ? 1 : -1;
@@ -482,6 +593,87 @@ const SavedUrlsPage: React.FC = () => {
     });
     return arr;
   }, [yearFiltered, sortKey, sortOrder]);
+
+  const reviewQueues = useMemo(() => {
+    const nowMs = Date.now();
+    const base = filteredByCollection;
+
+    return [
+      {
+        id: "all" as SavedUrlQueueId,
+        label: "All",
+        count: base.length,
+        help: "Everything in the current scope",
+      },
+      {
+        id: "never-captured" as SavedUrlQueueId,
+        label: "Never captured",
+        count: base.filter((u) => isSnapshotMissing(u)).length,
+        help: "No snapshot stored yet",
+      },
+      {
+        id: "stale-capture" as SavedUrlQueueId,
+        label: "Stale capture",
+        count: base.filter(
+          (u) => !isSnapshotMissing(u) && isSnapshotStale(u, nowMs),
+        ).length,
+        help: `Snapshot older than ${SNAPSHOT_STALE_DAYS} days`,
+      },
+      {
+        id: "ai-failed" as SavedUrlQueueId,
+        label: "AI failed",
+        count: base.filter((u) => (u.taggingStatus ?? "NONE") === "FAILED")
+          .length,
+        help: "Background AI tagging failed",
+      },
+      {
+        id: "metadata-missing" as SavedUrlQueueId,
+        label: "Metadata missing",
+        count: base.filter((u) => urlHasMissingMetadata(u)).length,
+        help: "Missing published date, authors, or tags",
+      },
+      {
+        id: "updated-since-review" as SavedUrlQueueId,
+        label: "Updated since review",
+        count: base.filter((u) =>
+          isUpdatedSinceReview(u.updatedAt, reviewedAtById[u.id]),
+        ).length,
+        help: "New or changed since the last review pass",
+      },
+    ];
+  }, [filteredByCollection, reviewedAtById]);
+
+  const activeSavedSearch = useMemo(
+    () => savedSearches.find((s) => s.id === activeSavedSearchId) ?? null,
+    [savedSearches, activeSavedSearchId],
+  );
+
+  const currentSavedSearchSignature = useMemo(
+    () =>
+      JSON.stringify({
+        filter,
+        sortKey,
+        sortOrder,
+        year,
+        selectedCollectionId: selectedCollectionId ?? null,
+        queueId: activeQueueId,
+      }),
+    [filter, sortKey, sortOrder, year, selectedCollectionId, activeQueueId],
+  );
+
+  const activeSavedSearchDirty = useMemo(() => {
+    if (!activeSavedSearch) return false;
+    return (
+      JSON.stringify({
+        filter: activeSavedSearch.filter,
+        sortKey: activeSavedSearch.sortKey,
+        sortOrder: activeSavedSearch.sortOrder,
+        year: activeSavedSearch.year,
+        selectedCollectionId: activeSavedSearch.selectedCollectionId ?? null,
+        queueId: activeSavedSearch.queueId,
+      }) !== currentSavedSearchSignature
+    );
+  }, [activeSavedSearch, currentSavedSearchSignature]);
 
   // Selection helpers
   const toggleSelect = useCallback((id: string) => {
@@ -503,6 +695,88 @@ const SavedUrlsPage: React.FC = () => {
     [sorted],
   );
   const clearSelection = useCallback(() => setSelection(new Set()), []);
+
+  const markVisibleReviewed = useCallback(() => {
+    if (!sorted.length) return;
+    setReviewedAtById((prev) =>
+      markReviewedEntries(
+        prev,
+        sorted.map((u) => u.id),
+      ),
+    );
+  }, [sorted]);
+
+  const applySavedSearch = useCallback(
+    (preset: SavedUrlSearchPreset) => {
+      setFilter({ ...preset.filter });
+      setSortKey(preset.sortKey);
+      setSortOrder(preset.sortOrder);
+      setYear(preset.year);
+      setSelectedCollectionId(preset.selectedCollectionId);
+      setActiveQueueId(preset.queueId);
+      setActiveSavedSearchId(preset.id);
+      clearSelection();
+    },
+    [clearSelection],
+  );
+
+  const saveCurrentSearch = useCallback(() => {
+    const suggestedName =
+      activeSavedSearch && !activeSavedSearchDirty
+        ? activeSavedSearch.name
+        : "";
+
+    const raw = window.prompt(
+      "Save current Saved URLs search as",
+      suggestedName,
+    );
+    const name = raw?.trim();
+    if (!name) return;
+
+    const existing = savedSearches.find(
+      (preset) => preset.name.toLowerCase() === name.toLowerCase(),
+    );
+
+    const nextPreset: SavedUrlSearchPreset = {
+      id: existing?.id ?? `saved-url-search-${Date.now()}`,
+      name,
+      filter: { ...filter },
+      sortKey,
+      sortOrder,
+      year,
+      selectedCollectionId,
+      queueId: activeQueueId,
+    };
+
+    setSavedSearches((prev) => {
+      if (existing) {
+        return prev.map((preset) =>
+          preset.id === existing.id ? nextPreset : preset,
+        );
+      }
+      return [nextPreset, ...prev].slice(0, 10);
+    });
+
+    setActiveSavedSearchId(nextPreset.id);
+  }, [
+    activeSavedSearch,
+    activeSavedSearchDirty,
+    savedSearches,
+    filter,
+    sortKey,
+    sortOrder,
+    year,
+    selectedCollectionId,
+    activeQueueId,
+  ]);
+
+  const deleteActiveSavedSearch = useCallback(() => {
+    if (!activeSavedSearch) return;
+    setSavedSearches((prev) =>
+      prev.filter((preset) => preset.id !== activeSavedSearch.id),
+    );
+    setActiveSavedSearchId(null);
+  }, [activeSavedSearch]);
 
   const allVisibleSelected =
     sorted.length > 0 && sorted.every((u) => selection.has(u.id));
@@ -598,7 +872,7 @@ const SavedUrlsPage: React.FC = () => {
                 prev.map((x) => (x.id === u.id ? { ...x, tags: merged } : x)),
               );
 
-              // NEW: replace optimistic tags with server truth (backend merge + meta)
+              // replace optimistic tags with server truth (backend merge + meta)
               try {
                 const freshRow = await getUrlById(idNum);
                 setUrls((prev) =>
@@ -999,6 +1273,123 @@ const SavedUrlsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <div className="fm-panel p-4 sm:p-5 space-y-4">
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+          <div>
+            <p className="page-header-kicker">Review operations</p>
+            <h2 className="text-lg font-semibold text-neutral-950 dark:text-neutral-100">
+              Review queues & saved searches
+            </h2>
+            <p className="text-sm text-neutral-600 dark:text-neutral-300 mt-1">
+              Jump straight into stale captures, failed AI jobs, metadata gaps,
+              or anything updated since the last review pass.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="page-header-pill">
+              <span className="page-header-pill-label">State</span>
+              <span className="page-header-pill-value">
+                {activeSavedSearch
+                  ? activeSavedSearchDirty
+                    ? `Edited from ${activeSavedSearch.name}`
+                    : activeSavedSearch.name
+                  : "Ad hoc"}
+              </span>
+            </span>
+
+            <button
+              type="button"
+              className="btn-outline px-3 py-2 rounded-lg"
+              onClick={markVisibleReviewed}
+              disabled={sorted.length === 0}
+              title="Mark every visible result as reviewed right now"
+            >
+              Mark visible reviewed
+            </button>
+
+            <button
+              type="button"
+              className="btn-primary px-3 py-2 rounded-lg"
+              onClick={saveCurrentSearch}
+              title="Save the current filter, sort, collection, and queue state"
+            >
+              Save current search
+            </button>
+
+            {activeSavedSearch && (
+              <button
+                type="button"
+                className="btn-ghost px-3 py-2 rounded-lg"
+                onClick={deleteActiveSavedSearch}
+                title="Delete the active saved search"
+              >
+                Delete saved search
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {reviewQueues.map((queue) => {
+            const active = activeQueueId === queue.id;
+            return (
+              <button
+                key={queue.id}
+                type="button"
+                onClick={() => setActiveQueueId(queue.id)}
+                title={queue.help}
+                className={[
+                  "rounded-xl border px-3 py-2 text-left transition min-w-[180px]",
+                  active
+                    ? "border-brand-primary bg-brand-primary/10 text-brand-primary shadow-sm"
+                    : "border-black/10 dark:border-white/10 hover:bg-neutral-50 dark:hover:bg-neutral-900/60",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">{queue.label}</span>
+                  <span className="chip chip-slate">{queue.count}</span>
+                </div>
+                <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                  {queue.help}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {savedSearches.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+              Saved searches
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {savedSearches.map((preset) => {
+                const active =
+                  activeSavedSearchId === preset.id && !activeSavedSearchDirty;
+
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applySavedSearch(preset)}
+                    className={[
+                      "rounded-full px-3 py-2 text-sm border transition",
+                      active
+                        ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
+                        : "border-black/10 dark:border-white/10 hover:bg-neutral-50 dark:hover:bg-neutral-900/60",
+                    ].join(" ")}
+                  >
+                    {preset.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
       {bulkFailures.length > 0 && !bulkRunning && (
         <div className="fm-panel p-3 sm:p-4 border border-rose-200 bg-rose-50/60 dark:border-rose-900/40 dark:bg-rose-900/10">

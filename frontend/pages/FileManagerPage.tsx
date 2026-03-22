@@ -62,6 +62,13 @@ import FileSidebar from "../components/filemanager/FileSidebar";
 import PageTransition from "../components/motion/PageTransition";
 import { useExplorerHistory } from "../hooks/useExplorerHistory";
 import { formatBytes } from "../utils/fileHelpers";
+import {
+  loadReviewStampMap,
+  saveReviewStampMap,
+  markReviewedEntries,
+  isUpdatedSinceReview,
+  type ReviewStampMap,
+} from "../utils/reviewState";
 
 type FolderRow = {
   id: string;
@@ -91,6 +98,20 @@ type SortDir = "asc" | "desc";
 type ArchiveCaptureKind = "all" | "upload" | "web";
 type ArchiveIntegrityKind = "all" | "verified" | "hashed" | "pending";
 type ArchiveRevisionKind = "all" | "revisioned" | "base";
+type ArchiveTaggingKind =
+  | "all"
+  | "NONE"
+  | "PENDING"
+  | "RUNNING"
+  | "SUCCESS"
+  | "FAILED";
+type ArchiveMetadataKind = "all" | "missing" | "complete";
+type FileReviewQueueId =
+  | "all"
+  | "ai-failed"
+  | "metadata-missing"
+  | "hash-pending"
+  | "updated-since-review";
 
 type ArchiveFilterState = {
   captureKind: ArchiveCaptureKind;
@@ -98,6 +119,8 @@ type ArchiveFilterState = {
   integrity: ArchiveIntegrityKind;
   revision: ArchiveRevisionKind;
   sourceDomain: string;
+  taggingStatus: ArchiveTaggingKind;
+  metadataState: ArchiveMetadataKind;
 };
 
 const DEFAULT_ARCHIVE_FILTERS: ArchiveFilterState = {
@@ -106,6 +129,8 @@ const DEFAULT_ARCHIVE_FILTERS: ArchiveFilterState = {
   integrity: "all",
   revision: "all",
   sourceDomain: "",
+  taggingStatus: "all",
+  metadataState: "all",
 };
 
 type ArchiveViewSnapshot = {
@@ -114,6 +139,8 @@ type ArchiveViewSnapshot = {
   sortDir: SortDir;
   density: "cozy" | "compact";
   filters: ArchiveFilterState;
+  searchQuery?: string;
+  reviewQueueId?: FileReviewQueueId;
 };
 
 type SavedArchiveView = ArchiveViewSnapshot & {
@@ -129,6 +156,8 @@ const archiveViewSignature = (view: ArchiveViewSnapshot) =>
     sortDir: view.sortDir,
     density: view.density,
     filters: view.filters,
+    searchQuery: view.searchQuery ?? "",
+    reviewQueueId: view.reviewQueueId ?? "all",
   });
 
 const BUILTIN_ARCHIVE_VIEWS: SavedArchiveView[] = [
@@ -191,6 +220,65 @@ const BUILTIN_ARCHIVE_VIEWS: SavedArchiveView[] = [
       revision: "revisioned",
     },
   },
+  {
+    id: "ai-failed-queue",
+    name: "AI failed",
+    builtIn: true,
+    layout: "details",
+    sortKey: "date",
+    sortDir: "desc",
+    density: "compact",
+    searchQuery: "",
+    reviewQueueId: "ai-failed",
+    filters: {
+      ...DEFAULT_ARCHIVE_FILTERS,
+      taggingStatus: "FAILED",
+    },
+  },
+  {
+    id: "metadata-missing-queue",
+    name: "Metadata missing",
+    builtIn: true,
+    layout: "details",
+    sortKey: "date",
+    sortDir: "desc",
+    density: "compact",
+    searchQuery: "",
+    reviewQueueId: "metadata-missing",
+    filters: {
+      ...DEFAULT_ARCHIVE_FILTERS,
+      metadataState: "missing",
+    },
+  },
+  {
+    id: "hash-pending-queue",
+    name: "Hash pending",
+    builtIn: true,
+    layout: "details",
+    sortKey: "date",
+    sortDir: "desc",
+    density: "compact",
+    searchQuery: "",
+    reviewQueueId: "hash-pending",
+    filters: {
+      ...DEFAULT_ARCHIVE_FILTERS,
+      integrity: "pending",
+    },
+  },
+  {
+    id: "updated-since-review-queue",
+    name: "Updated since review",
+    builtIn: true,
+    layout: "details",
+    sortKey: "date",
+    sortDir: "desc",
+    density: "compact",
+    searchQuery: "",
+    reviewQueueId: "updated-since-review",
+    filters: {
+      ...DEFAULT_ARCHIVE_FILTERS,
+    },
+  },
 ];
 
 const ToolbarButton: React.FC<
@@ -242,6 +330,12 @@ const Modal: React.FC<{
   );
 };
 
+function fileHasMissingMetadata(file: FileItem) {
+  return (
+    !file.sourcePublishedAt || !file.sourceAuthors?.length || !file.tags?.length
+  );
+}
+
 export default function FileManagerPage() {
   const { notify } = useToast();
 
@@ -290,18 +384,32 @@ export default function FileManagerPage() {
     DEFAULT_ARCHIVE_FILTERS,
   );
 
+  const [activeReviewQueueId, setActiveReviewQueueId] =
+    useState<FileReviewQueueId>("all");
+
+  const [reviewedAtById, setReviewedAtById] = useState<ReviewStampMap>(() =>
+    loadReviewStampMap("fm:reviewed-at"),
+  );
+
+  useEffect(() => {
+    saveReviewStampMap("fm:reviewed-at", reviewedAtById);
+  }, [reviewedAtById]);
+
   const activeArchiveFilterCount = useMemo(
     () =>
       Number(archiveFilters.captureKind !== "all") +
       Number(archiveFilters.visibility !== "all") +
       Number(archiveFilters.integrity !== "all") +
       Number(archiveFilters.revision !== "all") +
-      Number(archiveFilters.sourceDomain.trim().length > 0),
+      Number(archiveFilters.sourceDomain.trim().length > 0) +
+      Number(archiveFilters.taggingStatus !== "all") +
+      Number(archiveFilters.metadataState !== "all"),
     [archiveFilters],
   );
 
   const clearArchiveFilters = useCallback(() => {
     setArchiveFilters(DEFAULT_ARCHIVE_FILTERS);
+    setActiveReviewQueueId("all");
     setPage(1);
   }, []);
 
@@ -335,8 +443,18 @@ export default function FileManagerPage() {
       sortDir,
       density,
       filters: archiveFilters,
+      searchQuery,
+      reviewQueueId: activeReviewQueueId,
     }),
-    [layout, sortKey, sortDir, density, archiveFilters],
+    [
+      layout,
+      sortKey,
+      sortDir,
+      density,
+      archiveFilters,
+      searchQuery,
+      activeReviewQueueId,
+    ],
   );
 
   const activeArchiveViewIsDirty = useMemo(
@@ -347,6 +465,8 @@ export default function FileManagerPage() {
   );
 
   const applyArchiveView = useCallback((view: SavedArchiveView) => {
+    const nextQuery = view.searchQuery ?? "";
+
     setViewMode("drive");
     setVirtualZip(null);
     setLayout(view.layout);
@@ -354,8 +474,9 @@ export default function FileManagerPage() {
     setSortDir(view.sortDir);
     setDensity(view.density);
     setArchiveFilters({ ...view.filters });
-    setSearch("");
-    setSearchQuery("");
+    setSearch(nextQuery);
+    setSearchQuery(nextQuery);
+    setActiveReviewQueueId(view.reviewQueueId ?? "all");
     setPage(1);
     setSelected([]);
     setEmptyBgMenu(null);
@@ -384,6 +505,8 @@ export default function FileManagerPage() {
       sortDir,
       density,
       filters: { ...archiveFilters },
+      searchQuery: search.trim(),
+      reviewQueueId: activeReviewQueueId,
     };
 
     setSavedArchiveViews((prev) => {
@@ -403,6 +526,8 @@ export default function FileManagerPage() {
     sortDir,
     density,
     archiveFilters,
+    search,
+    activeReviewQueueId,
     notify,
   ]);
 
@@ -614,8 +739,13 @@ export default function FileManagerPage() {
     return () => document.body.classList.remove("dragging");
   }, [isDragging]);
 
-  // derived files based on header search
-  const visibleFiles = allFiles;
+  // derived files based on active review queue
+  const visibleFiles = useMemo(() => {
+    if (activeReviewQueueId !== "updated-since-review") return allFiles;
+    return allFiles.filter((file) =>
+      isUpdatedSinceReview(file.uploadDate, reviewedAtById[file.id]),
+    );
+  }, [allFiles, activeReviewQueueId, reviewedAtById]);
 
   const activeLocationLabel = useMemo(() => {
     if (viewMode === "trash") return "Trash";
@@ -727,16 +857,16 @@ export default function FileManagerPage() {
 
   // ---- Select-all helper (shim) ----
   const handleSelectAll = () => {
-    if (selected.length === allFiles.length && allFiles.length > 0) {
+    if (selected.length === visibleFiles.length && visibleFiles.length > 0) {
       handleSelectionChangeByIds([]); // clear
     } else {
-      handleSelectionChangeByIds(allFiles.map((f) => f.id)); // select all
+      handleSelectionChangeByIds(visibleFiles.map((f) => f.id)); // select all visible
     }
   };
 
   const handleSelectionChangeByIds = (ids?: string[]) => {
     const set = new Set(ids ?? []);
-    setSelected(allFiles.filter((f) => set.has(f.id)));
+    setSelected(visibleFiles.filter((f) => set.has(f.id)));
   };
 
   const patchFileEverywhere = useCallback(
@@ -1067,6 +1197,14 @@ export default function FileManagerPage() {
       if (archiveFilters.sourceDomain.trim()) {
         params.set("sourceDomain", archiveFilters.sourceDomain.trim());
       }
+
+      if (archiveFilters.taggingStatus !== "all") {
+        params.set("taggingStatus", archiveFilters.taggingStatus);
+      }
+
+      if (archiveFilters.metadataState !== "all") {
+        params.set("metadataState", archiveFilters.metadataState);
+      }
     }
 
     (async () => {
@@ -1248,6 +1386,7 @@ export default function FileManagerPage() {
     archiveFilters,
     refreshToken,
     virtualZip,
+    archiveFilters,
   ]);
 
   // ------- Storage usage (sidebar) -------
@@ -1269,6 +1408,59 @@ export default function FileManagerPage() {
       cancelled = true;
     };
   }, [refreshToken, totalBytes]);
+
+  const reviewQueueCounts = useMemo(
+    () => ({
+      all: allFiles.length,
+      "ai-failed": allFiles.filter(
+        (file) => (file.taggingStatus ?? "NONE") === "FAILED",
+      ).length,
+      "metadata-missing": allFiles.filter((file) =>
+        fileHasMissingMetadata(file),
+      ).length,
+      "hash-pending": allFiles.filter(
+        (file) => !file.sha256 && !file.contentHash,
+      ).length,
+      "updated-since-review": allFiles.filter((file) =>
+        isUpdatedSinceReview(file.uploadDate, reviewedAtById[file.id]),
+      ).length,
+    }),
+    [allFiles, reviewedAtById],
+  );
+
+  const reviewQueueViews = useMemo(
+    () => ({
+      all:
+        BUILTIN_ARCHIVE_VIEWS.find((view) => view.id === "all-evidence") ??
+        BUILTIN_ARCHIVE_VIEWS[0],
+      "ai-failed":
+        BUILTIN_ARCHIVE_VIEWS.find((view) => view.id === "ai-failed-queue") ??
+        BUILTIN_ARCHIVE_VIEWS[0],
+      "metadata-missing":
+        BUILTIN_ARCHIVE_VIEWS.find(
+          (view) => view.id === "metadata-missing-queue",
+        ) ?? BUILTIN_ARCHIVE_VIEWS[0],
+      "hash-pending":
+        BUILTIN_ARCHIVE_VIEWS.find(
+          (view) => view.id === "hash-pending-queue",
+        ) ?? BUILTIN_ARCHIVE_VIEWS[0],
+      "updated-since-review":
+        BUILTIN_ARCHIVE_VIEWS.find(
+          (view) => view.id === "updated-since-review-queue",
+        ) ?? BUILTIN_ARCHIVE_VIEWS[0],
+    }),
+    [],
+  );
+
+  const markVisibleFilesReviewed = useCallback(() => {
+    if (!visibleFiles.length) return;
+    setReviewedAtById((prev) =>
+      markReviewedEntries(
+        prev,
+        visibleFiles.map((file) => file.id),
+      ),
+    );
+  }, [visibleFiles]);
 
   // ------- Actions -------
   const handleOpenPreview = useCallback((f: any) => {
@@ -3199,6 +3391,136 @@ export default function FileManagerPage() {
                           }}
                         />
                       </label>
+
+                      <label className="fm-filter-field">
+                        <span>AI tagging</span>
+                        <select
+                          className="fm-filter-select"
+                          value={archiveFilters.taggingStatus}
+                          onChange={(e) => {
+                            setArchiveFilters((prev) => ({
+                              ...prev,
+                              taggingStatus: e.target
+                                .value as ArchiveTaggingKind,
+                            }));
+                            setPage(1);
+                          }}
+                        >
+                          <option value="all">All tagging states</option>
+                          <option value="NONE">Not started</option>
+                          <option value="PENDING">Queued</option>
+                          <option value="RUNNING">Running</option>
+                          <option value="SUCCESS">Succeeded</option>
+                          <option value="FAILED">Failed</option>
+                        </select>
+                      </label>
+
+                      <label className="fm-filter-field">
+                        <span>Metadata</span>
+                        <select
+                          className="fm-filter-select"
+                          value={archiveFilters.metadataState}
+                          onChange={(e) => {
+                            setArchiveFilters((prev) => ({
+                              ...prev,
+                              metadataState: e.target
+                                .value as ArchiveMetadataKind,
+                            }));
+                            setPage(1);
+                          }}
+                        >
+                          <option value="all">All metadata</option>
+                          <option value="missing">Missing key metadata</option>
+                          <option value="complete">Metadata complete</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {!virtualZip && viewMode === "drive" && (
+                  <div className="fm-view-presets">
+                    <div className="fm-view-presets__head">
+                      <div>
+                        <div className="fm-view-presets__eyebrow">
+                          Review queues
+                        </div>
+                        <div className="fm-view-presets__title">
+                          Jump directly into operational queues for failed AI
+                          jobs, missing metadata, hash gaps, and files updated
+                          after your last review pass.
+                        </div>
+                      </div>
+
+                      <div className="fm-view-presets__actions">
+                        <span className="fm-view-presets__status">
+                          Current queue:{" "}
+                          {activeReviewQueueId === "all"
+                            ? "All archive"
+                            : activeReviewQueueId.replace(/-/g, " ")}
+                        </span>
+
+                        <button
+                          type="button"
+                          className="fm-view-presets__btn fm-view-presets__btn--primary"
+                          onClick={markVisibleFilesReviewed}
+                          disabled={visibleFiles.length === 0}
+                        >
+                          Mark visible reviewed
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="fm-view-presets__row">
+                      {(
+                        [
+                          {
+                            id: "all" as FileReviewQueueId,
+                            label: "All archive",
+                            count: reviewQueueCounts.all,
+                          },
+                          {
+                            id: "ai-failed" as FileReviewQueueId,
+                            label: "AI failed",
+                            count: reviewQueueCounts["ai-failed"],
+                          },
+                          {
+                            id: "metadata-missing" as FileReviewQueueId,
+                            label: "Metadata missing",
+                            count: reviewQueueCounts["metadata-missing"],
+                          },
+                          {
+                            id: "hash-pending" as FileReviewQueueId,
+                            label: "Hash pending",
+                            count: reviewQueueCounts["hash-pending"],
+                          },
+                          {
+                            id: "updated-since-review" as FileReviewQueueId,
+                            label: "Updated since review",
+                            count: reviewQueueCounts["updated-since-review"],
+                          },
+                        ] as const
+                      ).map((queue) => (
+                        <button
+                          key={queue.id}
+                          type="button"
+                          className="fm-view-preset"
+                          data-active={
+                            activeReviewQueueId === queue.id ? "true" : "false"
+                          }
+                          data-kind="builtin"
+                          onClick={() =>
+                            applyArchiveView(reviewQueueViews[queue.id])
+                          }
+                        >
+                          <span className="fm-view-preset__name">
+                            {queue.label}
+                          </span>
+                          <span className="fm-view-preset__meta">
+                            {queue.count} in current scope
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}

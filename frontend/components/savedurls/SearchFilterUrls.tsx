@@ -9,6 +9,8 @@ export interface UrlFilterState {
   dateTo?: string;
   favoritesOnly: boolean;
   snapshotStatus?: "all" | "missing" | "stale" | "fresh";
+  taggingStatus?: "all" | "NONE" | "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+  metadataState?: "all" | "missing" | "complete";
 }
 
 interface SearchFilterUrlsProps {
@@ -19,6 +21,28 @@ interface SearchFilterUrlsProps {
   isLoading?: boolean;
 }
 
+const buildFilterState = (
+  initial: Partial<UrlFilterState> = {},
+): UrlFilterState => ({
+  query: initial.query || "",
+  domains: initial.domains || [],
+  tags: initial.tags || [],
+  visibility: initial.visibility || "all",
+  dateFrom: initial.dateFrom,
+  dateTo: initial.dateTo,
+  favoritesOnly: initial.favoritesOnly || false,
+  snapshotStatus: initial.snapshotStatus || "all",
+  taggingStatus: initial.taggingStatus || "all",
+  metadataState: initial.metadataState || "all",
+});
+
+const filterStateSignature = (state: UrlFilterState) =>
+  JSON.stringify({
+    ...state,
+    domains: [...(state.domains || [])].sort(),
+    tags: [...(state.tags || [])].sort(),
+  });
+
 const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   availableDomains,
   availableTags,
@@ -26,20 +50,16 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   onChange,
   isLoading = false,
 }) => {
-  const [state, setState] = useState<UrlFilterState>({
-    query: initial.query || "",
-    domains: initial.domains || [],
-    tags: initial.tags || [],
-    visibility: initial.visibility || "all",
-    dateFrom: initial.dateFrom,
-    dateTo: initial.dateTo,
-    favoritesOnly: initial.favoritesOnly || false,
-    snapshotStatus: (initial as any).snapshotStatus || "all",
-  });
+  const [state, setState] = useState<UrlFilterState>(() =>
+    buildFilterState(initial),
+  );
 
   useEffect(() => {
-    onChange(state);
-  }, [state, onChange]);
+    const next = buildFilterState(initial);
+    if (filterStateSignature(next) !== filterStateSignature(state)) {
+      setState(next);
+    }
+  }, [initial, state]);
 
   const toggleDomain = (d: string) =>
     setState((s) => ({
@@ -200,6 +220,47 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
                 <option value="missing">Missing</option>
                 <option value="stale">Stale</option>
                 <option value="fresh">Has snapshot</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs mb-1">AI tagging</label>
+              <select
+                value={state.taggingStatus || "all"}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    taggingStatus: e.target
+                      .value as UrlFilterState["taggingStatus"],
+                  }))
+                }
+                className="input w-full rounded-lg px-3 py-2"
+              >
+                <option value="all">All statuses</option>
+                <option value="NONE">Not started</option>
+                <option value="PENDING">Queued</option>
+                <option value="RUNNING">Running</option>
+                <option value="SUCCESS">Succeeded</option>
+                <option value="FAILED">Failed</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs mb-1">Metadata</label>
+              <select
+                value={state.metadataState || "all"}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    metadataState: e.target
+                      .value as UrlFilterState["metadataState"],
+                  }))
+                }
+                className="input w-full rounded-lg px-3 py-2"
+              >
+                <option value="all">All metadata</option>
+                <option value="missing">Missing key metadata</option>
+                <option value="complete">Metadata complete</option>
               </select>
             </div>
 
