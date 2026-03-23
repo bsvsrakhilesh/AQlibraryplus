@@ -742,6 +742,7 @@ export async function crawlSaveText(
   folderId?: string,
   fileName?: string,
   urlId?: number,
+  accessMode: "public" | "institutional" = "public",
 ) {
   try {
     const res = await api.post("/api/crawl/text", {
@@ -749,6 +750,7 @@ export async function crawlSaveText(
       folderId,
       fileName,
       urlId,
+      accessMode,
     });
 
     return toFileItem(res.data as BackendStoredFile);
@@ -764,6 +766,7 @@ export async function crawlSavePdf(
   fullPage?: boolean,
   reader?: boolean,
   urlId?: number,
+  accessMode: "public" | "institutional" = "public",
 ) {
   try {
     const res = await api.post("/api/crawl/pdf", {
@@ -773,6 +776,7 @@ export async function crawlSavePdf(
       fullPage,
       reader,
       urlId,
+      accessMode,
     });
 
     return toFileItem(res.data as BackendStoredFile);

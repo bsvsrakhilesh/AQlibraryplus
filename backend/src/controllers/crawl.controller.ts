@@ -17,6 +17,7 @@ import robotsParser from "robots-parser";
 import { log, requestMeta } from "../utils/logger";
 import { setReadableContentOnPage, hardenLivePage } from "../utils/reader";
 import { probeUrlKind } from "../services/urlProbe.service";
+import { captureViaInstitutionalNode } from "../services/institutionalCapture.service";
 
 function isPrivateIp(ip: string) {
   const a = ipaddr.parse(ip);
@@ -196,7 +197,8 @@ type CaptureMeta = {
     | "direct_fetch"
     | "dom_candidate_fetch"
     | "puppeteer_intercept"
-    | "page_print";
+    | "page_print"
+    | "institutional_node";
   capturedUrl?: string;
   contentType?: string | null;
   contentDisposition?: string | null;
@@ -511,6 +513,49 @@ function mergeTags(a?: string[] | null, b?: string[] | null): string[] {
   return out;
 }
 
+async function finalizeCapturedFile(
+  fileRec: any,
+  urlId: number | string | null | undefined,
+  req: Request,
+  res: Response,
+) {
+  if (urlId !== undefined && urlId !== null) {
+    const idNum = typeof urlId === "string" ? parseInt(urlId, 10) : urlId;
+    if (!Number.isNaN(idNum)) {
+      try {
+        const src = await prisma.url.findUnique({
+          where: { id: idNum as number },
+          select: { tags: true },
+        });
+
+        if (src?.tags?.length) {
+          const merged = mergeTags(fileRec.tags, src.tags);
+          await prisma.storedFile.update({
+            where: { id: fileRec.id },
+            data: { tags: merged },
+          });
+        }
+      } catch (e) {
+        log.error("finalizeCapturedFile_copy_tags_failed", {
+          ...requestMeta(req),
+          fileId: fileRec.id,
+          urlId,
+          error: String((e as any)?.message || e),
+        });
+      }
+    }
+  }
+
+  scheduleAiTagForFile(String(fileRec.id));
+
+  const latest = await prisma.storedFile.findUnique({
+    where: { id: fileRec.id },
+  });
+
+  if (res.headersSent || (req as any).timedout) return;
+  return res.status(201).json(latest ?? fileRec);
+}
+
 // ===================== Controllers =====================
 
 /**
@@ -526,7 +571,13 @@ export async function crawlTextHandler(
   next: NextFunction,
 ) {
   try {
-    const { url, folderId, fileName, urlId } = req.body || {};
+    const {
+      url,
+      folderId,
+      fileName,
+      urlId,
+      accessMode = "public",
+    } = req.body || {};
     if (!url || typeof url !== "string") {
       return res.status(400).json({ message: "Body must include { url }" });
     }
@@ -544,6 +595,60 @@ export async function crawlTextHandler(
     }
 
     await resolveAndGuard(__u.hostname);
+
+    if (accessMode === "institutional") {
+      log.info("crawlTextHandler_institutional_begin", {
+        ...requestMeta(req),
+        url,
+      });
+
+      const captured = await captureViaInstitutionalNode({
+        mode: "text",
+        url: __u.toString(),
+        fileName: typeof fileName === "string" ? fileName : null,
+        requestId: (req as any).requestId ?? null,
+      });
+
+      const noteBits = [
+        captured.provider ? `provider=${captured.provider}` : null,
+        captured.nodeName ? `node=${captured.nodeName}` : null,
+        captured.note || null,
+      ].filter(Boolean);
+
+      const resolvedName =
+        (typeof fileName === "string" && fileName.trim()) ||
+        captured.fileName ||
+        `${__u.hostname.replace(/^www\./, "")}.txt`;
+
+      const finalName = sanitizeName(
+        resolvedName.toLowerCase().endsWith(".txt")
+          ? resolvedName
+          : `${resolvedName}.txt`,
+      );
+
+      const fileRec = await persistFile(
+        captured.buffer,
+        finalName,
+        `Institutional text capture from ${url}`,
+        folderId || null,
+        {
+          captureType: "URL_TEXT",
+          sourceUrl: captured.finalUrl || url,
+          urlId: typeof urlId === "number" ? urlId : null,
+          requestId: (req as any).requestId ?? null,
+          captureMeta: {
+            method: "institutional_node",
+            capturedUrl: captured.finalUrl || url,
+            contentType: captured.mimeType,
+            bytes: captured.buffer.byteLength,
+            notes: noteBits.join(" • "),
+          },
+        },
+      );
+
+      return finalizeCapturedFile(fileRec, urlId, req, res);
+    }
+
     const __allowed = await isRobotsAllowed(__u.toString());
     if (!__allowed) {
       return res.status(403).json({ message: "Blocked by robots.txt" });
@@ -753,7 +858,14 @@ export async function crawlPdfHandler(
   next: NextFunction,
 ) {
   try {
-    const { url, folderId, fileName, fullPage = true, urlId } = req.body || {};
+    const {
+      url,
+      folderId,
+      fileName,
+      fullPage = true,
+      urlId,
+      accessMode = "public",
+    } = req.body || {};
     if (!url || typeof url !== "string") {
       return res.status(400).json({ message: "Body must include { url }" });
     }
@@ -771,6 +883,60 @@ export async function crawlPdfHandler(
     }
 
     await resolveAndGuard(__u.hostname);
+
+    if (accessMode === "institutional") {
+      log.info("crawlPdfHandler_institutional_begin", {
+        ...requestMeta(req),
+        url,
+      });
+
+      const captured = await captureViaInstitutionalNode({
+        mode: "pdf",
+        url: __u.toString(),
+        fileName: typeof fileName === "string" ? fileName : null,
+        requestId: (req as any).requestId ?? null,
+      });
+
+      const noteBits = [
+        captured.provider ? `provider=${captured.provider}` : null,
+        captured.nodeName ? `node=${captured.nodeName}` : null,
+        captured.note || null,
+      ].filter(Boolean);
+
+      const resolvedName =
+        (typeof fileName === "string" && fileName.trim()) ||
+        captured.fileName ||
+        derivePdfNameFromUrl(__u);
+
+      const finalName = sanitizeName(
+        resolvedName.toLowerCase().endsWith(".pdf")
+          ? resolvedName
+          : `${resolvedName}.pdf`,
+      );
+
+      const fileRec = await persistFile(
+        captured.buffer,
+        finalName,
+        `Institutional PDF capture from ${url}`,
+        folderId || null,
+        {
+          captureType: "URL_PDF",
+          sourceUrl: captured.finalUrl || url,
+          urlId: typeof urlId === "number" ? urlId : null,
+          requestId: (req as any).requestId ?? null,
+          captureMeta: {
+            method: "institutional_node",
+            capturedUrl: captured.finalUrl || url,
+            contentType: captured.mimeType || "application/pdf",
+            bytes: captured.buffer.byteLength,
+            notes: noteBits.join(" • "),
+          },
+        },
+      );
+
+      return finalizeCapturedFile(fileRec, urlId, req, res);
+    }
+
     const __allowed = await isRobotsAllowed(__u.toString());
     if (!__allowed) {
       return res.status(403).json({ message: "Blocked by robots.txt" });

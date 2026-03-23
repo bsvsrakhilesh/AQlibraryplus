@@ -816,9 +816,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     folderId?: string | null;
     fileName: string;
     mode: "text" | "pdf";
+    accessMode?: "public" | "institutional";
   }) => {
     setPickerOpen(false);
-    const { folderId, fileName, mode } = opts;
+    const { folderId, fileName, mode, accessMode = "public" } = opts;
     const url = pickerTarget.url;
     const title = pickerTarget.title;
 
@@ -830,7 +831,13 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
       // 2) Capture with urlId (strong linkage URL → snapshot)
       const saved =
         mode === "text"
-          ? await crawlSaveText(url, folderId ?? undefined, fileName, urlId)
+          ? await crawlSaveText(
+              url,
+              folderId ?? undefined,
+              fileName,
+              urlId,
+              accessMode,
+            )
           : await crawlSavePdf(
               url,
               folderId ?? undefined,
@@ -838,6 +845,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
               true,
               true,
               urlId,
+              accessMode,
             );
 
       const method = saved?.captureMeta?.method
@@ -848,7 +856,12 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
         : "";
       const msg = `Captured ${method}${src}`.replace(/\s+/g, " ").trim();
 
-      pushNotice("success", msg || "Captured and saved successfully.");
+      pushNotice(
+        "success",
+        `${msg || "Captured and saved successfully."}${
+          accessMode === "institutional" ? " Routed via IIT session." : ""
+        }`,
+      );
     } catch (e: any) {
       console.error(e);
       const msg = e?.message ?? "Unknown error";
@@ -1554,6 +1567,8 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           pickerMode,
         )}
         mode={pickerMode}
+        showInstitutionalToggle={true}
+        defaultAccessMode="public"
         onCancel={() => setPickerOpen(false)}
         onConfirm={onConfirmCapture}
       />

@@ -51,6 +51,8 @@ export interface FileUploader {
 
 export type Visibility = "public" | "private";
 
+export type CaptureAccessMode = "public" | "institutional";
+
 export type TaggingStatus =
   | "NONE"
   | "PENDING"
@@ -83,7 +85,8 @@ export interface FileItem {
       | "direct_fetch"
       | "dom_candidate_fetch"
       | "puppeteer_intercept"
-      | "page_print";
+      | "page_print"
+      | "institutional_node";
     capturedUrl?: string;
     contentType?: string | null;
     contentDisposition?: string | null;

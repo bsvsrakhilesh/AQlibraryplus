@@ -31,6 +31,15 @@ const EnvSchema = z.object({
 
   // Retrieval tuning (pgvector cosine distance; lower = more similar)
   RETRIEVAL_MAX_COSINE_DISTANCE: z.coerce.number().optional().default(0.42),
+
+  // Institutional Capture Node (ICN)
+  ICN_ENABLED: BoolFromEnv,
+  ICN_BASE_URL: z
+    .string()
+    .optional()
+    .default("http://host.docker.internal:7081"),
+  ICN_SHARED_SECRET: z.string().optional(),
+  ICN_TIMEOUT_MS: z.coerce.number().optional().default(120_000),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

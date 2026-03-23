@@ -1,29 +1,53 @@
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { listFolders, createFolder, getFolder } from '../../lib/api';
-import CloseIcon from '../icons/CloseIcon';
-import { PlusButton } from '../ui/PlusButton';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
+import { listFolders, createFolder, getFolder } from "../../lib/api";
+import CloseIcon from "../icons/CloseIcon";
+import { PlusButton } from "../ui/PlusButton";
 
 type Folder = { id: string; name: string; parentId?: string | null };
-type Mode = 'text' | 'pdf';
+type Mode = "text" | "pdf";
+type CaptureAccessMode = "public" | "institutional";
 
 interface Props {
   open: boolean;
   suggestedName: string;
   mode: Mode;
+  showInstitutionalToggle?: boolean;
+  defaultAccessMode?: CaptureAccessMode;
   onCancel: () => void;
-  onConfirm: (opts: { folderId?: string | null; fileName: string; mode: Mode }) => void;
+  onConfirm: (opts: {
+    folderId?: string | null;
+    fileName: string;
+    mode: Mode;
+    accessMode?: CaptureAccessMode;
+  }) => void;
 }
 
-const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCancel, onConfirm }) => {
+const FolderPickerModal: React.FC<Props> = ({
+  open,
+  suggestedName,
+  mode,
+  showInstitutionalToggle = false,
+  defaultAccessMode = "public",
+  onCancel,
+  onConfirm,
+}) => {
   const [current, setCurrent] = useState<string | null>(null); // null = root
   const [stack, setStack] = useState<Folder[]>([]);
   const [children, setChildren] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [fileName, setFileName] = useState(suggestedName);
+  const [accessMode, setAccessMode] =
+    useState<CaptureAccessMode>(defaultAccessMode);
 
   const [creating, setCreating] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderName, setNewFolderName] = useState("");
 
   const [currentInfo, setCurrentInfo] = useState<Folder | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
@@ -38,20 +62,21 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
   useEffect(() => {
     if (!open) return;
     setFileName(suggestedName);
+    setAccessMode(defaultAccessMode);
     setCurrent(null);
     setStack([]);
     setSelectedFolderId(null);
     lastClickRef.current = null;
-  }, [open, suggestedName]);
+  }, [open, suggestedName, defaultAccessMode]);
 
   // Close on Escape (expected modal behavior)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
+      if (e.key === "Escape") onCancel();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, onCancel]);
 
   const load = useCallback(async (parentId: string | null) => {
@@ -97,7 +122,7 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
       } catch (e) {
         if (active) setCurrentInfo(null);
         // eslint-disable-next-line no-console
-        console.error('Failed to load folder info', e);
+        console.error("Failed to load folder info", e);
       } finally {
         if (active) setInfoLoading(false);
       }
@@ -145,14 +170,17 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
     setCurrent(next.length ? next[next.length - 1].id : null);
   };
 
-  const breadcrumb = useMemo(() => [{ id: '', name: 'Home' }, ...stack], [stack]);
+  const breadcrumb = useMemo(
+    () => [{ id: "", name: "Home" }, ...stack],
+    [stack],
+  );
 
   const selectedFolder = useMemo(
     () => children.find((f) => f.id === selectedFolderId) ?? null,
-    [children, selectedFolderId]
+    [children, selectedFolderId],
   );
 
-  const destinationName = selectedFolder?.name ?? currentInfo?.name ?? 'Home';
+  const destinationName = selectedFolder?.name ?? currentInfo?.name ?? "Home";
 
   const handleCreate = async () => {
     const name = newFolderName.trim();
@@ -164,7 +192,7 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
       // Enter the new folder
       setStack((s) => [...s, f]);
       setCurrent(f.id);
-      setNewFolderName('');
+      setNewFolderName("");
     } finally {
       setCreating(false);
     }
@@ -183,17 +211,24 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
       {/* Panel */}
       <div className="relative w-full max-w-3xl">
         <div className="bg-landing-gradient rounded-3xl p-[1px] shadow-2xl">
-          <div className="md3-surface overflow-hidden rounded-3xl" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="md3-surface overflow-hidden rounded-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="px-6 py-5 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="md3-chip">{mode === 'pdf' ? 'PDF' : 'TEXT'}</span>
+                  <span className="md3-chip">
+                    {mode === "pdf" ? "PDF" : "TEXT"}
+                  </span>
 
                   <span className="text-sm text-muted truncate flex items-center gap-2">
                     <span className="truncate">
-                      Saving to:{' '}
-                      <span className="font-medium text-foreground">{destinationName}</span>
+                      Saving to:{" "}
+                      <span className="font-medium text-foreground">
+                        {destinationName}
+                      </span>
                     </span>
 
                     {infoLoading && (
@@ -226,13 +261,21 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                   </span>
                 </div>
 
-                <h3 className="mt-2 text-xl font-semibold leading-snug">Choose a destination</h3>
+                <h3 className="mt-2 text-xl font-semibold leading-snug">
+                  Choose a destination
+                </h3>
                 <p className="mt-1 text-sm text-muted">
                   Click a folder to select it. Double-click to open it.
                 </p>
               </div>
 
-              <PlusButton type="button" variant="ghost" size="sm" onClick={onCancel} aria-label="Close">
+              <PlusButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onCancel}
+                aria-label="Close"
+              >
                 <CloseIcon className="h-4 w-4" />
               </PlusButton>
             </div>
@@ -253,7 +296,9 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                       onClick={() => {
                         const next = stack.slice(0, i);
                         setStack(next);
-                        setCurrent(next.length ? next[next.length - 1].id : null);
+                        setCurrent(
+                          next.length ? next[next.length - 1].id : null,
+                        );
                         setSelectedFolderId(null);
                         lastClickRef.current = null;
                       }}
@@ -261,7 +306,9 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                       {b.name}
                     </PlusButton>
 
-                    {i < breadcrumb.length - 1 && <span className="text-neutral-400 select-none">›</span>}
+                    {i < breadcrumb.length - 1 && (
+                      <span className="text-neutral-400 select-none">›</span>
+                    )}
                   </React.Fragment>
                 ))}
               </div>
@@ -272,7 +319,9 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold">Folders</div>
-                      <div className="text-xs text-muted">Tip: double-click to open (reliable)</div>
+                      <div className="text-xs text-muted">
+                        Tip: double-click to open (reliable)
+                      </div>
                     </div>
 
                     <PlusButton
@@ -295,7 +344,9 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                       {loading ? (
                         <div className="text-sm text-muted p-3">Loading…</div>
                       ) : children.length === 0 ? (
-                        <div className="text-sm text-muted p-3">No folders here.</div>
+                        <div className="text-sm text-muted p-3">
+                          No folders here.
+                        </div>
                       ) : (
                         <ul className="space-y-1">
                           {children.map((f) => {
@@ -326,15 +377,21 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                                     </svg>
 
                                     <div className="min-w-0">
-                                      <div className="truncate font-medium">{f.name}</div>
+                                      <div className="truncate font-medium">
+                                        {f.name}
+                                      </div>
                                       <div className="text-xs text-muted truncate">
-                                        {active ? "Selected as destination" : "Click to select"}
+                                        {active
+                                          ? "Selected as destination"
+                                          : "Click to select"}
                                       </div>
                                     </div>
                                   </div>
 
                                   <div className="flex items-center gap-2">
-                                    {active && <span className="md3-chip">Selected</span>}
+                                    {active && (
+                                      <span className="md3-chip">Selected</span>
+                                    )}
                                     <PlusButton
                                       type="button"
                                       variant="outline"
@@ -364,8 +421,11 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                   <div className="rounded-2xl border border-border bg-white/60 dark:bg-neutral-900/40 p-4">
                     <div className="text-sm font-semibold">Create folder</div>
                     <p className="text-xs text-muted mt-1">
-                      Create inside{' '}
-                      <span className="font-medium text-foreground">{currentInfo?.name || 'Home'}</span>.
+                      Create inside{" "}
+                      <span className="font-medium text-foreground">
+                        {currentInfo?.name || "Home"}
+                      </span>
+                      .
                     </p>
 
                     <div className="mt-3 flex gap-2">
@@ -391,10 +451,46 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                     </div>
                   </div>
 
+                  {showInstitutionalToggle && (
+                    <div className="rounded-2xl border border-border bg-white/60 dark:bg-neutral-900/40 p-4">
+                      <div className="text-sm font-semibold">Access route</div>
+                      <p className="text-xs text-muted mt-1">
+                        Use the IIT institutional session only for sources that
+                        require campus or library access.
+                      </p>
+
+                      <label className="mt-3 flex items-start gap-3 rounded-2xl border border-border px-3 py-3 cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4"
+                          checked={accessMode === "institutional"}
+                          onChange={(e) =>
+                            setAccessMode(
+                              e.target.checked ? "institutional" : "public",
+                            )
+                          }
+                        />
+
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm">
+                            Use IIT institutional session
+                          </div>
+                          <div className="text-xs text-muted mt-1">
+                            {accessMode === "institutional"
+                              ? "This capture will be routed through the institutional capture lane."
+                              : "This capture will use the normal public capture lane."}
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+
                   <div className="rounded-2xl border border-border bg-white/60 dark:bg-neutral-900/40 p-4">
                     <div className="text-sm font-semibold">File name</div>
                     <p className="text-xs text-muted mt-1">
-                      {mode === 'pdf' ? 'Saved as a PDF file.' : 'Saved as a text file.'}
+                      {mode === "pdf"
+                        ? "Saved as a PDF file."
+                        : "Saved as a text file."}
                     </p>
 
                     <div className="mt-3 bg-landing-gradient rounded-2xl p-[1px]">
@@ -402,7 +498,7 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                         className="md3-input w-full rounded-2xl"
                         value={fileName}
                         onChange={(e) => setFileName(e.target.value)}
-                        placeholder={mode === 'pdf' ? 'page.pdf' : 'page.txt'}
+                        placeholder={mode === "pdf" ? "page.pdf" : "page.txt"}
                       />
                     </div>
                   </div>
@@ -416,8 +512,10 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
             <div className="px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="text-xs text-muted flex items-center gap-2">
                 <span className="truncate">
-                  Destination:{' '}
-                  <span className="font-medium text-foreground">{destinationName}</span>
+                  Destination:{" "}
+                  <span className="font-medium text-foreground">
+                    {destinationName}
+                  </span>
                 </span>
 
                 {infoLoading && (
@@ -457,7 +555,14 @@ const FolderPickerModal: React.FC<Props> = ({ open, suggestedName, mode, onCance
                 <PlusButton
                   type="button"
                   variant="solid"
-                  onClick={() => onConfirm({ folderId: (selectedFolderId ?? current), fileName, mode })}
+                  onClick={() =>
+                    onConfirm({
+                      folderId: selectedFolderId ?? current,
+                      fileName,
+                      mode,
+                      accessMode,
+                    })
+                  }
                   disabled={!fileName.trim() || infoLoading || loading}
                 >
                   Save
