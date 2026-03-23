@@ -591,6 +591,8 @@ export default function Large_IconView({
       onDownload,
       onDelete,
       onDeleteMany,
+      onRestore,
+      onRestoreMany,
       onShowProperties,
       onRetryAiTag,
       onOpenVirtual,

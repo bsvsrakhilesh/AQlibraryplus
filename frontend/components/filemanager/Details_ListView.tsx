@@ -804,6 +804,8 @@ export default function Details_ListView({
       onPaste,
       onDelete,
       onDeleteMany,
+      onRestore,
+      onRestoreMany,
       onDownload,
       onRename,
       onPreview,

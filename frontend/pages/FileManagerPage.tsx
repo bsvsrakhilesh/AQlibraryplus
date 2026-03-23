@@ -24,6 +24,8 @@ import {
   moveFileToTrash,
   restoreFileFromTrash,
   restoreFolderFromTrash,
+  deleteFilePermanently,
+  deleteFolderPermanently,
   listTrashFiles,
   toggleFileFavorite,
   toFileItem,
@@ -1638,6 +1640,29 @@ export default function FileManagerPage() {
     }
   };
 
+  const handlePermanentDelete = async (item: FileItem) => {
+    const isFolder =
+      (item as any).mimeType === "folder" ||
+      String(item.id).startsWith("folder:");
+
+    try {
+      if (isFolder) {
+        const rawId = String(item.id).startsWith("folder:")
+          ? String(item.id).slice("folder:".length)
+          : String(item.id);
+
+        await deleteFolderPermanently(rawId);
+      } else {
+        await deleteFilePermanently(String(item.id));
+      }
+
+      notify("Deleted permanently", "success");
+      refreshAll();
+    } catch (e: any) {
+      notify(e?.message || "Permanent delete failed", "error");
+    }
+  };
+
   const handleNewFolder = async () => {
     if (virtualZip || viewMode !== "drive") {
       notify("You can only create folders in Drive.", "info");
@@ -2621,6 +2646,52 @@ export default function FileManagerPage() {
       } catch (e: any) {
         setAllFiles(backup);
         notify(e?.message || "Failed to restore some items", "error");
+      }
+    },
+    [allFiles, notify, refreshAll],
+  );
+
+  const onPermanentDeleteSelected = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      if (
+        !confirm(
+          `Permanently delete ${ids.length} selected item(s)? This cannot be undone.`,
+        )
+      )
+        return;
+
+      const backup = allFiles;
+
+      setAllFiles((prev) => prev.filter((f) => !ids.includes(f.id)));
+      setSelected([]);
+
+      try {
+        const itemsToDelete = allFiles.filter((f) => ids.includes(f.id));
+
+        await Promise.all(
+          itemsToDelete.map(async (f) => {
+            const isFolder =
+              (f as any).mimeType === "folder" ||
+              String(f.id).startsWith("folder:");
+
+            if (isFolder) {
+              const rawId = String(f.id).startsWith("folder:")
+                ? String(f.id).slice("folder:".length)
+                : String(f.id);
+
+              await deleteFolderPermanently(rawId);
+            } else {
+              await deleteFilePermanently(String(f.id));
+            }
+          }),
+        );
+
+        notify("Deleted permanently", "success");
+        refreshAll();
+      } catch (e: any) {
+        setAllFiles(backup);
+        notify(e?.message || "Failed to permanently delete some items", "error");
       }
     },
     [allFiles, notify, refreshAll],
@@ -3691,8 +3762,11 @@ export default function FileManagerPage() {
                       selected={selected}
                       onDelete={
                         viewMode === "trash"
-                          ? onRestoreSelected
+                          ? onPermanentDeleteSelected
                           : onDeleteSelected
+                      }
+                      onRestore={
+                        viewMode === "trash" ? onRestoreSelected : undefined
                       }
                       onAddTag={onAddTagSelected}
                       onFavorite={onFavoriteSelected}
@@ -3701,6 +3775,10 @@ export default function FileManagerPage() {
                       onCut={(ids) => handleCut(byIds(ids))}
                       onPaste={handlePaste}
                       canPaste={!!clipboard}
+                      deleteLabel={
+                        viewMode === "trash" ? "Delete permanently" : "Delete"
+                      }
+                      restoreLabel="Restore"
                     />
                   </motion.div>
                 )}
@@ -3962,15 +4040,25 @@ export default function FileManagerPage() {
                                 virtualZip
                                   ? undefined
                                   : viewMode === "trash"
-                                    ? handleRestore
+                                    ? handlePermanentDelete
                                     : handleDelete
                               }
                               onDeleteMany={
                                 virtualZip
                                   ? undefined
                                   : viewMode === "trash"
-                                    ? onRestoreSelected
+                                    ? onPermanentDeleteSelected
                                     : onDeleteSelected
+                              }
+                              onRestore={
+                                virtualZip || viewMode !== "trash"
+                                  ? undefined
+                                  : handleRestore
+                              }
+                              onRestoreMany={
+                                virtualZip || viewMode !== "trash"
+                                  ? undefined
+                                  : onRestoreSelected
                               }
                               onPaste={
                                 virtualZip || viewMode !== "drive"
@@ -4103,14 +4191,24 @@ export default function FileManagerPage() {
                                 onDelete: virtualZip
                                   ? undefined
                                   : viewMode === "trash"
-                                    ? handleRestore
+                                    ? handlePermanentDelete
                                     : handleDelete,
 
                                 onDeleteMany: virtualZip
                                   ? undefined
                                   : viewMode === "trash"
-                                    ? onRestoreSelected
+                                    ? onPermanentDeleteSelected
                                     : onDeleteSelected,
+
+                                onRestore:
+                                  virtualZip || viewMode !== "trash"
+                                    ? undefined
+                                    : handleRestore,
+
+                                onRestoreMany:
+                                  virtualZip || viewMode !== "trash"
+                                    ? undefined
+                                    : onRestoreSelected,
 
                                 clipboard,
 
