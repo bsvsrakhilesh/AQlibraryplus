@@ -37,6 +37,7 @@ const env = {
     process.env.ICN_USER_DATA_DIR || path.join(process.cwd(), "profile"),
   ICN_DEFAULT_LOGIN_URL: process.env.ICN_DEFAULT_LOGIN_URL || "",
   ICN_BROWSER_CHANNEL: process.env.ICN_BROWSER_CHANNEL || "",
+  ICN_BROWSER_EXECUTABLE_PATH: process.env.ICN_BROWSER_EXECUTABLE_PATH || "",
   ICN_ALLOWED_ORIGIN: process.env.ICN_ALLOWED_ORIGIN || "*",
 };
 
@@ -579,6 +580,25 @@ type FallbackCandidate = {
   matchedBy: string[];
 };
 
+type FallbackProviderAttemptDebug = {
+  query: string;
+  inputFound: boolean;
+  submitted: boolean;
+  startUrl: string;
+  resultUrl: string | null;
+  pageTitle: string | null;
+  anchorCount: number;
+  rawCandidateCount: number;
+  notes: string[];
+};
+
+type FallbackProviderDebug = {
+  provider: FallbackProvider;
+  startUrl: string;
+  attempts: FallbackProviderAttemptDebug[];
+  notes: string[];
+};
+
 type FallbackSearchPayload = {
   originalUrl: string;
   inspection: FallbackArticleInspection;
@@ -586,6 +606,7 @@ type FallbackSearchPayload = {
   queryVariants: string[];
   candidates: FallbackCandidate[];
   bestCandidate: FallbackCandidate | null;
+  debug: FallbackProviderDebug[];
   note: string | null;
 };
 
@@ -730,20 +751,96 @@ type RawProviderCandidate = {
   rawText: string | null;
 };
 
-async function fbTrySubmitSearch(page: Page, query: string): Promise<boolean> {
-  const inputSelectors = [
-    'input[type="search"]',
-    'input[name="q"]',
-    'input[name="query"]',
-    'input[name*="search" i]',
-    'input[placeholder*="Search" i]',
-    'input[aria-label*="Search" i]',
-    'textarea[aria-label*="Search" i]',
-  ];
+function fbSearchSelectorsForProvider(provider: FallbackProvider): string[] {
+  switch (provider) {
+    case "pressreader":
+      return [
+        'input[type="search"]',
+        'input[name="q"]',
+        'input[name*="search" i]',
+        'input[placeholder*="Search" i]',
+        'input[aria-label*="Search" i]',
+      ];
+    case "proquest":
+      return [
+        'input[name="query"]',
+        'textarea[name="query"]',
+        'input[type="search"]',
+        'input[name="q"]',
+        'input[name*="search" i]',
+        'input[placeholder*="Search" i]',
+        'input[aria-label*="Search" i]',
+      ];
+    case "nexis":
+      return [
+        'textarea[name="query"]',
+        'input[name="query"]',
+        'input[type="search"]',
+        'input[name="q"]',
+        'input[name*="search" i]',
+        'input[placeholder*="Search" i]',
+        'input[aria-label*="Search" i]',
+      ];
+  }
+}
+
+async function fbOpenSearchUiIfNeeded(
+  page: Page,
+  provider: FallbackProvider,
+  notes: string[],
+): Promise<void> {
+  const openers =
+    provider === "pressreader"
+      ? [
+          'button[aria-label*="Search" i]',
+          '[role="button"][aria-label*="Search" i]',
+          '[class*="search"] button',
+          'button[class*="search"]',
+        ]
+      : [
+          'button[aria-label*="Search" i]',
+          '[role="button"][aria-label*="Search" i]',
+          'button[class*="search"]',
+          '[class*="search"] button',
+        ];
+
+  for (const selector of openers) {
+    const loc = page.locator(selector).first();
+    const count = await loc.count().catch(() => 0);
+    if (!count) continue;
+
+    const visible = await loc.isVisible().catch(() => false);
+    if (!visible) continue;
+
+    try {
+      await loc.click({ timeout: 1500 });
+      notes.push(`opened-search-ui:${selector}`);
+      await page.waitForTimeout(400);
+      return;
+    } catch {
+      // ignore
+    }
+  }
+}
+
+async function fbTrySubmitSearch(
+  page: Page,
+  provider: FallbackProvider,
+  query: string,
+): Promise<{
+  inputFound: boolean;
+  submitted: boolean;
+  notes: string[];
+}> {
+  const notes: string[] = [];
+  await fbOpenSearchUiIfNeeded(page, provider, notes);
+
+  const inputSelectors = fbSearchSelectorsForProvider(provider);
 
   for (const selector of inputSelectors) {
     const loc = page.locator(selector).first();
-    if ((await loc.count()) === 0) continue;
+    const count = await loc.count().catch(() => 0);
+    if (!count) continue;
 
     const visible = await loc.isVisible().catch(() => false);
     if (!visible) continue;
@@ -752,30 +849,106 @@ async function fbTrySubmitSearch(page: Page, query: string): Promise<boolean> {
       await loc.click({ timeout: 2000 });
       await loc.fill("");
       await loc.fill(query);
+      notes.push(`filled:${selector}`);
       await loc.press("Enter");
-      return true;
-    } catch {
-      // try next selector
+      notes.push(`submitted:${selector}`);
+      return { inputFound: true, submitted: true, notes };
+    } catch (error) {
+      notes.push(`fill-failed:${selector}`);
     }
   }
 
-  return false;
+  notes.push("no-visible-search-input");
+  return { inputFound: false, submitted: false, notes };
 }
 
 async function fbExtractSearchCandidates(
   page: Page,
+  provider: FallbackProvider,
 ): Promise<RawProviderCandidate[]> {
-  return page.evaluate(() => {
+  return page.evaluate((providerName) => {
     const clean = (value: unknown) =>
       String(value ?? "")
         .replace(/\s+/g, " ")
         .trim();
 
+    const providerCardSelectors: Record<string, string[]> = {
+      pressreader: [
+        "article",
+        "[class*='article']",
+        "[class*='story']",
+        "[class*='search'] [class*='result']",
+        "[class*='result']",
+      ],
+      proquest: [
+        "article",
+        "li",
+        "[class*='result']",
+        "[data-testid*='result']",
+        "[class*='searchResults'] > *",
+      ],
+      nexis: [
+        "article",
+        "li",
+        "[class*='result']",
+        "[data-testid*='result']",
+        "[class*='search-results'] > *",
+      ],
+    };
+
+    const selectors = providerCardSelectors[providerName] || [
+      "article",
+      "li",
+      "[class*='result']",
+      "div",
+    ];
+
     const candidates: RawProviderCandidate[] = [];
     const seen = new Set<string>();
 
-    const anchors = Array.from(document.querySelectorAll("a[href]"));
+    const cards = selectors.flatMap((selector) =>
+      Array.from(document.querySelectorAll(selector)),
+    );
 
+    for (const card of cards) {
+      const anchor = card.querySelector("a[href]") || card.closest("a[href]");
+
+      if (!anchor) continue;
+
+      const href = (anchor as HTMLAnchorElement).href || "";
+      const title = clean(anchor.textContent);
+
+      if (!href || !title || title.length < 12) continue;
+      if (/^(javascript:|mailto:|tel:)/i.test(href)) continue;
+
+      const rawText = clean(
+        (card as HTMLElement).innerText || card.textContent || "",
+      );
+      if (rawText.length < 35) continue;
+
+      const snippetEl = card.querySelector(
+        "p, [class*='snippet'], [class*='summary'], [class*='description'], [class*='deck'], [class*='abstract']",
+      );
+      const snippet =
+        clean(snippetEl?.textContent || "") || rawText.slice(0, 500);
+
+      const key = `${href}__${title.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      candidates.push({
+        title,
+        url: href,
+        snippet,
+        rawText: rawText.slice(0, 1200),
+      });
+
+      if (candidates.length >= 50) break;
+    }
+
+    if (candidates.length > 0) return candidates;
+
+    const anchors = Array.from(document.querySelectorAll("a[href]"));
     for (const anchor of anchors) {
       const href = (anchor as HTMLAnchorElement).href || "";
       const title = clean(anchor.textContent);
@@ -795,7 +968,7 @@ async function fbExtractSearchCandidates(
       if (rawText.length < 40) continue;
 
       const snippetEl = card?.querySelector(
-        "p, [class*='snippet'], [class*='summary'], [class*='description'], [class*='deck']",
+        "p, [class*='snippet'], [class*='summary'], [class*='description'], [class*='deck'], [class*='abstract']",
       );
       const snippet =
         clean(snippetEl?.textContent || "") || rawText.slice(0, 500);
@@ -811,11 +984,11 @@ async function fbExtractSearchCandidates(
         rawText: rawText.slice(0, 1200),
       });
 
-      if (candidates.length >= 40) break;
+      if (candidates.length >= 50) break;
     }
 
     return candidates;
-  });
+  }, provider);
 }
 
 function fbComputeCandidate(
@@ -894,9 +1067,18 @@ async function fbSearchOneProvider(
   target: FallbackArticleInspection,
   queryVariants: string[],
   maxCandidates: number,
-): Promise<FallbackCandidate[]> {
+): Promise<{
+  candidates: FallbackCandidate[];
+  debug: FallbackProviderDebug;
+}> {
   const page = await context.newPage();
   const found: FallbackCandidate[] = [];
+  const debug: FallbackProviderDebug = {
+    provider,
+    startUrl: FALLBACK_PROVIDER_START_URLS[provider],
+    attempts: [],
+    notes: [],
+  };
 
   try {
     for (const query of queryVariants) {
@@ -907,27 +1089,67 @@ async function fbSearchOneProvider(
 
       await settlePage(page);
 
-      const submitted = await fbTrySubmitSearch(page, query);
-      if (!submitted) continue;
+      const startUrl = page.url();
+      const submitResult = await fbTrySubmitSearch(page, provider, query);
 
-      await page.waitForTimeout(1500);
-      try {
-        await page.waitForLoadState("networkidle", { timeout: 3000 });
-      } catch {
-        // ignore
+      if (!submitResult.submitted) {
+        debug.attempts.push({
+          query,
+          inputFound: submitResult.inputFound,
+          submitted: false,
+          startUrl,
+          resultUrl: page.url(),
+          pageTitle: await page.title().catch(() => null),
+          anchorCount: await page
+            .locator("a[href]")
+            .count()
+            .catch(() => 0),
+          rawCandidateCount: 0,
+          notes: submitResult.notes,
+        });
+        continue;
       }
 
-      const rawCandidates = await fbExtractSearchCandidates(page);
+      await page.waitForTimeout(1800);
+      try {
+        await page.waitForLoadState("networkidle", { timeout: 3500 });
+      } catch {
+        submitResult.notes.push("networkidle-timeout");
+      }
+
+      const anchorCount = await page
+        .locator("a[href]")
+        .count()
+        .catch(() => 0);
+      const rawCandidates = await fbExtractSearchCandidates(page, provider);
       const scored = rawCandidates
         .map((raw) => fbComputeCandidate(provider, query, target, raw))
-        .filter((candidate) => candidate.score >= 0.28);
+        .filter((candidate) => candidate.score >= 0.18);
 
       found.push(...scored);
 
-      if (scored.some((candidate) => candidate.score >= 0.88)) break;
+      debug.attempts.push({
+        query,
+        inputFound: submitResult.inputFound,
+        submitted: true,
+        startUrl,
+        resultUrl: page.url(),
+        pageTitle: await page.title().catch(() => null),
+        anchorCount,
+        rawCandidateCount: rawCandidates.length,
+        notes: submitResult.notes,
+      });
+
+      if (scored.some((candidate) => candidate.score >= 0.88)) {
+        debug.notes.push(`strong-match-found:${query}`);
+        break;
+      }
     }
 
-    return fbDedupCandidates(found).slice(0, maxCandidates);
+    return {
+      candidates: fbDedupCandidates(found).slice(0, maxCandidates),
+      debug,
+    };
   } finally {
     try {
       await page.close();
@@ -968,21 +1190,24 @@ async function searchFallbackArticlePayload(
       queryVariants: [],
       candidates: [],
       bestCandidate: null,
+      debug: [],
       note: "The original page did not expose enough article signals to build a reliable fallback search query.",
     };
   }
 
   const allCandidates: FallbackCandidate[] = [];
+  const debug: FallbackProviderDebug[] = [];
 
   for (const provider of providerOrder) {
-    const providerCandidates = await fbSearchOneProvider(
+    const providerResult = await fbSearchOneProvider(
       context,
       provider,
       inspection,
       queryVariants,
       maxCandidates,
     );
-    allCandidates.push(...providerCandidates);
+    allCandidates.push(...providerResult.candidates);
+    debug.push(providerResult.debug);
   }
 
   const candidates = fbDedupCandidates(allCandidates).slice(0, maxCandidates);
@@ -996,6 +1221,7 @@ async function searchFallbackArticlePayload(
     queryVariants,
     candidates,
     bestCandidate,
+    debug,
     note: bestCandidate
       ? "Fallback search found at least one strong candidate in the institutional sources."
       : "Fallback search completed, but no candidate cleared the confidence threshold yet.",
@@ -1069,7 +1295,9 @@ async function getContext(options?: {
       ],
     };
 
-  if (env.ICN_BROWSER_CHANNEL && !desiredHeadless) {
+  if (env.ICN_BROWSER_EXECUTABLE_PATH) {
+    launchOptions.executablePath = env.ICN_BROWSER_EXECUTABLE_PATH;
+  } else if (env.ICN_BROWSER_CHANNEL && !desiredHeadless) {
     launchOptions.channel = env.ICN_BROWSER_CHANNEL as "chrome" | "msedge";
   }
 

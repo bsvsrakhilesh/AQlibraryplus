@@ -187,6 +187,23 @@ export type InstitutionalFallbackCandidate = {
   matchedBy: string[];
 };
 
+export type InstitutionalFallbackProviderDebug = {
+  provider: InstitutionalFallbackProvider;
+  startUrl: string;
+  attempts: Array<{
+    query: string;
+    inputFound: boolean;
+    submitted: boolean;
+    startUrl: string;
+    resultUrl: string | null;
+    pageTitle: string | null;
+    anchorCount: number;
+    rawCandidateCount: number;
+    notes: string[];
+  }>;
+  notes: string[];
+};
+
 export type InstitutionalFallbackSearchResult = {
   ok: true;
   enabled: boolean;
@@ -198,6 +215,7 @@ export type InstitutionalFallbackSearchResult = {
   queryVariants: string[];
   candidates: InstitutionalFallbackCandidate[];
   bestCandidate: InstitutionalFallbackCandidate | null;
+  debug: InstitutionalFallbackProviderDebug[];
   note: string | null;
   message: string | null;
 };
@@ -224,6 +242,7 @@ export async function searchInstitutionalArticleFallbackProxy(input: {
       queryVariants: [],
       candidates: [],
       bestCandidate: null,
+      debug: [],
       note: null,
       message: "Institutional capture is disabled on the backend.",
     };
@@ -267,6 +286,9 @@ export async function searchInstitutionalArticleFallbackProxy(input: {
         ? (data.candidates as InstitutionalFallbackCandidate[])
         : [],
       bestCandidate: data.bestCandidate ?? null,
+      debug: Array.isArray((data as any).debug)
+        ? ((data as any).debug as InstitutionalFallbackProviderDebug[])
+        : [],
       note: data.note ?? null,
       message: data.message ?? null,
     };
@@ -282,6 +304,7 @@ export async function searchInstitutionalArticleFallbackProxy(input: {
       queryVariants: [],
       candidates: [],
       bestCandidate: null,
+      debug: [],
       note: null,
       message: upstreamErrorMessage(
         error,
