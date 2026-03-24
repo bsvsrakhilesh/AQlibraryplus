@@ -40,7 +40,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       EXTRACT_URL_TIMEOUT_MS: 30000
       
-      # Institutional Capture Node (host-run local companion)
+      # Institutional Capture Node
       ICN_ENABLED: "true"
       ICN_BASE_URL: http://host.docker.internal:7081
       ICN_TIMEOUT_MS: 120000
