@@ -1,5 +1,5 @@
 // frontend/pages/LandingPage.tsx
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   motion,
@@ -490,6 +490,21 @@ function BottomCTA() {
    Page
    ======================== */
 export default function LandingPage() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+
+    // Framer Motion's useScroll({ target }) measures against the page scroll root.
+    // Make that root explicitly positioned to avoid its dev-time warning.
+    root.classList.add("landing-scroll-root");
+    body.classList.add("landing-scroll-root");
+
+    return () => {
+      root.classList.remove("landing-scroll-root");
+      body.classList.remove("landing-scroll-root");
+    };
+  }, []);
+
   return (
     <main className="min-h-screen bg-white antialiased">
       <LandingNav />

@@ -579,6 +579,7 @@ const FolderPickerModal: React.FC<Props> = ({
                     <div className="mt-3 flex gap-2">
                       <div className="bg-landing-gradient rounded-2xl p-[1px] flex-1">
                         <input
+                          name="folder-create-name"
                           className="md3-input w-full rounded-2xl"
                           placeholder="New folder name"
                           value={newFolderName}
@@ -609,6 +610,7 @@ const FolderPickerModal: React.FC<Props> = ({
 
                     <div className="mt-3 bg-landing-gradient rounded-2xl p-[1px]">
                       <input
+                        name="capture-file-name"
                         className="md3-input w-full rounded-2xl"
                         value={fileName}
                         onChange={(e) => setFileName(e.target.value)}
@@ -642,6 +644,7 @@ const FolderPickerModal: React.FC<Props> = ({
 
                       <label className="mt-3 flex items-start gap-3 rounded-2xl border border-border px-3 py-3 cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
                         <input
+                          name="capture-access-route"
                           type="checkbox"
                           className="mt-1 h-4 w-4"
                           checked={accessMode === "institutional"}
@@ -754,6 +757,7 @@ const FolderPickerModal: React.FC<Props> = ({
                             Login provider
                           </div>
                           <select
+                            name="institutional-login-provider"
                             className="md3-input mt-2 w-full rounded-2xl"
                             value={loginProvider}
                             onChange={(e) =>
@@ -777,6 +781,7 @@ const FolderPickerModal: React.FC<Props> = ({
                         {loginProvider === "custom" && (
                           <div className="bg-landing-gradient rounded-2xl p-[1px]">
                             <input
+                              name="institutional-login-url"
                               className="md3-input w-full rounded-2xl"
                               value={customLoginUrl}
                               onChange={(e) =>

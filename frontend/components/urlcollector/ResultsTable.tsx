@@ -951,6 +951,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
           <div className="flex flex-wrap items-center gap-2">
             <input
+              name="results-query"
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
               className="w-[260px] max-w-[70vw] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
@@ -958,6 +959,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
             />
 
             <select
+              name="results-domain-filter"
               value={filterDomain}
               onChange={(e) => setFilterDomain(e.target.value)}
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
@@ -972,6 +974,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
             </select>
 
             <select
+              name="results-saved-filter"
               value={savedFilter}
               onChange={(e) => setSavedFilter(e.target.value as SavedFilter)}
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
@@ -984,6 +987,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
             <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
               <input
+                name="results-selected-only"
                 type="checkbox"
                 className="h-4 w-4"
                 checked={selectedOnly}
@@ -1016,6 +1020,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-gray-700">
               <input
+                name="results-hide-duplicates"
                 type="checkbox"
                 className="h-4 w-4"
                 checked={hideDuplicates}
@@ -1033,6 +1038,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
               <ListFilterIcon className="h-4 w-4 text-gray-500" />
 
               <select
+                name="results-sort"
                 value={sortKey}
                 onChange={(e) => {
                   const next = e.target.value as SortKey;
@@ -1112,6 +1118,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
               <div className="ml-1 flex flex-wrap items-center gap-3 text-sm text-gray-700">
                 <label className="flex cursor-pointer select-none items-center gap-2">
                   <input
+                    name="results-page-select"
                     type="checkbox"
                     className="h-4 w-4"
                     checked={allSelected}
@@ -1280,6 +1287,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                 {selectable ? (
                   <div className="pt-1">
                     <input
+                      name="results-row-select"
                       type="checkbox"
                       className="h-4 w-4"
                       checked={isChecked}

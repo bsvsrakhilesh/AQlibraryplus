@@ -23,6 +23,10 @@ body,
   overflow-x: hidden;
 }
 
+.landing-scroll-root {
+  position: relative;
+}
+
 /* =========================
    Notebook: lock page scroll
    ========================= */
