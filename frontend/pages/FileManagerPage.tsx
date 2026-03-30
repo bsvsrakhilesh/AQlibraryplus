@@ -15,6 +15,7 @@ import {
   PanelRightOpen,
 } from "lucide-react";
 import { useToast } from "../components/providers/Toast";
+import { useConfirm } from "../components/providers/Confirm";
 import { FileItem, FileDetail } from "../lib/types";
 import {
   createFolder,
@@ -441,6 +442,7 @@ function fileHasMissingMetadata(file: FileItem) {
 
 export default function FileManagerPage() {
   const { notify } = useToast();
+  const { confirm } = useConfirm();
 
   // layout / pagination / minor UI state
   const [layout, setLayout] = useState<Layout>(() =>
@@ -586,43 +588,48 @@ export default function FileManagerPage() {
     setActiveArchiveViewId(view.id);
   }, []);
 
-  const persistArchiveView = useCallback((name: string) => {
-    const existing = savedArchiveViews.find(
-      (view) => view.name.toLowerCase() === name.toLowerCase(),
-    );
+  const persistArchiveView = useCallback(
+    (name: string) => {
+      const existing = savedArchiveViews.find(
+        (view) => view.name.toLowerCase() === name.toLowerCase(),
+      );
 
-    const nextView: SavedArchiveView = {
-      id: existing?.id ?? `saved-${Date.now()}`,
-      name,
+      const nextView: SavedArchiveView = {
+        id: existing?.id ?? `saved-${Date.now()}`,
+        name,
+        layout,
+        sortKey,
+        sortDir,
+        density,
+        filters: { ...archiveFilters },
+        searchQuery: search.trim(),
+        reviewQueueId: activeReviewQueueId,
+      };
+
+      setSavedArchiveViews((prev) => {
+        if (existing) {
+          return prev.map((view) =>
+            view.id === existing.id ? nextView : view,
+          );
+        }
+        return [nextView, ...prev].slice(0, 8);
+      });
+
+      setActiveArchiveViewId(nextView.id);
+      notify(`Saved view: ${name}`, "success");
+    },
+    [
+      savedArchiveViews,
       layout,
       sortKey,
       sortDir,
       density,
-      filters: { ...archiveFilters },
-      searchQuery: search.trim(),
-      reviewQueueId: activeReviewQueueId,
-    };
-
-    setSavedArchiveViews((prev) => {
-      if (existing) {
-        return prev.map((view) => (view.id === existing.id ? nextView : view));
-      }
-      return [nextView, ...prev].slice(0, 8);
-    });
-
-    setActiveArchiveViewId(nextView.id);
-    notify(`Saved view: ${name}`, "success");
-  }, [
-    savedArchiveViews,
-    layout,
-    sortKey,
-    sortDir,
-    density,
-    archiveFilters,
-    search,
-    activeReviewQueueId,
-    notify,
-  ]);
+      archiveFilters,
+      search,
+      activeReviewQueueId,
+      notify,
+    ],
+  );
 
   const saveCurrentArchiveView = useCallback(() => {
     const suggestedName =
@@ -738,9 +745,8 @@ export default function FileManagerPage() {
 
       if (!mod || key !== "f") return;
 
-      const searchInput = document.querySelector<HTMLInputElement>(
-        'input[name="q"]',
-      );
+      const searchInput =
+        document.querySelector<HTMLInputElement>('input[name="q"]');
       if (!searchInput) return;
 
       e.preventDefault();
@@ -1235,10 +1241,7 @@ export default function FileManagerPage() {
   const buildBreadcrumb = useCallback(
     async (id?: string) => {
       if (id === "trash")
-        return [
-          { name: ROOT_BREADCRUMB_NAME },
-          { id: "trash", name: "Trash" },
-        ];
+        return [{ name: ROOT_BREADCRUMB_NAME }, { id: "trash", name: "Trash" }];
 
       if (id === "favorites")
         return [
@@ -2767,7 +2770,16 @@ export default function FileManagerPage() {
   const onRestoreSelected = useCallback(
     async (ids: string[]) => {
       if (!ids.length) return;
-      if (!confirm(`Restore ${ids.length} selected item(s)?`)) return;
+
+      const ok = await confirm({
+        title: `Restore ${ids.length} item${ids.length === 1 ? "" : "s"}?`,
+        description:
+          "These items will be restored from Trash and returned to their original location.",
+        confirmText: "Restore",
+        cancelText: "Cancel",
+      });
+
+      if (!ok) return;
 
       const backup = allFiles;
 
@@ -2803,18 +2815,23 @@ export default function FileManagerPage() {
         notify(e?.message || "Failed to restore some items", "error");
       }
     },
-    [allFiles, notify, refreshAll],
+    [allFiles, confirm, notify, refreshAll],
   );
 
   const onPermanentDeleteSelected = useCallback(
     async (ids: string[]) => {
       if (!ids.length) return;
-      if (
-        !confirm(
-          `Permanently delete ${ids.length} selected item(s)? This cannot be undone.`,
-        )
-      )
-        return;
+
+      const ok = await confirm({
+        title: `Permanently delete ${ids.length} item${ids.length === 1 ? "" : "s"}?`,
+        description:
+          "This action cannot be undone. The selected items will be removed permanently.",
+        confirmText: "Delete permanently",
+        cancelText: "Cancel",
+        danger: true,
+      });
+
+      if (!ok) return;
 
       const backup = allFiles;
 
@@ -2846,10 +2863,13 @@ export default function FileManagerPage() {
         refreshAll();
       } catch (e: any) {
         setAllFiles(backup);
-        notify(e?.message || "Failed to permanently delete some items", "error");
+        notify(
+          e?.message || "Failed to permanently delete some items",
+          "error",
+        );
       }
     },
-    [allFiles, notify, refreshAll],
+    [allFiles, confirm, notify, refreshAll],
   );
 
   // ---------- NEW: Bulk actions ----------

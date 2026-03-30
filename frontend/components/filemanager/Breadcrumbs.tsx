@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, ChevronLeft, Home, Search } from "lucide-react";
+import { ChevronRight, ChevronLeft, Home, Search, X } from "lucide-react";
 import { motion } from "framer-motion";
 
 type Crumb = { id: string; label: string; onClick: () => void };
@@ -75,6 +75,7 @@ export default function Breadcrumbs({
   const [editing, setEditing] = useState(false);
   const [pathText, setPathText] = useState(currentPathString);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const crumbsRef = useRef<HTMLDivElement | null>(null);
 
   // --- Search state (controlled input mirroring parent) ---
@@ -223,11 +224,31 @@ export default function Breadcrumbs({
     }
   };
 
+  const focusSearch = useCallback(() => {
+    if (!searchInputRef.current) return;
+    searchInputRef.current.focus();
+    searchInputRef.current.select();
+  }, []);
+
   // --- Search box (right side) ---
   const SearchBox = onSearchSubmit ? (
-    <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-2xl bg-[hsl(var(--fm-bg-elev))] shadow-sm w-64">
-      <Search className="h-4 w-4 text-[hsl(var(--fm-muted))]" />
+    <div
+      className="flex w-72 shrink-0 items-center gap-2 px-3 py-2 rounded-2xl bg-[hsl(var(--fm-bg-elev))] shadow-sm"
+      role="search"
+      aria-label="File manager search"
+    >
+      <button
+        type="button"
+        onClick={focusSearch}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[hsl(var(--fm-muted))] transition hover:bg-black/5 hover:text-[hsl(var(--foreground))] dark:hover:bg-white/10"
+        aria-label="Focus search"
+        title="Focus search"
+      >
+        <Search className="h-4 w-4" />
+      </button>
+
       <input
+        ref={searchInputRef}
         type="search"
         name="q"
         value={search}
@@ -236,10 +257,41 @@ export default function Breadcrumbs({
           setSearch(v);
           onSearchSubmit?.(v);
         }}
-        placeholder={searchPlaceholder ?? (currentFolderId ? "Search this folder" : "Search")}
-        className="h-7 flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--fm-muted))]"
-        aria-label="Search this folder"
+        placeholder={
+          searchPlaceholder ??
+          (currentFolderId ? "Search this folder" : "Search")
+        }
+        className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--fm-muted))]"
+        aria-label={searchPlaceholder ?? "Search files"}
       />
+
+      {search ? (
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[hsl(var(--fm-muted))] transition hover:bg-black/5 hover:text-[hsl(var(--foreground))] dark:hover:bg-white/10"
+          onClick={() => {
+            setSearch("");
+            onSearchSubmit?.("");
+            requestAnimationFrame(() => {
+              searchInputRef.current?.focus();
+            });
+          }}
+          aria-label="Clear search"
+          title="Clear search"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={focusSearch}
+          className="hidden shrink-0 rounded-lg border border-black/5 px-2 py-1 text-[11px] font-medium tracking-wide text-[hsl(var(--fm-muted))] transition hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10 lg:inline-flex"
+          aria-label="Focus search with keyboard shortcut"
+          title="Focus search"
+        >
+          Ctrl+F
+        </button>
+      )}
     </div>
   ) : null;
 
@@ -249,10 +301,10 @@ export default function Breadcrumbs({
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="w-full flex items-center justify-between gap-3 text-sm"
+      className="w-full flex flex-col gap-3 text-sm lg:flex-row lg:items-center lg:justify-between"
     >
       {/* Left cluster: Back / Forward + breadcrumb pill */}
-      <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className="flex items-center gap-3 min-w-0 w-full lg:flex-1">
         {/* Back / Forward pill */}
         <div className="inline-flex items-center rounded-2xl shadow-sm overflow-hidden">
           <button
@@ -328,17 +380,9 @@ export default function Breadcrumbs({
                           onClick={crumb.onClick}
                           className={`px-2 py-1 rounded-xl text-xs md:text-sm transition-colors whitespace-nowrap ${
                             isLast
-                              ? "border border-[hsl(var(--fm-border))] shadow-sm"
+                              ? "border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] text-[hsl(var(--foreground))] shadow-sm"
                               : "hover:bg-[hsl(var(--surface-elevated))] text-[hsl(var(--fm-text))]"
                           }`}
-                          style={
-                            isLast
-                              ? {
-                                  backgroundColor: "hsl(var(--fm-accent))",
-                                  color: "#ffffff",
-                                }
-                              : undefined
-                          }
                         >
                           {label}
                         </button>
@@ -356,10 +400,10 @@ export default function Breadcrumbs({
       </div>
 
       {/* Right-side actions: Edit toggle + Search */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 w-full lg:w-auto">
         <button
           type="button"
-          className="h-9 px-3 rounded-xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] text-xs md:text-sm hover:bg-[hsl(var(--surface-elevated))] transition-colors"
+          className="h-9 shrink-0 px-3 rounded-xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] text-xs md:text-sm hover:bg-[hsl(var(--surface-elevated))] transition-colors"
           onClick={() => setEditing((v) => !v)}
           title={editing ? "Show breadcrumbs" : "Edit address"}
         >

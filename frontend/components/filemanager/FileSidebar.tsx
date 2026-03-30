@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Star,
+  Home,
   Trash2,
   Monitor,
   Download,
@@ -12,8 +12,8 @@ import {
   Folder as FolderIcon,
   ChevronDown,
   ChevronRight,
-  Pin,
   Heart,
+  Search,
 } from "lucide-react";
 import type { FolderNode } from "../../types/file";
 import { fetchRootFolders, fetchChildren } from "../../lib/folders";
@@ -71,8 +71,7 @@ const NavItem: React.FC<{
   left?: React.ReactNode;
   right?: React.ReactNode;
   active?: boolean;
-  pinned?: boolean;
-}> = ({ label, onClick, left, right, active, pinned }) => (
+}> = ({ label, onClick, left, right, active }) => (
   <button
     type="button"
     onClick={onClick}
@@ -87,7 +86,6 @@ const NavItem: React.FC<{
     <span className="ex-nav-label">{label}</span>
 
     <span className="ex-nav-right" aria-hidden="true">
-      {pinned ? <Pin className="w-3.5 h-3.5 opacity-70" /> : null}
       {right}
     </span>
   </button>
@@ -128,6 +126,14 @@ async function getLibraryFolders(): Promise<FolderNode[]> {
   return libs.length ? libs : roots;
 }
 
+const SIDEBAR_COLLAPSE_STORAGE_KEY = "fm.sidebar.collapsed.v1";
+
+const DEFAULT_COLLAPSED = {
+  quick: false,
+  libraries: false,
+  storage: false,
+};
+
 const FileSidebar: React.FC<FileSidebarProps> = ({
   onFolderSelect,
   onViewSelect,
@@ -140,16 +146,40 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [sidebarQuery, setSidebarQuery] = useState("");
 
-  const [collapsed, setCollapsed] = useState({
-    quick: false,
-    libraries: false,
-    thispc: false,
+  const [collapsed, setCollapsed] = useState<typeof DEFAULT_COLLAPSED>(() => {
+    if (typeof window === "undefined") return DEFAULT_COLLAPSED;
+
+    try {
+      const raw = window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY);
+      if (!raw) return DEFAULT_COLLAPSED;
+
+      const parsed = JSON.parse(raw);
+      return {
+        quick: !!parsed?.quick,
+        libraries: !!parsed?.libraries,
+        storage: !!parsed?.storage,
+      };
+    } catch {
+      return DEFAULT_COLLAPSED;
+    }
   });
 
   const toggle = useCallback((k: keyof typeof collapsed) => {
     setCollapsed((s) => ({ ...s, [k]: !s[k] }));
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_COLLAPSE_STORAGE_KEY,
+        JSON.stringify(collapsed),
+      );
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [collapsed]);
 
   useEffect(() => {
     let alive = true;
@@ -176,13 +206,22 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
     onViewSelect?.("trash");
   }, [onViewSelect]);
 
+  const normalizedSidebarQuery = sidebarQuery.trim().toLowerCase();
+
+  const matchesSidebarQuery = useCallback(
+    (label: string) => {
+      if (!normalizedSidebarQuery) return true;
+      return label.toLowerCase().includes(normalizedSidebarQuery);
+    },
+    [normalizedSidebarQuery],
+  );
+
   const quickAccess = useMemo(() => {
     const HOME = {
       label: "All evidence",
-      icon: <Star className="w-4 h-4" />,
+      icon: <Home className="w-4 h-4" />,
       go: goHome,
       active: viewMode === "drive" && !currentFolderId,
-      pinned: true,
     };
 
     const FAVORITES = {
@@ -190,7 +229,6 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
       icon: <Heart className="w-4 h-4" />,
       go: () => onViewSelect?.("favorites"),
       active: viewMode === "favorites",
-      pinned: true,
     };
 
     const TRASH = {
@@ -198,57 +236,72 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
       icon: <Trash2 className="w-4 h-4" />,
       go: goTrash,
       active: viewMode === "trash",
-      pinned: true,
     };
 
-    const COMMON_ORDER = [
-      "desktop",
-      "downloads",
-      "documents",
-      "pictures",
-      "music",
-      "videos",
-    ];
+    return [HOME, FAVORITES, TRASH];
+  }, [goHome, goTrash, currentFolderId, onViewSelect, viewMode]);
 
-    const libs = (libraryFolders ?? []).slice().sort((a, b) => {
-      const ai = COMMON_ORDER.findIndex((x) =>
-        a.name.toLowerCase().includes(x),
-      );
-      const bi = COMMON_ORDER.findIndex((x) =>
-        b.name.toLowerCase().includes(x),
-      );
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    });
+  const filteredLibraryFolders = useMemo(() => {
+    const libs = libraryFolders ?? [];
+    return libs.filter((lib) => matchesSidebarQuery(lib.name));
+  }, [libraryFolders, matchesSidebarQuery]);
 
-    const pinned = libs
-      .filter((l) => COMMON_ORDER.some((x) => l.name.toLowerCase().includes(x)))
-      .slice(0, 6)
-      .map((l) => ({
-        label: l.name,
-        icon: iconFor(l.name),
-        go: () => onFolderSelect?.(l.id, l.name),
-        active: viewMode === "drive" && currentFolderId === l.id,
-        pinned: true,
-      }));
+  const storageSummary = useMemo(() => {
+    const used = storageUsedBytes ?? 0;
+    const cap = storageCapacityBytes ?? 1024 ** 4;
+    const pct = Math.min(100, Math.round((used / cap) * 100 || 0));
 
-    return [HOME, FAVORITES, ...pinned, TRASH];
-  }, [
-    goHome,
-    goTrash,
-    currentFolderId,
-    libraryFolders,
-    onFolderSelect,
-    onViewSelect,
-    viewMode,
-  ]);
+    const fmt = (n: number) => {
+      const kb = 1024;
+      const mb = 1024 ** 2;
+      const gb = 1024 ** 3;
+      const tb = 1024 ** 4;
+
+      if (n >= tb) return (n / tb).toFixed(1) + " TB";
+      if (n >= gb) return (n / gb).toFixed(1) + " GB";
+      if (n >= mb) return (n / mb).toFixed(1) + " MB";
+      if (n >= kb) return (n / kb).toFixed(1) + " KB";
+      return n + " B";
+    };
+
+    return {
+      used,
+      cap,
+      pct,
+      usedLabel: fmt(used),
+      capLabel: fmt(cap),
+    };
+  }, [storageUsedBytes, storageCapacityBytes]);
 
   return (
     <nav className="ex-nav" aria-label="Folders">
       <div className="ex-nav-stack">
+        <div className="ex-nav-search">
+          <Search className="w-4 h-4 ex-nav-search-ico" />
+          <input
+            type="search"
+            value={sidebarQuery}
+            onChange={(e) => setSidebarQuery(e.target.value)}
+            placeholder="Filter sidebar"
+            className="ex-nav-search-input"
+            aria-label="Filter sidebar items"
+          />
+          {sidebarQuery ? (
+            <button
+              type="button"
+              className="ex-nav-search-clear"
+              onClick={() => setSidebarQuery("")}
+              aria-label="Clear sidebar filter"
+              title="Clear filter"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
         {/* Quick access */}
         <SectionShell>
           <SectionHeader
-            title="Archive views"
+            title="Views"
             collapsed={collapsed.quick}
             onToggle={() => toggle("quick")}
           />
@@ -261,7 +314,6 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
                   onClick={x.go}
                   left={x.icon}
                   active={x.active}
-                  pinned={x.pinned}
                 />
               ))}
             </div>
@@ -281,7 +333,9 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
                 <span className="ex-nav-pill ex-nav-pill--danger">Error</span>
               ) : (
                 <span className="ex-nav-pill">
-                  {libraryFolders?.length ?? 0}
+                  {normalizedSidebarQuery
+                    ? `${filteredLibraryFolders.length}/${libraryFolders?.length ?? 0}`
+                    : (libraryFolders?.length ?? 0)}
                 </span>
               )
             }
@@ -301,7 +355,7 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
                 <div className="px-3 py-2 text-xs text-red-600/80">{error}</div>
               )}
 
-              {libraryFolders?.map((lib) => (
+              {filteredLibraryFolders.map((lib) => (
                 <NavItem
                   key={lib.id}
                   label={lib.name}
@@ -310,59 +364,64 @@ const FileSidebar: React.FC<FileSidebarProps> = ({
                   active={viewMode === "drive" && currentFolderId === lib.id}
                 />
               ))}
+
+              {normalizedSidebarQuery &&
+                quickAccess.length === 0 &&
+                filteredLibraryFolders.length === 0 &&
+                !error && (
+                  <div className="ex-nav-empty">
+                    No sidebar items match “{sidebarQuery}”.
+                  </div>
+                )}
             </div>
           )}
         </SectionShell>
 
-        {/* Storage Used */}
+        {/* Storage */}
         <div className="ex-storage">
-          <div className="ex-storage-head">
-            <Database className="w-4 h-4" />
-            <span className="text-sm font-medium">Storage</span>
-          </div>
+          <button
+            type="button"
+            className="ex-storage-toggle"
+            onClick={() => toggle("storage")}
+            aria-expanded={!collapsed.storage}
+            title={collapsed.storage ? "Expand Storage" : "Collapse Storage"}
+          >
+            <span className="ex-storage-toggle-left">
+              <Database className="w-4 h-4" />
+              <span className="text-sm font-medium">Storage</span>
+            </span>
 
-          <div className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-            {(() => {
-              const used = storageUsedBytes ?? 0;
-              const cap = storageCapacityBytes ?? 1024 ** 4;
-              const pct = Math.min(100, Math.round((used / cap) * 100 || 0));
-              const fmt = (n: number) => {
-                const kb = 1024,
-                  mb = 1024 ** 2,
-                  gb = 1024 ** 3,
-                  tb = 1024 ** 4;
-                if (n >= tb) return (n / tb).toFixed(1) + " TB";
-                if (n >= gb) return (n / gb).toFixed(1) + " GB";
-                if (n >= mb) return (n / mb).toFixed(1) + " MB";
-                if (n >= kb) return (n / kb).toFixed(1) + " KB";
-                return n + " B";
-              };
-              return (
+            <span className="ex-storage-toggle-right">
+              <span className="ex-nav-pill">{storageSummary.pct}%</span>
+              {collapsed.storage ? (
+                <ChevronRight className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </span>
+          </button>
+
+          {!collapsed.storage && (
+            <>
+              <div className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">
                 <div className="flex items-center justify-between">
                   <span>
-                    {fmt(used)} of {fmt(cap)}
+                    {storageSummary.usedLabel} of {storageSummary.capLabel}
                   </span>
                   <span className="font-semibold text-[hsl(var(--foreground))]">
-                    {pct}%
+                    {storageSummary.pct}%
                   </span>
                 </div>
-              );
-            })()}
-          </div>
+              </div>
 
-          {(() => {
-            const used = storageUsedBytes ?? 0;
-            const cap = storageCapacityBytes ?? 1024 ** 4;
-            const pct = Math.min(100, Math.round((used / cap) * 100 || 0));
-            return (
               <div className="mt-3 h-2 w-full rounded-full bg-[hsl(var(--border))]/50 overflow-hidden">
                 <div
                   className="h-full w-0 bg-gradient-to-r from-green-500 to-blue-500 transition-[width] duration-700"
-                  style={{ width: `${pct}%` }}
+                  style={{ width: `${storageSummary.pct}%` }}
                 />
               </div>
-            );
-          })()}
+            </>
+          )}
         </div>
       </div>
     </nav>

@@ -1002,11 +1002,34 @@ r.get("/files", async (req, res, next) => {
 
     if (q && q.trim()) {
       const term = q.trim();
+      const searchTokens = Array.from(
+        new Set(
+          term
+            .split(/[,\s]+/)
+            .map((token) => token.trim())
+            .filter((token) => token.length >= 2),
+        ),
+      ).slice(0, 8);
+
       andClauses.push({
         OR: [
           { fileName: { contains: term, mode: "insensitive" } },
           { description: { contains: term, mode: "insensitive" } },
           { sourceUrl: { contains: term, mode: "insensitive" } },
+          { uploaderName: { contains: term, mode: "insensitive" } },
+          ...(searchTokens.length
+            ? [
+                { tags: { hasSome: searchTokens } },
+                { sourceAuthors: { hasSome: searchTokens } },
+                {
+                  url: {
+                    is: {
+                      authors: { hasSome: searchTokens },
+                    },
+                  },
+                },
+              ]
+            : []),
         ],
       });
     }
@@ -1185,7 +1208,7 @@ r.get("/files", async (req, res, next) => {
           const { folderId: _omit, ...whereNoFolder } = where;
           const [items, total, sum] = await Promise.all([
             prisma.storedFile.findMany({
-              where,
+              where: whereNoFolder,
               orderBy,
               skip,
               take: ps,
