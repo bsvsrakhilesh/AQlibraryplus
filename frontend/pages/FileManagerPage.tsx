@@ -1910,13 +1910,13 @@ export default function FileManagerPage() {
     page,
     pageSize,
     currentFolderId,
+    viewMode,
     sortKey,
     sortDir,
     searchQuery,
     archiveFilters,
     refreshToken,
     virtualZip,
-    archiveFilters,
   ]);
 
   // ------- Storage usage (sidebar) -------
@@ -2520,6 +2520,11 @@ export default function FileManagerPage() {
     () => Math.max(1, Math.ceil(total / pageSize)),
     [total, pageSize],
   );
+
+  useEffect(() => {
+    if (page <= pageCount) return;
+    setPage(pageCount);
+  }, [page, pageCount]);
 
   // ------- Navigation handlers  -------
   const onZipSelect = useCallback(
