@@ -56,7 +56,7 @@ import Details_ListView from "../components/filemanager/Details_ListView";
 import Large_IconView from "../components/filemanager/Large_IconView";
 import AdvancedFileUpload from "../components/filemanager/AdvancedFileUpload";
 import ExplorerCommandBar from "../components/filemanager/CommandBar";
-import ExplorerBreadcrumbs from "../components/filemanager/Breadcrumbs";
+import Breadcrumbs from "../components/filemanager/Breadcrumbs";
 import ExplorerPreviewModal from "../components/filemanager/ExplorerPreviewModal";
 import PropertiesModal from "../components/filemanager/PropertiesModal";
 import EvidenceInspector from "../components/filemanager/EvidenceInspector";
@@ -1021,6 +1021,32 @@ export default function FileManagerPage() {
     if (viewMode === "favorites") return "Favorites";
     return virtualZip ? "Archive browser" : "Drive";
   }, [viewMode, virtualZip]);
+
+  const explorerSearchMeta = useMemo(() => {
+    const scopeLabel = virtualZip
+      ? "archive scope"
+      : viewMode === "trash"
+        ? "trash"
+        : viewMode === "favorites"
+          ? "favorites"
+          : currentFolderId
+            ? "current folder"
+            : "all evidence";
+
+    const activeQuery = search.trim();
+
+    if (!activeQuery) {
+      return `Scope: ${scopeLabel}`;
+    }
+
+    if (isLoading) {
+      return `Searching ${scopeLabel}…`;
+    }
+
+    return `${total.toLocaleString()} match${
+      total === 1 ? "" : "es"
+    } in ${scopeLabel}`;
+  }, [virtualZip, viewMode, currentFolderId, search, isLoading, total]);
 
   const sortSummaryLabel = useMemo(() => {
     const labels: Record<SortKey, string> = {
@@ -3959,7 +3985,7 @@ export default function FileManagerPage() {
               {/* Sticky address bar + command bar */}
               <div className="ex-sticky-top">
                 <div className="ex-addressbar">
-                  <ExplorerBreadcrumbs
+                  <Breadcrumbs
                     rootLabel={ROOT_BREADCRUMB_NAME}
                     path={breadcrumb.map((b, idx) => ({
                       id: b.id ?? `home-${idx}`,
@@ -4015,6 +4041,7 @@ export default function FileManagerPage() {
                               ? "Search this folder"
                               : "Search drive"
                     }
+                    searchMetaText={explorerSearchMeta}
                   />
                 </div>
 

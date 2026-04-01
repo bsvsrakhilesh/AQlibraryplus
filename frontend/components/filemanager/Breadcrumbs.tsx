@@ -16,13 +16,14 @@ type Props = {
   backEnabled?: boolean;
   forwardEnabled?: boolean;
 
-  onNavigate?: (folderId: string | null) => void;
+  onNavigate?: (folderId: string | null) => void | Promise<void>;
 
   onResolvePathText?: (text: string) => Promise<string | null> | string | null;
 
   onSearchSubmit?: (q: string) => void;
   initialSearch?: string;
   searchPlaceholder?: string;
+  searchMetaText?: string;
 };
 
 export default function Breadcrumbs({
@@ -38,8 +39,8 @@ export default function Breadcrumbs({
   onSearchSubmit,
   initialSearch = "",
   searchPlaceholder,
+  searchMetaText,
 }: Props) {
-  // Ensure the breadcrumbs actually include & end at the current folder
   const displayPath = useMemo(() => {
     const safePath = Array.isArray(path) ? path.filter(Boolean) : [];
 
@@ -49,22 +50,20 @@ export default function Breadcrumbs({
     return idx >= 0 ? safePath.slice(0, idx + 1) : safePath;
   }, [path, currentFolderId]);
 
-  // --- Derived path string (for address editing) ---
   const currentPathString = useMemo(() => {
-    if (!displayPath || displayPath.length === 0) return "";
+    if (!displayPath || displayPath.length === 0) return rootLabel;
     return displayPath.map((c) => c.label).join(" / ");
-  }, [displayPath]);
+  }, [displayPath, rootLabel]);
 
-  // --- Address bar editing state ---
   const [editing, setEditing] = useState(false);
   const [pathText, setPathText] = useState(currentPathString);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const crumbsRef = useRef<HTMLDivElement | null>(null);
 
-  // --- Search state (controlled input mirroring parent) ---
   const [search, setSearch] = useState(initialSearch);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [isResolvingPath, setIsResolvingPath] = useState(false);
 
   useEffect(() => {
     setSearch(initialSearch ?? "");
@@ -82,7 +81,6 @@ export default function Breadcrumbs({
     if (!editing) setResolveError(null);
   }, [editing]);
 
-  // Always scroll crumbs to the end when path changes
   useEffect(() => {
     const el = crumbsRef.current;
     if (!el) return;
@@ -91,7 +89,6 @@ export default function Breadcrumbs({
     });
   }, [displayPath]);
 
-  // --- Internal back/forward history when parent doesn't provide handlers ---
   const [backStack, setBackStack] = useState<(string | null)[]>([]);
   const [forwardStack, setForwardStack] = useState<(string | null)[]>([]);
   const lastIdRef = useRef<string | null>(currentFolderId ?? null);
@@ -110,17 +107,21 @@ export default function Breadcrumbs({
   }, [currentFolderId]);
 
   const runNavigate = useCallback(
-    (target: string | null) => {
+    async (target: string | null) => {
       if (onNavigate) {
-        onNavigate(target);
+        await Promise.resolve(onNavigate(target));
         return;
       }
 
       if (!target) return;
 
       const crumb = path.find((c) => c.id === target);
-      if (crumb) crumb.onClick();
-      else path[path.length - 1]?.onClick();
+      if (crumb) {
+        await Promise.resolve(crumb.onClick());
+        return;
+      }
+
+      await Promise.resolve(path[path.length - 1]?.onClick());
     },
     [onNavigate, path],
   );
@@ -135,7 +136,7 @@ export default function Breadcrumbs({
 
       setForwardStack((fs) => [...fs, prev]);
       lastIdRef.current = target;
-      runNavigate(target);
+      void runNavigate(target);
 
       return nextBs;
     });
@@ -151,7 +152,7 @@ export default function Breadcrumbs({
 
       setBackStack((bs) => [...bs, prev]);
       lastIdRef.current = target;
-      runNavigate(target);
+      void runNavigate(target);
 
       return nextFs;
     });
@@ -166,52 +167,64 @@ export default function Breadcrumbs({
   const doBack = onBack ?? internalBack;
   const doForward = onForward ?? internalForward;
 
-  // --- Address resolution (Enter in text mode) ---
+  const cancelEditing = useCallback(() => {
+    setEditing(false);
+    setPathText(currentPathString);
+    setResolveError(null);
+    setIsResolvingPath(false);
+  }, [currentPathString]);
+
   const resolveAndNavigate = useCallback(async () => {
     const text = pathText.trim();
     setResolveError(null);
+    setIsResolvingPath(true);
 
-    if (!text || text.toLowerCase() === rootLabel.toLowerCase()) {
-      runNavigate(null);
+    try {
+      if (!text || text.toLowerCase() === rootLabel.toLowerCase()) {
+        await runNavigate(null);
+        setEditing(false);
+        return;
+      }
+
+      let resolved: string | null = null;
+
+      if (onResolvePathText) {
+        const maybe = await onResolvePathText(text);
+        if (typeof maybe === "string" || maybe === null) {
+          resolved = maybe;
+        }
+      }
+
+      if (resolved === null) {
+        const segments = text.split(/[\\/]/).map((s) => s.trim());
+        const last = segments.filter(Boolean).pop()?.toLowerCase();
+        if (last) {
+          const match = displayPath.find((c) => c.label.toLowerCase() === last);
+          if (match) resolved = match.id;
+        }
+      }
+
+      if (resolved === null) {
+        setResolveError("Path not found in this workspace");
+        return;
+      }
+
+      await runNavigate(resolved);
       setEditing(false);
-      return;
+    } catch {
+      setResolveError("Could not open that path right now");
+    } finally {
+      setIsResolvingPath(false);
     }
-
-    let resolved: string | null = null;
-
-    if (onResolvePathText) {
-      const maybe = await onResolvePathText(text);
-      if (typeof maybe === "string" || maybe === null) {
-        resolved = maybe;
-      }
-    }
-
-    if (resolved === null) {
-      const segments = text.split(/[\\/]/).map((s) => s.trim());
-      const last = segments.filter(Boolean).pop()?.toLowerCase();
-      if (last) {
-        const match = displayPath.find((c) => c.label.toLowerCase() === last);
-        if (match) resolved = match.id;
-      }
-    }
-
-    if (resolved === null) {
-      setResolveError("Path not found");
-      return;
-    }
-
-    runNavigate(resolved);
-    setEditing(false);
   }, [pathText, rootLabel, onResolvePathText, displayPath, runNavigate]);
 
   const handleAddressKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      resolveAndNavigate();
+      void resolveAndNavigate();
     } else if (e.key === "Escape") {
       e.preventDefault();
-      setEditing(false);
-      setPathText(currentPathString);
+      cancelEditing();
     }
   };
 
@@ -255,74 +268,87 @@ export default function Breadcrumbs({
     return "Ctrl+F";
   }, []);
 
-  // --- Search box (right side) ---
   const SearchBox = onSearchSubmit ? (
     <div
-      className="flex w-72 shrink-0 items-center gap-2 px-3 py-2 rounded-2xl bg-[hsl(var(--fm-bg-elev))] shadow-sm"
+      className="flex w-full shrink-0 flex-col gap-1 rounded-2xl bg-[hsl(var(--fm-bg-elev))] px-3 py-2 shadow-sm lg:w-[22rem]"
       role="search"
       aria-label="File manager search"
     >
-      <button
-        type="button"
-        onClick={focusSearch}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[hsl(var(--fm-muted))] transition hover:bg-black/5 hover:text-[hsl(var(--foreground))] dark:hover:bg-white/10"
-        aria-label="Focus search"
-        title="Focus search"
-      >
-        <Search className="h-4 w-4" />
-      </button>
-
-      <input
-        ref={searchInputRef}
-        id="file-manager-search"
-        data-file-manager-search="true"
-        type="search"
-        name="file-manager-search"
-        value={search}
-        onChange={(e) => {
-          const v = e.target.value;
-          setSearch(v);
-          onSearchSubmit?.(v);
-        }}
-        placeholder={
-          searchPlaceholder ??
-          (currentFolderId ? "Search this folder" : "Search")
-        }
-        className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--fm-muted))]"
-        aria-label={searchPlaceholder ?? "Search files"}
-      />
-
-      {search ? (
-        <button
-          type="button"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[hsl(var(--fm-muted))] transition hover:bg-black/5 hover:text-[hsl(var(--foreground))] dark:hover:bg-white/10"
-          onClick={() => {
-            setSearch("");
-            onSearchSubmit?.("");
-            requestAnimationFrame(() => {
-              searchInputRef.current?.focus();
-            });
-          }}
-          aria-label="Clear search"
-          title="Clear search"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      ) : (
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={focusSearch}
-          className="hidden shrink-0 rounded-lg border border-black/5 px-2 py-1 text-[11px] font-medium tracking-wide text-[hsl(var(--fm-muted))] transition hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10 lg:inline-flex"
-          aria-label="Focus search with keyboard shortcut"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[hsl(var(--fm-muted))] transition hover:bg-black/5 hover:text-[hsl(var(--foreground))] dark:hover:bg-white/10"
+          aria-label="Focus search"
           title="Focus search"
         >
-          {shortcutLabel}
+          <Search className="h-4 w-4" />
         </button>
-      )}
+
+        <input
+          ref={searchInputRef}
+          id="file-manager-search"
+          data-file-manager-search="true"
+          type="search"
+          name="file-manager-search"
+          value={search}
+          onChange={(e) => {
+            const v = e.target.value;
+            setSearch(v);
+            onSearchSubmit?.(v);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && search) {
+              e.preventDefault();
+              setSearch("");
+              onSearchSubmit?.("");
+            }
+          }}
+          placeholder={
+            searchPlaceholder ??
+            (currentFolderId ? "Search this folder" : "Search")
+          }
+          className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--fm-muted))]"
+          aria-label={searchPlaceholder ?? "Search files"}
+        />
+
+        {search ? (
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[hsl(var(--fm-muted))] transition hover:bg-black/5 hover:text-[hsl(var(--foreground))] dark:hover:bg-white/10"
+            onClick={() => {
+              setSearch("");
+              onSearchSubmit?.("");
+              requestAnimationFrame(() => {
+                searchInputRef.current?.focus();
+              });
+            }}
+            aria-label="Clear search"
+            title="Clear search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={focusSearch}
+            className="hidden shrink-0 rounded-lg border border-black/5 px-2 py-1 text-[11px] font-medium tracking-wide text-[hsl(var(--fm-muted))] transition hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10 lg:inline-flex"
+            aria-label="Focus search with keyboard shortcut"
+            title="Focus search"
+          >
+            {shortcutLabel}
+          </button>
+        )}
+      </div>
+
+      {searchMetaText ? (
+        <div className="pl-9 text-[11px] text-[hsl(var(--fm-muted))]">
+          {searchMetaText}
+        </div>
+      ) : null}
     </div>
   ) : null;
 
-  // --- Render ---
   return (
     <motion.nav
       aria-label="Folder navigation"
@@ -331,19 +357,17 @@ export default function Breadcrumbs({
       transition={{ duration: 0.2 }}
       className="w-full flex flex-col gap-3 text-sm lg:flex-row lg:items-center lg:justify-between"
     >
-      {/* Left cluster: Back / Forward + breadcrumb pill */}
       <div className="flex items-center gap-3 min-w-0 w-full lg:flex-1">
-        {/* Back / Forward pill */}
         <div className="inline-flex items-center rounded-2xl shadow-sm overflow-hidden">
           <button
             type="button"
             className={`px-3 py-2 transition-colors ${
-              canBack
+              canBack && !isResolvingPath
                 ? "hover:bg-[hsl(var(--surface-elevated))]"
                 : "opacity-40 cursor-not-allowed"
             }`}
             onClick={doBack}
-            disabled={!canBack}
+            disabled={!canBack || isResolvingPath}
             aria-label="Back"
             title="Back"
           >
@@ -352,12 +376,12 @@ export default function Breadcrumbs({
           <button
             type="button"
             className={`px-3 py-2 transition-colors ${
-              canForward
+              canForward && !isResolvingPath
                 ? "hover:bg-[hsl(var(--surface-elevated))]"
                 : "opacity-40 cursor-not-allowed"
             }`}
             onClick={doForward}
-            disabled={!canForward}
+            disabled={!canForward || isResolvingPath}
             aria-label="Forward"
             title="Forward"
           >
@@ -365,23 +389,24 @@ export default function Breadcrumbs({
           </button>
         </div>
 
-        {/* Address / breadcrumbs pill */}
         <div
-          className={`flex-1 rounded-2xl shadow-sm px-3 py-1.5 flex items-center gap-2 min-w-0 ${resolveError ? "ring-1 ring-rose-400/70 dark:ring-rose-400/60" : ""}`}
+          className={`flex-1 rounded-2xl shadow-sm px-3 py-1.5 flex items-center gap-2 min-w-0 ${
+            resolveError ? "ring-1 ring-rose-400/70 dark:ring-rose-400/60" : ""
+          }`}
           data-invalid={resolveError ? "true" : "false"}
+          aria-busy={isResolvingPath ? "true" : "false"}
         >
-          {/* Home icon bubble */}
           <button
             type="button"
             className="inline-flex h-7 w-7 items-center justify-center rounded-xl text-[hsl(var(--fm-accent))] shadow-[var(--fm-shadow)]"
-            onClick={() => runNavigate(null)}
+            onClick={() => void runNavigate(null)}
             title="Go to root"
             aria-label="Go to root"
+            disabled={isResolvingPath}
           >
             <Home className="h-4 w-4" />
           </button>
 
-          {/* Breadcrumbs or editable path */}
           <div className="flex-1 min-w-0" ref={crumbsRef}>
             {editing ? (
               <input
@@ -393,19 +418,32 @@ export default function Breadcrumbs({
                   if (resolveError) setResolveError(null);
                 }}
                 onKeyDown={handleAddressKeyDown}
+                onBlur={() => {
+                  if (!isResolvingPath) cancelEditing();
+                }}
                 className="w-full bg-transparent text-sm outline-none"
                 spellCheck={false}
                 aria-invalid={resolveError ? "true" : undefined}
-                aria-describedby={resolveError ? "folder-path-error" : undefined}
+                aria-describedby={
+                  resolveError ? "folder-path-error" : undefined
+                }
               />
             ) : (
               <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-transparent">
                 {!displayPath || displayPath.length === 0 ? (
-                  <span className="text-[hsl(var(--fm-muted))]">This PC</span>
+                  <button
+                    type="button"
+                    onClick={() => void runNavigate(null)}
+                    className="rounded-xl px-2 py-1 text-xs text-[hsl(var(--fm-muted))] transition hover:bg-[hsl(var(--surface-elevated))] md:text-sm"
+                    disabled={isResolvingPath}
+                  >
+                    {rootLabel}
+                  </button>
                 ) : (
                   displayPath.map((crumb, idx) => {
                     const isLast = idx === displayPath.length - 1;
                     const label = String(crumb.label || "").trim() || "Folder";
+
                     return (
                       <div
                         key={crumb.id}
@@ -413,8 +451,11 @@ export default function Breadcrumbs({
                       >
                         <button
                           type="button"
-                          onClick={crumb.onClick}
+                          onClick={() => {
+                            void Promise.resolve(crumb.onClick());
+                          }}
                           aria-current={isLast ? "page" : undefined}
+                          disabled={isResolvingPath}
                           className={`px-2 py-1 rounded-xl text-xs md:text-sm transition-colors whitespace-nowrap ${
                             isLast
                               ? "border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] text-[hsl(var(--foreground))] shadow-sm"
@@ -436,25 +477,41 @@ export default function Breadcrumbs({
         </div>
       </div>
 
-      {/* Right-side actions: Edit toggle + Search */}
       <div className="flex items-center gap-2 w-full lg:w-auto">
-        {resolveError ? (
-          <p
-            id="folder-path-error"
-            role="status"
-            className="mr-auto text-xs text-rose-600 dark:text-rose-300"
-          >
-            {resolveError}
-          </p>
-        ) : null}
+        <div className="mr-auto min-w-0">
+          {resolveError ? (
+            <p
+              id="folder-path-error"
+              role="status"
+              className="text-xs text-rose-600 dark:text-rose-300"
+            >
+              {resolveError}
+            </p>
+          ) : editing ? (
+            <p className="text-xs text-[hsl(var(--fm-muted))]">
+              {isResolvingPath
+                ? "Resolving path…"
+                : "Press Enter to open • Esc to cancel"}
+            </p>
+          ) : null}
+        </div>
+
         <button
           type="button"
-          className="h-9 shrink-0 px-3 rounded-xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] text-xs md:text-sm hover:bg-[hsl(var(--surface-elevated))] transition-colors"
-          onClick={() => setEditing((v) => !v)}
-          title={editing ? "Show breadcrumbs" : "Edit address"}
+          className="h-9 shrink-0 px-3 rounded-xl border border-[hsl(var(--fm-border))] bg-[hsl(var(--fm-bg-elev))] text-xs md:text-sm hover:bg-[hsl(var(--surface-elevated))] transition-colors disabled:cursor-wait disabled:opacity-70"
+          onClick={() => {
+            if (editing) {
+              cancelEditing();
+              return;
+            }
+            setEditing(true);
+          }}
+          title={editing ? "Exit address editing" : "Edit address"}
+          disabled={isResolvingPath}
         >
-          {editing ? "Breadcrumbs" : "Edit"}
+          {editing ? "Done" : "Edit"}
         </button>
+
         {SearchBox}
       </div>
     </motion.nav>
