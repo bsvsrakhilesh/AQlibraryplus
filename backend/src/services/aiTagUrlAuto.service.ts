@@ -107,6 +107,7 @@ export async function runAiTagForUrl(
       const phrases = Array.isArray(data?.phrases) ? data.phrases : [];
       const unigrams = Array.isArray(data?.unigrams) ? data.unigrams : [];
       const structured = data?.structured ?? null;
+      const governance = data?.governance ?? null;
 
       const latest = await prisma.url.findUnique({
         where: { id: urlId },
@@ -122,20 +123,25 @@ export async function runAiTagForUrl(
           contentHash: data?.hash ?? null,
           taggerVersion: data?.tagger_version ?? null,
           tagsMeta: {
-            ...((rec.tagsMeta as any) || {}),
+            ...((latest?.tagsMeta as any) || {}),
             tagger: {
               phrases,
               unigrams,
               structured,
+              governance,
               topk: TOPK,
               use_llm: USE_LLM,
               jobId,
               updatedAt: new Date().toISOString(),
               normalizedTextSha256: data?.hash ?? null,
               normalizedTextHashAlgorithm: data?.hash ? "sha256" : null,
+              structuredLlmUsed: data?.structured_llm_used ?? false,
+              structuredLlmModel: data?.structured_llm_model ?? null,
+              governanceLlmUsed: data?.governance_llm_used ?? false,
+              governanceLlmModel: data?.governance_llm_model ?? null,
             },
 
-            aiTagger: { phrases, unigrams },
+            aiTagger: { phrases, unigrams, governance },
           } as any,
           taggingStatus: TaggingStatus.SUCCESS,
           taggingJobId: null,

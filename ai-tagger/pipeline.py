@@ -27,8 +27,10 @@ except Exception:  # pragma: no cover
     try:
         from .taxonomy import apply_taxonomy  # type: ignore
     except Exception:  # pragma: no cover
+
         def apply_taxonomy(tags: Sequence[str]) -> List[str]:
             return list(dict.fromkeys(tags))
+
 
 log = logging.getLogger("pipeline")
 TAGGER_VERSION = os.getenv("TAGGER_VERSION", "0.4.0")
@@ -45,6 +47,7 @@ except Exception:  # pragma: no cover
 # Optional structured OpenAI extraction.
 try:
     from structured_openai import (  # type: ignore
+        extract_governance_with_llm,
         extract_structured_with_llm,
         get_structured_model,
         has_structured_llm,
@@ -53,19 +56,21 @@ try:
 except Exception:  # pragma: no cover
     try:
         from .structured_openai import (  # type: ignore
+            extract_governance_with_llm,
             extract_structured_with_llm,
             get_structured_model,
             has_structured_llm,
             merge_structured,
         )
     except Exception:  # pragma: no cover
+
         def has_structured_llm() -> bool:
             return False
 
         def get_structured_model() -> str:
             return ""
 
-        def extract_structured_with_llm(
+        def extract_governance_with_llm(
             *,
             content: str,
             file_name: Optional[str],
@@ -81,9 +86,11 @@ except Exception:  # pragma: no cover
         ) -> Dict[str, Any]:
             return fallback if isinstance(fallback, dict) else {}
 
+
 # simple tokenizer (letters/digits/hyphen/+/underscore); no trailing dots
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9\-+/_]*")
-_STOPWORDS = set("""
+_STOPWORDS = set(
+    """
 a about above across after again against all almost alone along already also although always am among an
 and another any anybody anyone anything anywhere are around as at back be became because become becomes
 been before being below between both but by can cannot could couldn did didn do does doesn doing done
@@ -95,7 +102,8 @@ seem seemed seeming seems several she should shouldn since so some somebody some
 sometimes somewhere still such t than that the their theirs them themselves then there therefore these
 they this those though through to too under until up us very via was wasn we well were weren what when
 where whether which while who whom whose why will with within without won would wouldn you your yours yourself yourselves
-""".split())
+""".split()
+)
 
 # High-signal tokens/phrases that often appear only once but should still surface as tags:
 _ACRONYM_RE = re.compile(r"\b[A-Z]{2,10}\b")
@@ -189,24 +197,30 @@ def _load_content_bundle(
             extract_text = getattr(extractors, "extract_text")
             extract_content = getattr(extractors, "extract_content")
 
-        bundle = extract_content(
-            text=text,
-            url=url,
-            file_bytes=file_bytes,
-            file_name=file_name,
-            file_path=file_path,
-        ) or {}
+        bundle = (
+            extract_content(
+                text=text,
+                url=url,
+                file_bytes=file_bytes,
+                file_name=file_name,
+                file_path=file_path,
+            )
+            or {}
+        )
 
         if isinstance(bundle, dict) and "text" in bundle:
             return bundle
 
-        content = extract_text(
-            text=text,
-            url=url,
-            file_bytes=file_bytes,
-            file_name=file_name,
-            file_path=file_path,
-        ) or ""
+        content = (
+            extract_text(
+                text=text,
+                url=url,
+                file_bytes=file_bytes,
+                file_name=file_name,
+                file_path=file_path,
+            )
+            or ""
+        )
 
         return {
             "text": content,
@@ -346,6 +360,394 @@ def _ground_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> Any:
     return structured
 
 
+def _ground_evidence_dict(item: Any, units: Sequence[Dict[str, Any]]) -> Any:
+    if not isinstance(item, dict):
+        return item
+
+    evidence = str(item.get("evidence") or "").strip()
+    if not evidence:
+        return item
+
+    unit = _find_unit_for_evidence(evidence, units)
+    if not unit:
+        return item
+
+    locator = unit.get("locator") or {}
+    prefix = _locator_prefix(locator)
+
+    if not evidence.startswith("["):
+        item["evidence"] = prefix + evidence
+
+    item["locator"] = locator
+    return item
+
+
+def _empty_governance() -> Dict[str, Any]:
+    return {
+        "profile": "governance",
+        "version": 1,
+        "agencies": [],
+        "issues": [],
+        "mandates": [],
+        "claims": [],
+        "events": [],
+        "positions": [],
+        "gaps": [],
+        "relations": [],
+    }
+
+
+def _clean_text(value: Any, limit: int = 500) -> Optional[str]:
+    s = " ".join(str(value or "").replace("…", " ").split()).strip()
+    if not s:
+        return None
+    return s[:limit]
+
+
+def _clean_confidence(value: Any) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, n))
+
+
+def _pick_enum(
+    value: Any, allowed: Sequence[str], *, default: Optional[str] = None
+) -> Optional[str]:
+    raw = _clean_text(value, 80)
+    if not raw:
+        return default
+    norm = raw.strip().lower().replace(" ", "_").replace("-", "_")
+    return norm if norm in allowed else default
+
+
+def _normalize_governance_item(
+    raw: Any, *, spec: Dict[str, Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+
+    out: Dict[str, Any] = {}
+    for field, cfg in spec.items():
+        kind = cfg.get("kind")
+        if kind == "text":
+            out[field] = _clean_text(raw.get(field), cfg.get("limit", 500))
+        elif kind == "enum":
+            out[field] = _pick_enum(
+                raw.get(field), cfg.get("allowed") or [], default=cfg.get("default")
+            )
+        elif kind == "confidence":
+            out[field] = _clean_confidence(raw.get(field))
+        else:
+            out[field] = raw.get(field)
+
+    evidence = _clean_text(raw.get("evidence"), 500) or ""
+    out["evidence"] = evidence
+    return out
+
+
+def _dedupe_governance_items(
+    items: Sequence[Dict[str, Any]], *, key_fields: Sequence[str], limit: int
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for item in items:
+        key = tuple((item.get(field) or "") for field in key_fields)
+        if not any(key):
+            continue
+        norm_key = tuple(str(v).strip().casefold() for v in key)
+        if norm_key in seen:
+            continue
+        seen.add(norm_key)
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _normalize_governance(governance: Any) -> Dict[str, Any]:
+    if not isinstance(governance, dict):
+        return _empty_governance()
+
+    agency_allowed = [
+        "regulator",
+        "judiciary",
+        "ministry",
+        "executive",
+        "local_body",
+        "research_body",
+        "civil_society",
+        "private_sector",
+        "other",
+    ]
+    issue_kind_allowed = ["governance_issue", "case_file"]
+    mandate_type_allowed = [
+        "statutory",
+        "regulatory",
+        "advisory",
+        "enforcement",
+        "operational",
+        "coordination",
+        "reporting",
+        "monitoring",
+        "other",
+    ]
+    polarity_allowed = ["support", "oppose", "neutral", "mixed", "unknown"]
+    gap_allowed = [
+        "overlap",
+        "ambiguity",
+        "accountability",
+        "coordination",
+        "enforcement",
+        "data",
+        "evidence",
+        "coverage",
+        "other",
+    ]
+    relation_allowed = [
+        "contradiction",
+        "tension",
+        "override",
+        "reinforcement",
+        "alignment",
+        "duplication",
+        "reference",
+        "supersedes",
+        "other",
+    ]
+
+    agencies = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "name": {"kind": "text", "limit": 160},
+                "shortName": {"kind": "text", "limit": 80},
+                "category": {
+                    "kind": "enum",
+                    "allowed": agency_allowed,
+                    "default": "other",
+                },
+                "jurisdiction": {"kind": "text", "limit": 120},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("agencies") or [])
+    ]
+    agencies = [item for item in agencies if item and item.get("name")]
+    agencies = _dedupe_governance_items(
+        agencies, key_fields=["name", "jurisdiction"], limit=24
+    )
+
+    issues = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "title": {"kind": "text", "limit": 220},
+                "kind": {
+                    "kind": "enum",
+                    "allowed": issue_kind_allowed,
+                    "default": "governance_issue",
+                },
+                "summary": {"kind": "text", "limit": 280},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("issues") or [])
+    ]
+    issues = [item for item in issues if item and item.get("title")]
+    issues = _dedupe_governance_items(issues, key_fields=["title"], limit=24)
+
+    mandates = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "agencyName": {"kind": "text", "limit": 160},
+                "issueTitle": {"kind": "text", "limit": 220},
+                "title": {"kind": "text", "limit": 220},
+                "description": {"kind": "text", "limit": 320},
+                "mandateType": {
+                    "kind": "enum",
+                    "allowed": mandate_type_allowed,
+                    "default": "other",
+                },
+                "effectiveDateText": {"kind": "text", "limit": 80},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("mandates") or [])
+    ]
+    mandates = [item for item in mandates if item and item.get("title")]
+    mandates = _dedupe_governance_items(
+        mandates, key_fields=["agencyName", "title"], limit=40
+    )
+
+    claims = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "issueTitle": {"kind": "text", "limit": 220},
+                "subjectAgencyName": {"kind": "text", "limit": 160},
+                "claimText": {"kind": "text", "limit": 500},
+                "claimSummary": {"kind": "text", "limit": 280},
+                "polarity": {
+                    "kind": "enum",
+                    "allowed": polarity_allowed,
+                    "default": "unknown",
+                },
+                "scopeText": {"kind": "text", "limit": 220},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("claims") or [])
+    ]
+    claims = [item for item in claims if item and item.get("claimText")]
+    claims = _dedupe_governance_items(
+        claims, key_fields=["subjectAgencyName", "claimText"], limit=60
+    )
+
+    events = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "issueTitle": {"kind": "text", "limit": 220},
+                "actorAgencyName": {"kind": "text", "limit": 160},
+                "title": {"kind": "text", "limit": 220},
+                "summary": {"kind": "text", "limit": 280},
+                "eventDateText": {"kind": "text", "limit": 80},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("events") or [])
+    ]
+    events = [item for item in events if item and item.get("title")]
+    events = _dedupe_governance_items(
+        events, key_fields=["actorAgencyName", "title", "eventDateText"], limit=60
+    )
+
+    positions = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "issueTitle": {"kind": "text", "limit": 220},
+                "agencyName": {"kind": "text", "limit": 160},
+                "stanceText": {"kind": "text", "limit": 500},
+                "stanceSummary": {"kind": "text", "limit": 280},
+                "polarity": {
+                    "kind": "enum",
+                    "allowed": polarity_allowed,
+                    "default": "unknown",
+                },
+                "effectiveDateText": {"kind": "text", "limit": 80},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("positions") or [])
+    ]
+    positions = [
+        item
+        for item in positions
+        if item and item.get("agencyName") and item.get("stanceText")
+    ]
+    positions = _dedupe_governance_items(
+        positions, key_fields=["agencyName", "stanceText"], limit=60
+    )
+
+    gaps = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "issueTitle": {"kind": "text", "limit": 220},
+                "primaryAgencyName": {"kind": "text", "limit": 160},
+                "secondaryAgencyName": {"kind": "text", "limit": 160},
+                "gapType": {"kind": "enum", "allowed": gap_allowed, "default": "other"},
+                "summary": {"kind": "text", "limit": 320},
+                "severity": {"kind": "confidence"},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("gaps") or [])
+    ]
+    gaps = [item for item in gaps if item and item.get("summary")]
+    gaps = _dedupe_governance_items(gaps, key_fields=["gapType", "summary"], limit=32)
+
+    relations = [
+        _normalize_governance_item(
+            raw,
+            spec={
+                "issueTitle": {"kind": "text", "limit": 220},
+                "fromAgencyName": {"kind": "text", "limit": 160},
+                "toAgencyName": {"kind": "text", "limit": 160},
+                "fromClaimText": {"kind": "text", "limit": 320},
+                "toClaimText": {"kind": "text", "limit": 320},
+                "relationType": {
+                    "kind": "enum",
+                    "allowed": relation_allowed,
+                    "default": "other",
+                },
+                "rationale": {"kind": "text", "limit": 320},
+                "confidence": {"kind": "confidence"},
+            },
+        )
+        for raw in (governance.get("relations") or [])
+    ]
+    relations = [
+        item
+        for item in relations
+        if item
+        and item.get("relationType")
+        and (item.get("fromClaimText") or item.get("fromAgencyName"))
+        and (item.get("toClaimText") or item.get("toAgencyName"))
+    ]
+    relations = _dedupe_governance_items(
+        relations,
+        key_fields=[
+            "relationType",
+            "fromClaimText",
+            "toClaimText",
+            "fromAgencyName",
+            "toAgencyName",
+        ],
+        limit=48,
+    )
+
+    return {
+        "profile": "governance",
+        "version": 1,
+        "agencies": agencies,
+        "issues": issues,
+        "mandates": mandates,
+        "claims": claims,
+        "events": events,
+        "positions": positions,
+        "gaps": gaps,
+        "relations": relations,
+    }
+
+
+def _ground_governance(governance: Any, units: Sequence[Dict[str, Any]]) -> Any:
+    if not governance or not isinstance(governance, dict) or not units:
+        return governance
+
+    for key in (
+        "agencies",
+        "issues",
+        "mandates",
+        "claims",
+        "events",
+        "positions",
+        "gaps",
+        "relations",
+    ):
+        arr = governance.get(key)
+        if isinstance(arr, list):
+            governance[key] = [_ground_evidence_dict(item, units) for item in arr]
+
+    return governance
+
+
 def _classify_structured_combined(
     *,
     content: str,
@@ -375,10 +777,43 @@ def _classify_structured_combined(
         except Exception as e:
             log.warning("structured llm failed: %s", e)
 
-    structured = merge_structured(llm_structured, rule_structured) if llm_structured else rule_structured
+    structured = (
+        merge_structured(llm_structured, rule_structured)
+        if llm_structured
+        else rule_structured
+    )
     structured = _ground_structured(structured, grounding_units)
 
-    return structured, structured_llm_used, structured_llm_model
+    governance = None
+    governance_llm_used = False
+    governance_llm_model: Optional[str] = None
+
+    if has_structured_llm() and (content or "").strip():
+        try:
+            governance = extract_governance_with_llm(
+                content=content,
+                file_name=file_name,
+                tags=tags,
+                extraction=extraction,
+                grounding_units=grounding_units,
+            )
+            if governance:
+                governance_llm_used = True
+                governance_llm_model = get_structured_model()
+        except Exception as e:
+            log.warning("governance llm failed: %s", e)
+
+    governance = _normalize_governance(governance)
+    governance = _ground_governance(governance, grounding_units)
+
+    return (
+        structured,
+        structured_llm_used,
+        structured_llm_model,
+        governance,
+        governance_llm_used,
+        governance_llm_model,
+    )
 
 
 def extract_and_tag_sync(
@@ -395,13 +830,16 @@ def extract_and_tag_sync(
     Deterministic + OCR-aware + model-assisted tagging pipeline.
     Keeps the existing structured CAQM label schema used by the UI.
     """
-    bundle = _load_content_bundle(
-        text=text,
-        url=url,
-        file_bytes=file_bytes,
-        file_name=file_name,
-        file_path=file_path,
-    ) or {}
+    bundle = (
+        _load_content_bundle(
+            text=text,
+            url=url,
+            file_bytes=file_bytes,
+            file_name=file_name,
+            file_path=file_path,
+        )
+        or {}
+    )
 
     content = bundle.get("text") or ""
     extraction = bundle.get("extraction") or {}
@@ -410,7 +848,14 @@ def extract_and_tag_sync(
     tokens = _tokenize(content)
 
     if not tokens:
-        structured, structured_llm_used, structured_llm_model = _classify_structured_combined(
+        (
+            structured,
+            structured_llm_used,
+            structured_llm_model,
+            governance,
+            governance_llm_used,
+            governance_llm_model,
+        ) = _classify_structured_combined(
             content=content,
             file_name=file_name,
             tags=[],
@@ -426,11 +871,14 @@ def extract_and_tag_sync(
             "hash": h,
             "tagger_version": TAGGER_VERSION,
             "structured": structured,
+            "governance": governance,
             "extraction": extraction,
             "llm_used": False,
             "llm_model": None,
             "structured_llm_used": structured_llm_used,
             "structured_llm_model": structured_llm_model,
+            "governance_llm_used": governance_llm_used,
+            "governance_llm_model": governance_llm_model,
         }
 
     unigrams = _extract_unigrams(tokens, topk=200)
@@ -474,13 +922,20 @@ def extract_and_tag_sync(
         except Exception as e:
             log.warning("LLM rerank failed: %s", e)
 
-    structured, structured_llm_used, structured_llm_model = _classify_structured_combined(
-        content=content,
-        file_name=file_name,
-        tags=list(tags),
-        extraction=extraction,
-        grounding_units=grounding_units,
-    )
+        (
+            structured,
+            structured_llm_used,
+            structured_llm_model,
+            governance,
+            governance_llm_used,
+            governance_llm_model,
+        ) = _classify_structured_combined(
+            content=content,
+            file_name=file_name,
+            tags=list(tags),
+            extraction=extraction,
+            grounding_units=grounding_units,
+        )
 
     # Canonical semantic hash for normalized extracted text.
     # This must stay distinct from the immutable binary SHA-256
@@ -497,9 +952,13 @@ def extract_and_tag_sync(
         "llm_used": llm_used,
         "llm_model": llm_model,
         "structured": structured,
+        "governance": governance,
         "extraction": extraction,
         "structured_llm_used": structured_llm_used,
         "structured_llm_model": structured_llm_model,
+        "governance_llm_used": governance_llm_used,
+        "governance_llm_model": governance_llm_model,
     }
+
 
 __all__ = ["extract_and_tag_sync"]

@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional, Sequence
 
 log = logging.getLogger("structured_openai")
 
-STRUCTURED_LLM_ENABLED = (
-    os.getenv("STRUCTURED_LLM_ENABLED", "false").lower() == "true"
+STRUCTURED_LLM_ENABLED = os.getenv("STRUCTURED_LLM_ENABLED", "false").lower() == "true"
+STRUCTURED_LLM_MODEL = (
+    os.getenv("STRUCTURED_LLM_MODEL") or os.getenv("LLM_MODEL") or "gpt-4o-mini"
 )
-STRUCTURED_LLM_MODEL = os.getenv("STRUCTURED_LLM_MODEL") or os.getenv("LLM_MODEL") or "gpt-4o-mini"
 STRUCTURED_LLM_TIMEOUT_S = float(os.getenv("STRUCTURED_LLM_TIMEOUT_S", "45"))
 STRUCTURED_LLM_MAX_CHARS = int(os.getenv("STRUCTURED_LLM_MAX_CHARS", "14000"))
 STRUCTURED_LLM_MAX_UNITS = int(os.getenv("STRUCTURED_LLM_MAX_UNITS", "12"))
@@ -61,6 +61,96 @@ _POLLUTANTS = [
     "o3",
     "co",
 ]
+
+_AGENCY_CATEGORIES = [
+    "regulator",
+    "judiciary",
+    "ministry",
+    "executive",
+    "local_body",
+    "research_body",
+    "civil_society",
+    "private_sector",
+    "other",
+]
+
+_GOVERNANCE_ISSUE_KINDS = [
+    "governance_issue",
+    "case_file",
+]
+
+_MANDATE_TYPES = [
+    "statutory",
+    "regulatory",
+    "advisory",
+    "enforcement",
+    "operational",
+    "coordination",
+    "reporting",
+    "monitoring",
+    "other",
+]
+
+_POSITION_POLARITIES = [
+    "support",
+    "oppose",
+    "neutral",
+    "mixed",
+    "unknown",
+]
+
+_GOVERNANCE_GAP_TYPES = [
+    "overlap",
+    "ambiguity",
+    "accountability",
+    "coordination",
+    "enforcement",
+    "data",
+    "evidence",
+    "coverage",
+    "other",
+]
+
+_DOCUMENT_RELATION_TYPES = [
+    "contradiction",
+    "tension",
+    "override",
+    "reinforcement",
+    "alignment",
+    "duplication",
+    "reference",
+    "supersedes",
+    "other",
+]
+
+
+def _string_or_null_schema() -> Dict[str, Any]:
+    return {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+
+def _bounded_number_or_null_schema(
+    *, minimum: float = 0.0, maximum: float = 1.0
+) -> Dict[str, Any]:
+    return {
+        "anyOf": [
+            {"type": "number", "minimum": minimum, "maximum": maximum},
+            {"type": "null"},
+        ]
+    }
+
+
+def _governance_item_schema(
+    properties: Dict[str, Any], required: Sequence[str]
+) -> Dict[str, Any]:
+    ordered: Dict[str, Any] = dict(properties)
+    ordered["confidence"] = _bounded_number_or_null_schema()
+    ordered["evidence"] = {"type": "string"}
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": ordered,
+        "required": list(required) + ["confidence", "evidence"],
+    }
 
 
 def has_structured_llm() -> bool:
@@ -196,6 +286,178 @@ _SCHEMA: Dict[str, Any] = {
     "required": ["profile", "version", "docType", "labels", "grap", "entities"],
 }
 
+_GOVERNANCE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "profile": {"type": "string", "enum": ["governance"]},
+        "version": {"type": "integer", "enum": [1]},
+        "agencies": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "name": {"type": "string"},
+                    "shortName": _string_or_null_schema(),
+                    "category": _enum_or_null(_AGENCY_CATEGORIES),
+                    "jurisdiction": _string_or_null_schema(),
+                },
+                ["name", "shortName", "category", "jurisdiction"],
+            ),
+        },
+        "issues": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "title": {"type": "string"},
+                    "kind": _enum_or_null(_GOVERNANCE_ISSUE_KINDS),
+                    "summary": _string_or_null_schema(),
+                },
+                ["title", "kind", "summary"],
+            ),
+        },
+        "mandates": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "agencyName": _string_or_null_schema(),
+                    "issueTitle": _string_or_null_schema(),
+                    "title": {"type": "string"},
+                    "description": _string_or_null_schema(),
+                    "mandateType": _enum_or_null(_MANDATE_TYPES),
+                    "effectiveDateText": _string_or_null_schema(),
+                },
+                [
+                    "agencyName",
+                    "issueTitle",
+                    "title",
+                    "description",
+                    "mandateType",
+                    "effectiveDateText",
+                ],
+            ),
+        },
+        "claims": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "issueTitle": _string_or_null_schema(),
+                    "subjectAgencyName": _string_or_null_schema(),
+                    "claimText": {"type": "string"},
+                    "claimSummary": _string_or_null_schema(),
+                    "polarity": _enum_or_null(_POSITION_POLARITIES),
+                    "scopeText": _string_or_null_schema(),
+                },
+                [
+                    "issueTitle",
+                    "subjectAgencyName",
+                    "claimText",
+                    "claimSummary",
+                    "polarity",
+                    "scopeText",
+                ],
+            ),
+        },
+        "events": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "issueTitle": _string_or_null_schema(),
+                    "actorAgencyName": _string_or_null_schema(),
+                    "title": {"type": "string"},
+                    "summary": _string_or_null_schema(),
+                    "eventDateText": _string_or_null_schema(),
+                },
+                [
+                    "issueTitle",
+                    "actorAgencyName",
+                    "title",
+                    "summary",
+                    "eventDateText",
+                ],
+            ),
+        },
+        "positions": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "issueTitle": _string_or_null_schema(),
+                    "agencyName": _string_or_null_schema(),
+                    "stanceText": {"type": "string"},
+                    "stanceSummary": _string_or_null_schema(),
+                    "polarity": _enum_or_null(_POSITION_POLARITIES),
+                    "effectiveDateText": _string_or_null_schema(),
+                },
+                [
+                    "issueTitle",
+                    "agencyName",
+                    "stanceText",
+                    "stanceSummary",
+                    "polarity",
+                    "effectiveDateText",
+                ],
+            ),
+        },
+        "gaps": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "issueTitle": _string_or_null_schema(),
+                    "primaryAgencyName": _string_or_null_schema(),
+                    "secondaryAgencyName": _string_or_null_schema(),
+                    "gapType": _enum_or_null(_GOVERNANCE_GAP_TYPES),
+                    "summary": {"type": "string"},
+                    "severity": _bounded_number_or_null_schema(
+                        minimum=0.0, maximum=1.0
+                    ),
+                },
+                [
+                    "issueTitle",
+                    "primaryAgencyName",
+                    "secondaryAgencyName",
+                    "gapType",
+                    "summary",
+                    "severity",
+                ],
+            ),
+        },
+        "relations": {
+            "type": "array",
+            "items": _governance_item_schema(
+                {
+                    "issueTitle": _string_or_null_schema(),
+                    "fromAgencyName": _string_or_null_schema(),
+                    "toAgencyName": _string_or_null_schema(),
+                    "fromClaimText": _string_or_null_schema(),
+                    "toClaimText": _string_or_null_schema(),
+                    "relationType": _enum_or_null(_DOCUMENT_RELATION_TYPES),
+                    "rationale": _string_or_null_schema(),
+                },
+                [
+                    "issueTitle",
+                    "fromAgencyName",
+                    "toAgencyName",
+                    "fromClaimText",
+                    "toClaimText",
+                    "relationType",
+                    "rationale",
+                ],
+            ),
+        },
+    },
+    "required": [
+        "profile",
+        "version",
+        "agencies",
+        "issues",
+        "mandates",
+        "claims",
+        "events",
+        "positions",
+        "gaps",
+        "relations",
+    ],
+}
+
 
 def _clip(text: str, n: int) -> str:
     text = (text or "").strip()
@@ -238,6 +500,20 @@ Rules:
 - If a field is unknown, return null (for single values) or [] (for arrays).
 - Evidence should be a short, specific snippet from the document text.
 - Prefer precise labels that are actually supported by evidence in the text.
+"""
+
+_GOVERNANCE_SYSTEM_PROMPT = """You extract governance intelligence from the provided document into a strict JSON schema.
+
+Rules:
+- Return ONLY JSON matching the schema.
+- Be conservative and evidence-grounded.
+- Do not invent agencies, mandates, dates, conflicts, or gaps.
+- Only emit contradictions or tensions when the document text explicitly supports them.
+- Use the exact evidence snippet text from the document when possible.
+- If a field is unknown, return null (for single values) or [] (for arrays).
+- Prefer short summaries, but keep the full core meaning of the source statement.
+- Preserve document scope; distinguish the actor making a statement from the actor being described.
+- eventDateText must capture the date text as written in the document, not a guessed ISO date.
 """
 
 
@@ -324,6 +600,104 @@ Document text:
         return None
 
 
+def extract_governance_with_llm(
+    *,
+    content: str,
+    file_name: Optional[str],
+    tags: Optional[Sequence[str]],
+    extraction: Optional[Dict[str, Any]],
+    grounding_units: Optional[Sequence[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    if not has_structured_llm():
+        return None
+
+    body = (content or "").strip()
+    if not body:
+        return None
+
+    client = _client()
+    model = get_structured_model()
+
+    excerpt = _clip(body, STRUCTURED_LLM_MAX_CHARS)
+    unit_preview = _unit_preview(grounding_units or [])
+    tag_text = ", ".join([str(t).strip() for t in (tags or []) if str(t).strip()][:20])
+
+    extraction_meta = extraction or {}
+    extraction_summary = {
+        "kind": extraction_meta.get("kind"),
+        "mode": extraction_meta.get("mode"),
+        "ocrUsed": extraction_meta.get("ocrUsed"),
+        "unitCount": extraction_meta.get("unitCount"),
+        "charCount": extraction_meta.get("charCount"),
+    }
+
+    user_prompt = f"""File name:
+{file_name or "unknown"}
+
+Existing tags:
+{tag_text or "none"}
+
+Extraction summary:
+{json.dumps(extraction_summary, ensure_ascii=False)}
+
+Grounding previews:
+{unit_preview or "(none)"}
+
+Document text:
+{excerpt}
+"""
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=2400,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "governance_structured",
+                    "schema": _GOVERNANCE_SCHEMA,
+                    "strict": True,
+                },
+            },
+            messages=[
+                {"role": "system", "content": _GOVERNANCE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            timeout=STRUCTURED_LLM_TIMEOUT_S,
+        )
+
+        raw = (resp.choices[0].message.content or "").strip()
+        if not raw:
+            return None
+
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            return None
+
+        parsed["profile"] = "governance"
+        parsed["version"] = 1
+        return parsed
+    except Exception as e:
+        log.warning("governance llm extraction failed: %s", e)
+        return None
+
+
+def _empty_governance() -> Dict[str, Any]:
+    return {
+        "profile": "governance",
+        "version": 1,
+        "agencies": [],
+        "issues": [],
+        "mandates": [],
+        "claims": [],
+        "events": [],
+        "positions": [],
+        "gaps": [],
+        "relations": [],
+    }
+
+
 def _empty_label_item() -> Dict[str, Any]:
     return {"value": None, "score": 0.0, "evidence": ""}
 
@@ -385,6 +759,7 @@ def _clean_item(item: Any) -> Optional[Dict[str, Any]]:
         "score": max(0.0, min(1.0, score)),
         "evidence": evidence,
     }
+
 
 def _merge_items(
     preferred: Any,
