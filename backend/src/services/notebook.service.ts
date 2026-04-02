@@ -4,6 +4,33 @@ import { enqueueEmbeddingJob } from "../queues/embedding.queue";
 import { enqueueIngestionJob } from "../queues/ingestion.queue";
 import crypto from "crypto";
 import { Prisma } from "../generated/prisma/client";
+import { listAuditLogs } from "./audit.service";
+
+const JOB_RUNTIME_SELECT = {
+  status: true,
+  error: true,
+  updatedAt: true,
+  attemptCount: true,
+  queueJobId: true,
+  stage: true,
+  progressPct: true,
+  statusMessage: true,
+  startedAt: true,
+  finishedAt: true,
+  lastHeartbeatAt: true,
+  lastErrorAt: true,
+  meta: true,
+} as const;
+
+function mapJobRuntime<T extends Record<string, any> | null | undefined>(
+  job: T,
+) {
+  if (!job) return null;
+  return {
+    ...job,
+    meta: job.meta ?? null,
+  };
+}
 
 export async function listNotebooks() {
   return prisma.notebook.findMany({ orderBy: { updatedAt: "desc" } });
@@ -27,8 +54,8 @@ export async function getNotebook(id: string) {
     include: {
       url: true,
       file: true,
-      ingestionJob: { select: { status: true, error: true, updatedAt: true } },
-      embeddingJob: { select: { status: true, error: true, updatedAt: true } },
+      ingestionJob: { select: JOB_RUNTIME_SELECT },
+      embeddingJob: { select: JOB_RUNTIME_SELECT },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -65,8 +92,8 @@ export async function listSources(notebookId: string) {
     include: {
       url: true,
       file: true,
-      ingestionJob: { select: { status: true, error: true, updatedAt: true } },
-      embeddingJob: { select: { status: true, error: true, updatedAt: true } },
+      ingestionJob: { select: JOB_RUNTIME_SELECT },
+      embeddingJob: { select: JOB_RUNTIME_SELECT },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -79,8 +106,8 @@ export async function listSources(notebookId: string) {
 const SOURCE_INCLUDE = {
   url: true,
   file: true,
-  ingestionJob: { select: { status: true, error: true, updatedAt: true } },
-  embeddingJob: { select: { status: true, error: true, updatedAt: true } },
+  ingestionJob: { select: JOB_RUNTIME_SELECT },
+  embeddingJob: { select: JOB_RUNTIME_SELECT },
 } as const;
 
 async function assertSourceInNotebook(notebookId: string, sourceId: string) {
@@ -113,22 +140,8 @@ export async function getSourceDiagnostics(
     include: {
       url: true,
       file: true,
-      ingestionJob: {
-        select: {
-          status: true,
-          error: true,
-          updatedAt: true,
-          attemptCount: true,
-        },
-      },
-      embeddingJob: {
-        select: {
-          status: true,
-          error: true,
-          updatedAt: true,
-          attemptCount: true,
-        },
-      },
+      ingestionJob: { select: JOB_RUNTIME_SELECT },
+      embeddingJob: { select: JOB_RUNTIME_SELECT },
       activeRevision: {
         select: {
           id: true,
@@ -136,7 +149,13 @@ export async function getSourceDiagnostics(
           contentHash: true,
           createdAt: true,
           pipelineConfig: {
-            select: { name: true, version: true, configHash: true },
+            select: {
+              id: true,
+              name: true,
+              version: true,
+              configHash: true,
+              codeSha: true,
+            },
           },
         },
       },
@@ -151,17 +170,27 @@ export async function getSourceDiagnostics(
 
   const revisionId = src.activeRevisionId || null;
 
-  const [pageCount, chunkCount, embeddedCount] = revisionId
-    ? await Promise.all([
-        prisma.sourcePage.count({ where: { sourceId, revisionId } }),
-        prisma.sourceChunk.count({ where: { sourceId, revisionId } }),
-        prisma.sourceChunk.count({
-          where: { sourceId, revisionId, embeddedAt: { not: null } },
-        }),
-      ])
-    : [0, 0, 0];
+  const [pageCount, chunkCount, embeddedCount, recentAudit] = await Promise.all(
+    [
+      revisionId
+        ? prisma.sourcePage.count({ where: { sourceId, revisionId } })
+        : Promise.resolve(0),
+      revisionId
+        ? prisma.sourceChunk.count({ where: { sourceId, revisionId } })
+        : Promise.resolve(0),
+      revisionId
+        ? prisma.sourceChunk.count({
+            where: { sourceId, revisionId, embeddedAt: { not: null } },
+          })
+        : Promise.resolve(0),
+      listAuditLogs({
+        resourceType: "NOTEBOOK_SOURCE",
+        resourceId: sourceId,
+        limit: 8,
+      }),
+    ],
+  );
 
-  // Preview text (prefer pages for PDFs)
   let textPreview = "";
   let pagePreviews:
     | { pageNumber: number; charCount: number; preview: string }[]
@@ -214,27 +243,14 @@ export async function getSourceDiagnostics(
       createdAt: src.createdAt,
     },
     jobs: {
-      ingestion: src.ingestionJob
-        ? {
-            status: src.ingestionJob.status,
-            error: src.ingestionJob.error,
-            updatedAt: src.ingestionJob.updatedAt,
-            attemptCount: src.ingestionJob.attemptCount,
-          }
-        : null,
-      embedding: src.embeddingJob
-        ? {
-            status: src.embeddingJob.status,
-            error: src.embeddingJob.error,
-            updatedAt: src.embeddingJob.updatedAt,
-            attemptCount: src.embeddingJob.attemptCount,
-          }
-        : null,
+      ingestion: mapJobRuntime(src.ingestionJob),
+      embedding: mapJobRuntime(src.embeddingJob),
     },
     activeRevision: src.activeRevision,
     counts: { pageCount, chunkCount, embeddedCount },
     textPreview,
     pagePreviews,
+    recentAudit,
   };
 }
 
