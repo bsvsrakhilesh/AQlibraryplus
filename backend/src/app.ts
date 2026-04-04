@@ -27,6 +27,8 @@ import faviconRoutes from "./routes/favicon.routes";
 import institutionalNodeRoutes from "./routes/institutionalNode.routes";
 import governanceRoutes from "./routes/governance.routes";
 import auditRoutes from "./routes/audit.routes";
+import authRoutes from "./routes/auth.routes";
+import { authContext } from "./middlewares/authContext";
 
 dotenv.config();
 
@@ -53,6 +55,7 @@ app.use(express.text({ type: ["text/plain", "text/*"], limit: "2mb" }));
 
 // -------- Request ID --------
 app.use(requestId);
+app.use(authContext);
 
 // -------- Security headers (single helmet config) --------
 const cspAllowed = allowedOrigins; // already trimmed + filtered above
@@ -215,6 +218,7 @@ app.use("/api/search", searchLimiter, searchRoutes);
 app.use("/api", fileRoutes);
 app.use("/api", documentRoutes);
 app.use("/api", governanceRoutes);
+app.use("/api", authRoutes);
 app.use("/api", auditRoutes);
 app.use("/api", crawlRoutes);
 app.use("/api", institutionalNodeRoutes);

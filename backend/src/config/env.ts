@@ -40,6 +40,14 @@ const EnvSchema = z.object({
     .default("http://host.docker.internal:7081"),
   ICN_SHARED_SECRET: z.string().optional(),
   ICN_TIMEOUT_MS: z.coerce.number().optional().default(120_000),
+
+  // Incremental auth / RBAC bootstrap (header-based in prod, safe defaults in dev)
+  DEV_AUTH_ENABLED: BoolFromEnv,
+  DEV_AUTH_USER_ID: z.string().optional(),
+  DEV_AUTH_USER_NAME: z.string().optional(),
+  DEV_AUTH_EMAIL: z.string().optional(),
+  DEV_AUTH_ROLE: z.string().optional().default("admin"),
+  DEV_AUTH_ROLES: z.string().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
