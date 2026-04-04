@@ -1167,6 +1167,14 @@ export type GovernanceProvenance = {
   confidence: number | null;
   extractionModel: string | null;
   extractionVersion: string | null;
+  structured?: {
+    sourceClassification: string | null;
+    evidenceType: string | null;
+    issueTopic: string | null;
+    normalizedDate: string | null;
+    accountabilityIndicators: string[];
+    coordinationIndicators: string[];
+  } | null;
   createdAt: string | null;
   updatedAt: string | null;
   sourceDocument: {
@@ -1321,12 +1329,26 @@ export type GovernanceRelation = {
     id: string;
     claimText: string;
     claimSummary: string | null;
+    scopeText?: string | null;
   } | null;
   toClaim: {
     id: string;
     claimText: string;
     claimSummary: string | null;
+    scopeText?: string | null;
   } | null;
+  analysis?: {
+    bucket:
+      | "conflict"
+      | "alignment"
+      | "temporal_shift_candidate"
+      | "scope_variant_candidate"
+      | "reference";
+    sameActor: boolean;
+    scopeWarning: boolean;
+    requiresAnalystReview: boolean;
+    reason: string;
+  };
   metadata: any;
   createdAt: string | null;
   updatedAt: string | null;
@@ -1428,6 +1450,7 @@ export type GovernanceIssueRelationsResponse = {
   summary: {
     relationCount: number;
     byType: Record<string, number>;
+    byBucket: Record<string, number>;
   };
   relations: GovernanceRelation[];
 };
@@ -1517,6 +1540,8 @@ export type GovernanceIssueCaseWorkspaceResponse = {
     summary: {
       relationCount: number;
       byType: Record<string, number>;
+      byBucket: Record<string, number>;
+      requiresAnalystReviewCount: number;
     };
     contradictions: GovernanceRelation[];
     alignments: GovernanceRelation[];

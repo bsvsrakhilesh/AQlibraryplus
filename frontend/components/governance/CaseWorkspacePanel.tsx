@@ -79,6 +79,25 @@ function compactText(value?: string | null, fallback = "—") {
   return text || fallback;
 }
 
+function relationBucketTone(bucket?: string) {
+  switch (bucket) {
+    case "conflict":
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    case "alignment":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    case "temporal_shift_candidate":
+      return "border-violet-200 bg-violet-50 text-violet-800";
+    case "scope_variant_candidate":
+      return "border-sky-200 bg-sky-50 text-sky-800";
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+}
+
+function humanizeBucket(bucket?: string) {
+  return String(bucket || "reference").replace(/_/g, " ");
+}
+
 function openArtifactPreview(provenance: GovernanceProvenance | null) {
   const fileId = provenance?.documentRevision?.storedFile?.id;
   if (!fileId) return;
@@ -196,6 +215,9 @@ function buildRelationProvenance(
       null,
     chips: [
       relation.relationType,
+      relation.analysis?.bucket
+        ? humanizeBucket(relation.analysis.bucket)
+        : null,
       relation.fromAgency?.shortName || relation.fromAgency?.name || "Source",
       relation.toAgency?.shortName || relation.toAgency?.name || "Target",
     ].filter((chip): chip is string => Boolean(chip)),
@@ -242,6 +264,8 @@ export default function CaseWorkspacePanel({
   const alignments = workspace?.relations.alignments ?? [];
   const timelineEntries = workspace?.timeline.entries ?? [];
   const sources = workspace?.sources ?? [];
+  const relationSummary = workspace?.relations.summary ?? null;
+  const relationBucketSummary = relationSummary?.byBucket ?? {};
 
   useEffect(() => {
     setSelectedProvenance(null);
@@ -555,93 +579,154 @@ export default function CaseWorkspacePanel({
               subtitle="Evidence-backed relation review only."
             />
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="space-y-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Tension set
-                </div>
-                {contradictions.length === 0 ? (
-                  <EmptyPanel
-                    title="No contradiction candidates"
-                    body="The current filter does not expose contradiction, tension, or override links."
-                  />
-                ) : (
-                  contradictions.map((relation) => (
-                    <button
-                      key={relation.id}
-                      type="button"
-                      onClick={() =>
-                        setSelectedProvenance(buildRelationProvenance(relation))
-                      }
-                      className="w-full rounded-2xl border border-amber-200/80 bg-amber-50/60 p-4 text-left transition hover:bg-amber-50"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-900">
-                          {relation.fromAgency?.shortName ||
-                            relation.fromAgency?.name ||
-                            "Source"}
-                          <span className="mx-2 text-slate-400">→</span>
-                          {relation.toAgency?.shortName ||
-                            relation.toAgency?.name ||
-                            "Target"}
-                        </div>
-                        <span className="rounded-full border border-amber-200 bg-white px-2 py-1 text-[11px] font-medium text-amber-700">
-                          {relation.relationType}
-                        </span>
-                      </div>
-                      <div className="mt-2 text-sm leading-6 text-slate-600">
-                        {compactText(
-                          relation.rationale,
-                          "No explicit rationale extracted",
-                        )}
-                      </div>
-                    </button>
-                  ))
-                )}
+            <div className="mt-5 space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-medium text-amber-800">
+                  conflicts: {relationBucketSummary.conflict ?? 0}
+                </span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
+                  alignments: {relationBucketSummary.alignment ?? 0}
+                </span>
+                <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-medium text-violet-800">
+                  temporal shifts:{" "}
+                  {relationBucketSummary.temporal_shift_candidate ?? 0}
+                </span>
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-medium text-sky-800">
+                  scope variants:{" "}
+                  {relationBucketSummary.scope_variant_candidate ?? 0}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-700">
+                  analyst review:{" "}
+                  {relationSummary?.requiresAnalystReviewCount ?? 0}
+                </span>
               </div>
 
-              <div className="space-y-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Alignment set
-                </div>
-                {alignments.length === 0 ? (
-                  <EmptyPanel
-                    title="No alignments in current filter"
-                    body="Expand the relation filter to inspect reinforcement, alignment, duplication, or reference links."
-                  />
-                ) : (
-                  alignments.slice(0, 8).map((relation) => (
-                    <button
-                      key={relation.id}
-                      type="button"
-                      onClick={() =>
-                        setSelectedProvenance(buildRelationProvenance(relation))
-                      }
-                      className="w-full rounded-2xl border border-emerald-200/80 bg-emerald-50/60 p-4 text-left transition hover:bg-emerald-50"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-900">
-                          {relation.fromAgency?.shortName ||
-                            relation.fromAgency?.name ||
-                            "Source"}
-                          <span className="mx-2 text-slate-400">→</span>
-                          {relation.toAgency?.shortName ||
-                            relation.toAgency?.name ||
-                            "Target"}
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Tension set
+                  </div>
+                  {contradictions.length === 0 ? (
+                    <EmptyPanel
+                      title="No contradiction candidates"
+                      body="The current filter does not expose contradiction, tension, or override links."
+                    />
+                  ) : (
+                    contradictions.map((relation) => (
+                      <button
+                        key={relation.id}
+                        type="button"
+                        onClick={() =>
+                          setSelectedProvenance(
+                            buildRelationProvenance(relation),
+                          )
+                        }
+                        className="w-full rounded-2xl border border-amber-200/80 bg-amber-50/60 p-4 text-left transition hover:bg-amber-50"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-slate-900">
+                            {relation.fromAgency?.shortName ||
+                              relation.fromAgency?.name ||
+                              "Source"}
+                            <span className="mx-2 text-slate-400">→</span>
+                            {relation.toAgency?.shortName ||
+                              relation.toAgency?.name ||
+                              "Target"}
+                          </div>
+                          <span className="rounded-full border border-amber-200 bg-white px-2 py-1 text-[11px] font-medium text-amber-700">
+                            {relation.relationType}
+                          </span>
                         </div>
-                        <span className="rounded-full border border-emerald-200 bg-white px-2 py-1 text-[11px] font-medium text-emerald-700">
-                          {relation.relationType}
-                        </span>
-                      </div>
-                      <div className="mt-2 text-sm leading-6 text-slate-600">
-                        {compactText(
-                          relation.rationale,
-                          "No explicit rationale extracted",
-                        )}
-                      </div>
-                    </button>
-                  ))
-                )}
+                        <div className="mt-2 text-sm leading-6 text-slate-600">
+                          {compactText(
+                            relation.rationale,
+                            relation.analysis?.reason ||
+                              "No explicit rationale extracted",
+                          )}
+                        </div>
+                        {relation.analysis ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span
+                              className={`rounded-full border px-2 py-1 text-[11px] font-medium ${relationBucketTone(
+                                relation.analysis.bucket,
+                              )}`}
+                            >
+                              {humanizeBucket(relation.analysis.bucket)}
+                            </span>
+                            {relation.analysis.requiresAnalystReview ? (
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                analyst review
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Alignment set
+                  </div>
+                  {alignments.length === 0 ? (
+                    <EmptyPanel
+                      title="No alignments in current filter"
+                      body="Expand the relation filter to inspect reinforcement, alignment, duplication, or reference links."
+                    />
+                  ) : (
+                    alignments.slice(0, 8).map((relation) => (
+                      <button
+                        key={relation.id}
+                        type="button"
+                        onClick={() =>
+                          setSelectedProvenance(
+                            buildRelationProvenance(relation),
+                          )
+                        }
+                        className="w-full rounded-2xl border border-emerald-200/80 bg-emerald-50/60 p-4 text-left transition hover:bg-emerald-50"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-slate-900">
+                            {relation.fromAgency?.shortName ||
+                              relation.fromAgency?.name ||
+                              "Source"}
+                            <span className="mx-2 text-slate-400">→</span>
+                            {relation.toAgency?.shortName ||
+                              relation.toAgency?.name ||
+                              "Target"}
+                          </div>
+                          <span className="rounded-full border border-emerald-200 bg-white px-2 py-1 text-[11px] font-medium text-emerald-700">
+                            {relation.relationType}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-sm leading-6 text-slate-600">
+                          {compactText(
+                            relation.rationale,
+                            relation.analysis?.reason ||
+                              "No explicit rationale extracted",
+                          )}
+                        </div>
+                        {relation.analysis ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span
+                              className={`rounded-full border px-2 py-1 text-[11px] font-medium ${relationBucketTone(
+                                relation.analysis.bucket,
+                              )}`}
+                            >
+                              {humanizeBucket(relation.analysis.bucket)}
+                            </span>
+                            {relation.analysis.requiresAnalystReview ? (
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                analyst review
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </SmartCard>
@@ -776,6 +861,7 @@ export default function CaseWorkspacePanel({
                               confidence: null,
                               extractionModel: null,
                               extractionVersion: null,
+                              structured: null,
                               createdAt: source.latestSeenAt,
                               updatedAt: source.latestSeenAt,
                               sourceDocument: source.sourceDocument,
