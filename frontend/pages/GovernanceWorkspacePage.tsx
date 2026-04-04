@@ -138,6 +138,30 @@ function confidenceLabel(value?: number | null) {
   return pct === null ? "Confidence unscored" : `${pct}% extraction confidence`;
 }
 
+function prettifyTokenLabel(value?: string | null, fallback = "Unspecified") {
+  const text = String(value || "").trim();
+  if (!text) return fallback;
+
+  return text
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function gapSeverityTone(value?: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+  if (value >= 0.8) return "border-rose-200 bg-rose-50 text-rose-800";
+  if (value >= 0.5) return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-sky-200 bg-sky-50 text-sky-800";
+}
+
+function relationDirectionLabel(direction: "outgoing" | "incoming") {
+  return direction === "outgoing" ? "Outgoing relation" : "Incoming relation";
+}
+
 function prettifyAuditAction(action: string) {
   return String(action || "")
     .replace(/[._]/g, " ")
@@ -518,6 +542,109 @@ export default function GovernanceWorkspacePage() {
   const landscape = agencyLandscapeQuery.data ?? null;
   const timeline = timelineQuery.data ?? null;
   const relations = relationsQuery.data ?? null;
+
+  const selectedLandscapeIssueRow = useMemo(() => {
+    if (!landscape || !selectedIssueId) return null;
+    return (
+      landscape.issueMatrix.find((row) => row.issue.id === selectedIssueId) ??
+      null
+    );
+  }, [landscape, selectedIssueId]);
+
+  const selectedIssueMandates = useMemo(
+    () =>
+      (landscape?.mandates ?? []).filter(
+        (item) => item.issue?.id === selectedIssueId,
+      ),
+    [landscape, selectedIssueId],
+  );
+
+  const selectedIssuePositions = useMemo(
+    () =>
+      (landscape?.positions ?? []).filter(
+        (item) => item.issue?.id === selectedIssueId,
+      ),
+    [landscape, selectedIssueId],
+  );
+
+  const selectedIssueGaps = useMemo(
+    () =>
+      (landscape?.gaps ?? []).filter(
+        (item) => item.issue?.id === selectedIssueId,
+      ),
+    [landscape, selectedIssueId],
+  );
+
+  const selectedIssueOutgoingRelations = useMemo(
+    () =>
+      (landscape?.outgoingRelations ?? []).filter(
+        (item) => item.issue?.id === selectedIssueId,
+      ),
+    [landscape, selectedIssueId],
+  );
+
+  const selectedIssueIncomingRelations = useMemo(
+    () =>
+      (landscape?.incomingRelations ?? []).filter(
+        (item) => item.issue?.id === selectedIssueId,
+      ),
+    [landscape, selectedIssueId],
+  );
+
+  const selectedIssueRelationWatchlist = useMemo(
+    () =>
+      [
+        ...selectedIssueOutgoingRelations.map((relation) => ({
+          direction: "outgoing" as const,
+          relation,
+        })),
+        ...selectedIssueIncomingRelations.map((relation) => ({
+          direction: "incoming" as const,
+          relation,
+        })),
+      ].sort((a, b) => {
+        const aConfidence =
+          typeof a.relation.confidence === "number"
+            ? a.relation.confidence
+            : -1;
+        const bConfidence =
+          typeof b.relation.confidence === "number"
+            ? b.relation.confidence
+            : -1;
+
+        if (bConfidence !== aConfidence) return bConfidence - aConfidence;
+
+        return String(b.relation.updatedAt || "").localeCompare(
+          String(a.relation.updatedAt || ""),
+        );
+      }),
+    [selectedIssueOutgoingRelations, selectedIssueIncomingRelations],
+  );
+
+  const comparisonAgencyPreview = useMemo(() => {
+    const map = new Map<string, GovernanceAgency>();
+
+    for (const gap of selectedIssueGaps) {
+      const primary = gap.primaryAgency;
+      const secondary = gap.secondaryAgency;
+
+      if (primary?.id && primary.id !== selectedAgencyId) {
+        map.set(primary.id, primary);
+      }
+      if (secondary?.id && secondary.id !== selectedAgencyId) {
+        map.set(secondary.id, secondary);
+      }
+    }
+
+    for (const row of selectedIssueRelationWatchlist) {
+      const agency = row.relation.otherAgency;
+      if (agency?.id && agency.id !== selectedAgencyId) {
+        map.set(agency.id, agency);
+      }
+    }
+
+    return Array.from(map.values()).slice(0, 8);
+  }, [selectedIssueGaps, selectedIssueRelationWatchlist, selectedAgencyId]);
 
   function openTemplateModal(templateKey: NotebookTemplateKey) {
     setTemplatePreset(templateKey);
@@ -1382,40 +1509,447 @@ export default function GovernanceWorkspacePage() {
                         </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Issue matrix
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                Issue matrix spotlight
+                              </div>
+                              <div className="mt-1 text-sm text-slate-600">
+                                Focus the selected agency against the currently
+                                active issue lens.
+                              </div>
+                            </div>
+                            {selectedIssue ? (
+                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700">
+                                {selectedIssue.title}
+                              </span>
+                            ) : null}
                           </div>
-                          <div className="mt-3 space-y-2">
+
+                          {selectedLandscapeIssueRow ? (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                linked {selectedLandscapeIssueRow.counts.linked}
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                mandates{" "}
+                                {selectedLandscapeIssueRow.counts.mandates}
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                positions{" "}
+                                {selectedLandscapeIssueRow.counts.positions}
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                gaps {selectedLandscapeIssueRow.counts.gaps}
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                outgoing{" "}
+                                {
+                                  selectedLandscapeIssueRow.counts
+                                    .outgoingRelations
+                                }
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                                incoming{" "}
+                                {
+                                  selectedLandscapeIssueRow.counts
+                                    .incomingRelations
+                                }
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-3 text-sm text-slate-600">
+                              This agency has no matrix row for the currently
+                              selected issue.
+                            </div>
+                          )}
+
+                          <div className="mt-4 space-y-2">
                             {landscape.issueMatrix.length === 0 ? (
                               <div className="text-sm text-slate-600">
                                 No issue matrix rows were derived for this
                                 agency.
                               </div>
                             ) : (
-                              landscape.issueMatrix.slice(0, 8).map((row) => (
-                                <button
-                                  key={row.issue.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedIssueId(row.issue.id);
-                                  }}
-                                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50"
-                                >
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-semibold text-slate-900">
-                                      {row.issue.title}
+                              landscape.issueMatrix.slice(0, 8).map((row) => {
+                                const active = row.issue.id === selectedIssueId;
+
+                                return (
+                                  <button
+                                    key={row.issue.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedIssueId(row.issue.id);
+                                      setSelectedProvenance(null);
+                                    }}
+                                    className={[
+                                      "flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left transition",
+                                      active
+                                        ? "border-sky-300 bg-sky-50 shadow-sm"
+                                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+                                    ].join(" ")}
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-semibold text-slate-900">
+                                        {row.issue.title}
+                                      </div>
+                                      <div className="mt-1 text-xs text-slate-500">
+                                        mandates {row.counts.mandates} •
+                                        positions {row.counts.positions} • gaps{" "}
+                                        {row.counts.gaps}
+                                      </div>
                                     </div>
-                                    <div className="mt-1 text-xs text-slate-500">
-                                      mandates {row.counts.mandates} • positions{" "}
-                                      {row.counts.positions} • gaps{" "}
-                                      {row.counts.gaps}
-                                    </div>
-                                  </div>
-                                  <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400" />
-                                </button>
-                              ))
+                                    <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400" />
+                                  </button>
+                                );
+                              })
                             )}
                           </div>
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-2">
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  Mandates vs positions
+                                </div>
+                                <div className="mt-1 text-sm text-slate-600">
+                                  Compare formal responsibility with observed
+                                  actor stance for the active issue.
+                                </div>
+                              </div>
+                              {selectedIssue ? (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700">
+                                  {selectedIssueMandates.length} mandates •{" "}
+                                  {selectedIssuePositions.length} positions
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {!selectedIssueId ? (
+                              <div className="mt-4 text-sm text-slate-600">
+                                Choose an issue to compare mandates and
+                                positions.
+                              </div>
+                            ) : (
+                              <div className="mt-4 space-y-3">
+                                {selectedIssueMandates
+                                  .slice(0, 3)
+                                  .map((mandate) => (
+                                    <button
+                                      key={mandate.id}
+                                      type="button"
+                                      onClick={() =>
+                                        setSelectedProvenance({
+                                          title: mandate.title,
+                                          subtitle:
+                                            mandate.agency?.name ?? "Mandate",
+                                          narrative: mandate.description,
+                                          chips: [
+                                            "mandate",
+                                            prettifyTokenLabel(
+                                              mandate.mandateType,
+                                            ),
+                                            selectedIssue?.title ??
+                                              mandate.issue?.title ??
+                                              "Issue",
+                                          ].filter((chip): chip is string =>
+                                            Boolean(chip),
+                                          ),
+                                          provenance: mandate.provenance,
+                                        })
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-slate-300 hover:bg-white"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-semibold text-slate-900">
+                                          {mandate.title}
+                                        </div>
+                                        <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600">
+                                          {prettifyTokenLabel(
+                                            mandate.mandateType,
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="mt-2 text-xs leading-5 text-slate-600">
+                                        {compactText(
+                                          mandate.description,
+                                          "No mandate description extracted",
+                                        )}
+                                      </div>
+                                    </button>
+                                  ))}
+
+                                {selectedIssuePositions
+                                  .slice(0, 3)
+                                  .map((position) => (
+                                    <button
+                                      key={position.id}
+                                      type="button"
+                                      onClick={() =>
+                                        setSelectedProvenance({
+                                          title:
+                                            position.claim?.claimSummary ||
+                                            position.claim?.claimText ||
+                                            position.stanceSummary ||
+                                            "Actor position",
+                                          subtitle:
+                                            position.agency?.name ?? "Position",
+                                          narrative:
+                                            position.stanceSummary ||
+                                            position.stanceText,
+                                          chips: [
+                                            "position",
+                                            position.polarity
+                                              ? prettifyTokenLabel(
+                                                  position.polarity,
+                                                )
+                                              : null,
+                                            position.effectiveDateText ||
+                                              formatShortDate(
+                                                position.effectiveDate,
+                                              ),
+                                          ].filter((chip): chip is string =>
+                                            Boolean(chip),
+                                          ),
+                                          provenance: position.provenance,
+                                        })
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-semibold text-slate-900">
+                                          {position.agency?.shortName ||
+                                            position.agency?.name ||
+                                            "Unattributed position"}
+                                        </div>
+                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">
+                                          {position.polarity
+                                            ? prettifyTokenLabel(
+                                                position.polarity,
+                                              )
+                                            : "Unscored"}
+                                        </span>
+                                      </div>
+                                      <div className="mt-2 text-xs leading-5 text-slate-600">
+                                        {compactText(
+                                          position.stanceSummary ||
+                                            position.claim?.claimSummary ||
+                                            position.claim?.claimText ||
+                                            position.stanceText,
+                                          "No structured position summary extracted",
+                                        )}
+                                      </div>
+                                    </button>
+                                  ))}
+
+                                {selectedIssueMandates.length === 0 &&
+                                selectedIssuePositions.length === 0 ? (
+                                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                                    No mandates or positions were extracted for
+                                    this agency on the active issue.
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  Gaps & relation watchlist
+                                </div>
+                                <div className="mt-1 text-sm text-slate-600">
+                                  Surface accountability gaps and cross-agency
+                                  pressure points around the active issue.
+                                </div>
+                              </div>
+                              {selectedIssue ? (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700">
+                                  {selectedIssueGaps.length} gaps •{" "}
+                                  {selectedIssueRelationWatchlist.length}{" "}
+                                  relations
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {!selectedIssueId ? (
+                              <div className="mt-4 text-sm text-slate-600">
+                                Choose an issue to inspect gap and relation
+                                evidence.
+                              </div>
+                            ) : (
+                              <div className="mt-4 space-y-3">
+                                {selectedIssueGaps.slice(0, 3).map((gap) => (
+                                  <button
+                                    key={gap.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setSelectedProvenance({
+                                        title: gap.summary,
+                                        subtitle: prettifyTokenLabel(
+                                          gap.gapType,
+                                        ),
+                                        narrative: gap.summary,
+                                        chips: [
+                                          "gap",
+                                          prettifyTokenLabel(gap.gapType),
+                                          gap.primaryAgency?.shortName ||
+                                            gap.primaryAgency?.name ||
+                                            "Primary agency",
+                                          gap.secondaryAgency?.shortName ||
+                                            gap.secondaryAgency?.name ||
+                                            "Secondary agency",
+                                        ].filter((chip): chip is string =>
+                                          Boolean(chip),
+                                        ),
+                                        provenance: gap.provenance,
+                                      })
+                                    }
+                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-slate-300 hover:bg-white"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="text-sm font-semibold text-slate-900">
+                                        {prettifyTokenLabel(gap.gapType)}
+                                      </div>
+                                      <span
+                                        className={`rounded-full border px-2 py-1 text-[11px] font-medium ${gapSeverityTone(
+                                          gap.severity,
+                                        )}`}
+                                      >
+                                        {gap.severity === null
+                                          ? "Severity n/a"
+                                          : `Severity ${Math.round(gap.severity * 100)}%`}
+                                      </span>
+                                    </div>
+                                    <div className="mt-2 text-xs leading-5 text-slate-600">
+                                      {compactText(gap.summary)}
+                                    </div>
+                                  </button>
+                                ))}
+
+                                {selectedIssueRelationWatchlist
+                                  .slice(0, 4)
+                                  .map((item) => (
+                                    <button
+                                      key={`${item.direction}-${item.relation.id}`}
+                                      type="button"
+                                      onClick={() =>
+                                        setSelectedProvenance({
+                                          title:
+                                            item.relation.rationale ||
+                                            item.relation.fromClaim
+                                              ?.claimSummary ||
+                                            item.relation.toClaim
+                                              ?.claimSummary ||
+                                            `${relationDirectionLabel(item.direction)} evidence`,
+                                          subtitle:
+                                            item.relation.otherAgency?.name ??
+                                            relationDirectionLabel(
+                                              item.direction,
+                                            ),
+                                          narrative:
+                                            item.relation.rationale ||
+                                            item.relation.fromClaim
+                                              ?.claimText ||
+                                            item.relation.toClaim?.claimText ||
+                                            null,
+                                          chips: [
+                                            item.direction,
+                                            prettifyTokenLabel(
+                                              item.relation.relationType,
+                                            ),
+                                            item.relation.otherAgency
+                                              ?.shortName ||
+                                              item.relation.otherAgency?.name ||
+                                              "External agency",
+                                          ].filter((chip): chip is string =>
+                                            Boolean(chip),
+                                          ),
+                                          provenance: item.relation.provenance,
+                                        })
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-semibold text-slate-900">
+                                          {item.relation.otherAgency?.name ||
+                                            "Related agency"}
+                                        </div>
+                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">
+                                          {prettifyTokenLabel(
+                                            item.relation.relationType,
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="mt-1 text-[11px] text-slate-500">
+                                        {relationDirectionLabel(item.direction)}
+                                      </div>
+                                      <div className="mt-2 text-xs leading-5 text-slate-600">
+                                        {compactText(
+                                          item.relation.rationale ||
+                                            item.relation.fromClaim
+                                              ?.claimSummary ||
+                                            item.relation.toClaim?.claimSummary,
+                                          "No relation rationale extracted",
+                                        )}
+                                      </div>
+                                    </button>
+                                  ))}
+
+                                {selectedIssueGaps.length === 0 &&
+                                selectedIssueRelationWatchlist.length === 0 ? (
+                                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                                    No gap or relation watchlist items were
+                                    extracted for this agency on the active
+                                    issue.
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                Comparison candidates
+                              </div>
+                              <div className="mt-1 text-sm text-slate-600">
+                                Jump to adjacent institutions that appear in the
+                                same gaps or relations for the active issue.
+                              </div>
+                            </div>
+                            <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700">
+                              {comparisonAgencyPreview.length} related agencies
+                            </span>
+                          </div>
+
+                          {comparisonAgencyPreview.length === 0 ? (
+                            <div className="mt-4 text-sm text-slate-600">
+                              No adjacent agencies were surfaced from the
+                              current issue-specific gaps or relations.
+                            </div>
+                          ) : (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {comparisonAgencyPreview.map((agency) => (
+                                <button
+                                  key={agency.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedAgencyId(agency.id);
+                                    setSelectedProvenance(null);
+                                  }}
+                                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                                >
+                                  {agency.shortName || agency.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </>
                     )}
