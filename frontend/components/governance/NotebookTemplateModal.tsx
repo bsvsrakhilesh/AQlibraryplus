@@ -16,6 +16,8 @@ import {
 import SmartCard from "../ui/SmartCard";
 import {
   attachGovernanceSourceToNotebook,
+  findNotebookSourceForGovernanceContext,
+  getGovernanceNotebookSourceReadiness,
   notebookClient as api,
   type GovernanceNotebookSourceContext,
   type NotebookTemplateDefinition,
@@ -114,6 +116,21 @@ function describeNotebookSourceAttachment(
     : "The active governance document is file-backed, but the file id is unavailable for automatic notebook attachment.";
 }
 
+function readinessToneClass(tone: string) {
+  switch (tone) {
+    case "emerald":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    case "amber":
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    case "blue":
+      return "border-sky-200 bg-sky-50 text-sky-800";
+    case "rose":
+      return "border-rose-200 bg-rose-50 text-rose-800";
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+}
+
 export default function NotebookTemplateModal({
   open,
   onClose,
@@ -151,6 +168,12 @@ export default function NotebookTemplateModal({
     enabled: open,
   });
 
+  const notebookSourcesQ = useQuery({
+    queryKey: ["nb:sources", selectedNotebookId],
+    queryFn: () => api.listSources(selectedNotebookId),
+    enabled: open && Boolean(selectedNotebookId),
+  });
+
   useEffect(() => {
     if (!open) return;
     setSelectedTemplateKey(defaultTemplateKey);
@@ -165,6 +188,11 @@ export default function NotebookTemplateModal({
     const first = notebooksQ.data?.[0]?.id;
     if (first) setSelectedNotebookId(first);
   }, [open, selectedNotebookId, notebooksQ.data]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSourceAttachNotice(null);
+  }, [open, selectedNotebookId]);
 
   const selectedTemplate = useMemo<NotebookTemplateDefinition | null>(() => {
     return (
@@ -191,6 +219,17 @@ export default function NotebookTemplateModal({
   const sourceAttachmentPreview = useMemo(() => {
     return describeNotebookSourceAttachment(documentContext);
   }, [documentContext]);
+
+  const matchedNotebookSource = useMemo(() => {
+    return findNotebookSourceForGovernanceContext(
+      notebookSourcesQ.data ?? [],
+      documentContext,
+    );
+  }, [notebookSourcesQ.data, documentContext]);
+
+  const governanceSourceReadiness = useMemo(() => {
+    return getGovernanceNotebookSourceReadiness(matchedNotebookSource);
+  }, [matchedNotebookSource]);
 
   const contextWarnings = useMemo(() => {
     if (!selectedTemplate) return [];
@@ -463,6 +502,84 @@ export default function NotebookTemplateModal({
                   ))}
                 </select>
               </label>
+
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Evidence readiness
+                    </div>
+                    <div className="mt-1 text-sm leading-6 text-slate-600">
+                      Check whether the current governance source is already
+                      usable for evidence-backed notebook work in the selected
+                      destination.
+                    </div>
+                  </div>
+
+                  <span
+                    className={`rounded-full border px-3 py-1 text-[11px] font-medium ${readinessToneClass(
+                      governanceSourceReadiness.tone,
+                    )}`}
+                  >
+                    {governanceSourceReadiness.label}
+                  </span>
+                </div>
+
+                {!selectedNotebookId ? (
+                  <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-3 text-sm text-slate-600">
+                    Select a notebook to inspect governance source readiness.
+                  </div>
+                ) : notebookSourcesQ.isLoading ? (
+                  <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading notebook source status…
+                  </div>
+                ) : notebookSourcesQ.isError ? (
+                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
+                    {(notebookSourcesQ.error as Error | null)?.message ||
+                      "Failed to load notebook source readiness."}
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-3 text-sm leading-6 text-slate-600">
+                      {governanceSourceReadiness.description}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
+                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                        {documentContext?.kind === "URL"
+                          ? "URL source"
+                          : documentContext?.kind === "FILE"
+                            ? "File source"
+                            : "No source context"}
+                      </span>
+
+                      {matchedNotebookSource ? (
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                          {matchedNotebookSource.kind === "URL"
+                            ? matchedNotebookSource.url?.title ||
+                              matchedNotebookSource.url?.url ||
+                              "Attached URL"
+                            : matchedNotebookSource.file?.fileName ||
+                              "Attached file"}
+                        </span>
+                      ) : null}
+
+                      {governanceSourceReadiness.progressPct !== null ? (
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                          {governanceSourceReadiness.progressPct}% progress
+                        </span>
+                      ) : null}
+
+                      {governanceSourceReadiness.sourceId ? (
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                          source {governanceSourceReadiness.sourceId}
+                        </span>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+              </div>
 
               <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">

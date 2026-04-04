@@ -299,6 +299,21 @@ export type GovernanceNotebookAttachResult = {
   reason?: string | null;
 };
 
+export type GovernanceNotebookEvidenceReadiness = {
+  status:
+    | "not_attached"
+    | "queued"
+    | "ingesting"
+    | "indexing"
+    | "ready"
+    | "failed";
+  tone: "slate" | "amber" | "blue" | "emerald" | "rose";
+  label: string;
+  description: string;
+  progressPct: number | null;
+  sourceId: string | null;
+};
+
 export interface NotebookClient {
   listNotebooks(): Promise<Notebook[]>;
   createNotebook(p: { title: string; description?: string }): Promise<Notebook>;
@@ -521,6 +536,178 @@ export async function attachGovernanceSourceToNotebook(
     }
     throw error;
   }
+}
+
+function clampJobProgressPct(value?: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const normalized = value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, Math.round(normalized)));
+}
+
+export function findNotebookSourceForGovernanceContext(
+  sources: NBSource[] | null | undefined,
+  context: GovernanceNotebookSourceContext | null | undefined,
+): NBSource | null {
+  const rows = Array.isArray(sources) ? sources : [];
+
+  if (!context?.kind) return null;
+
+  if (context.kind === "URL" && context.urlId != null) {
+    return (
+      rows.find(
+        (row) =>
+          row.kind === "URL" &&
+          String(row.url?.id ?? "") === String(context.urlId),
+      ) ?? null
+    );
+  }
+
+  if (context.kind === "FILE" && context.primaryFileId) {
+    return (
+      rows.find(
+        (row) =>
+          row.kind === "FILE" &&
+          String(row.file?.id ?? "") === String(context.primaryFileId),
+      ) ?? null
+    );
+  }
+
+  return null;
+}
+
+export function getGovernanceNotebookSourceReadiness(
+  source: NBSource | null | undefined,
+): GovernanceNotebookEvidenceReadiness {
+  if (!source) {
+    return {
+      status: "not_attached",
+      tone: "slate",
+      label: "Not attached",
+      description:
+        "This governance source is not attached to the selected notebook yet. Creating the note will attach it first.",
+      progressPct: null,
+      sourceId: null,
+    };
+  }
+
+  const ing = source.ingestionJob?.status ?? "NONE";
+  const emb = source.embeddingJob?.status ?? "NONE";
+  const ingPct = clampJobProgressPct(source.ingestionJob?.progressPct);
+  const embPct = clampJobProgressPct(source.embeddingJob?.progressPct);
+
+  if (ing === "FAILED") {
+    return {
+      status: "failed",
+      tone: "rose",
+      label: "Ingestion failed",
+      description:
+        source.ingestionJob?.error ||
+        source.ingestionJob?.statusMessage ||
+        "The attached source failed during ingestion and needs repair before evidence-backed usage.",
+      progressPct: ingPct,
+      sourceId: source.id,
+    };
+  }
+
+  if (ing === "PENDING") {
+    return {
+      status: "queued",
+      tone: "amber",
+      label: ingPct !== null ? `Queued ${ingPct}%` : "Queued",
+      description:
+        source.ingestionJob?.statusMessage ||
+        "The source is attached and waiting for ingestion to begin.",
+      progressPct: ingPct,
+      sourceId: source.id,
+    };
+  }
+
+  if (ing === "RUNNING") {
+    return {
+      status: "ingesting",
+      tone: "blue",
+      label: ingPct !== null ? `Ingesting ${ingPct}%` : "Ingesting",
+      description:
+        source.ingestionJob?.statusMessage ||
+        "The source is currently being ingested into the notebook.",
+      progressPct: ingPct,
+      sourceId: source.id,
+    };
+  }
+
+  if (ing !== "SUCCESS") {
+    return {
+      status: "queued",
+      tone: "amber",
+      label: "Awaiting ingestion",
+      description:
+        "The source is attached, but ingestion has not completed yet.",
+      progressPct: null,
+      sourceId: source.id,
+    };
+  }
+
+  if (emb === "FAILED") {
+    return {
+      status: "failed",
+      tone: "rose",
+      label: "Index failed",
+      description:
+        source.embeddingJob?.error ||
+        source.embeddingJob?.statusMessage ||
+        "The semantic index failed to build for this source.",
+      progressPct: embPct,
+      sourceId: source.id,
+    };
+  }
+
+  if (emb === "PENDING") {
+    return {
+      status: "queued",
+      tone: "amber",
+      label: embPct !== null ? `Queued ${embPct}%` : "Queued for index",
+      description:
+        source.embeddingJob?.statusMessage ||
+        "Ingestion succeeded and the source is queued for semantic indexing.",
+      progressPct: embPct,
+      sourceId: source.id,
+    };
+  }
+
+  if (emb === "RUNNING") {
+    return {
+      status: "indexing",
+      tone: "blue",
+      label: embPct !== null ? `Indexing ${embPct}%` : "Indexing",
+      description:
+        source.embeddingJob?.statusMessage ||
+        "The notebook is building embeddings for evidence-backed retrieval.",
+      progressPct: embPct,
+      sourceId: source.id,
+    };
+  }
+
+  if (emb !== "SUCCESS") {
+    return {
+      status: "queued",
+      tone: "amber",
+      label: "Awaiting index",
+      description:
+        "The source finished ingestion but is not fully indexed yet.",
+      progressPct: null,
+      sourceId: source.id,
+    };
+  }
+
+  return {
+    status: "ready",
+    tone: "emerald",
+    label: "Ready",
+    description:
+      "This source is fully ingested and indexed in the selected notebook and is ready for evidence-backed usage.",
+    progressPct: null,
+    sourceId: source.id,
+  };
 }
 
 export const notebookClient: NotebookClient = {
