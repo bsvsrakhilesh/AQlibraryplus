@@ -1741,9 +1741,18 @@ const SavedUrlsPage: React.FC = () => {
               }
               mode={pickerMode}
               onCancel={() => setPickerOpen(false)}
-              onConfirm={async ({ folderId, fileName, mode }) => {
+              onConfirm={async ({
+                folderId,
+                fileName,
+                mode,
+                accessMode = "public",
+              }) => {
                 if (!pickerTarget) return;
-                const urlId = Number(pickerTarget.id);
+
+                const parsedUrlId = Number(pickerTarget.id);
+                const urlId = Number.isFinite(parsedUrlId)
+                  ? parsedUrlId
+                  : undefined;
 
                 try {
                   const captured =
@@ -1755,12 +1764,14 @@ const SavedUrlsPage: React.FC = () => {
                           true,
                           true,
                           urlId,
+                          accessMode,
                         )
                       : await crawlSaveText(
                           pickerTarget.url,
                           folderId ?? undefined,
                           fileName,
                           urlId,
+                          accessMode,
                         );
 
                   // refresh list so latestSnapshot appears immediately
@@ -1781,10 +1792,26 @@ const SavedUrlsPage: React.FC = () => {
 
                   // auto-hide after a few seconds
                   window.setTimeout(() => setCaptureNotice(null), 8000);
-                } catch (e) {
-                  alert("Capture failed");
-                } finally {
+
+                  // close only on success
                   setPickerOpen(false);
+                } catch (e: any) {
+                  const msg =
+                    e?.response?.data?.message ??
+                    e?.message ??
+                    "Capture failed";
+
+                  console.error("[SavedUrlsPage] capture failed", {
+                    url: pickerTarget.url,
+                    mode,
+                    folderId,
+                    fileName,
+                    accessMode,
+                    urlId,
+                    error: e,
+                  });
+
+                  alert(`Capture failed: ${msg}`);
                 }
               }}
             />
