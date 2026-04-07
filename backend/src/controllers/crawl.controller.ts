@@ -128,17 +128,76 @@ const DISABLE_PDF_SNAPSHOT_FALLBACK_FOR_PDF_URLS =
     process.env.DISABLE_PDF_SNAPSHOT_FALLBACK_FOR_PDF_URLS ?? "true",
   ).toLowerCase() !== "false";
 
+function tryDecodeUrlish(raw: string): string {
+  let out = String(raw || "").trim();
+
+  for (let i = 0; i < 2; i++) {
+    try {
+      const next = decodeURIComponent(out);
+      if (next === out) break;
+      out = next.trim();
+    } catch {
+      break;
+    }
+  }
+
+  return out;
+}
+
+function normalizePdfCandidateUrl(raw: string, base: URL): string | null {
+  const decoded = tryDecodeUrlish(raw);
+  if (!decoded) return null;
+
+  const lower = decoded.toLowerCase();
+  if (
+    lower.startsWith("data:") ||
+    lower.startsWith("blob:") ||
+    lower.startsWith("javascript:")
+  ) {
+    return null;
+  }
+
+  try {
+    const abs = new URL(decoded, base).toString();
+    const absLower = abs.toLowerCase();
+
+    if (!/^https?:\/\//i.test(abs)) return null;
+    if (!absLower.includes(".pdf")) return null;
+
+    return abs;
+  } catch {
+    return null;
+  }
+}
+
 function resolveWrappedPdfToDirect(u: URL): string | null {
-  const fn = u.searchParams.get("filename");
-  if (!fn) return null;
+  const preferredKeys = [
+    "filename",
+    "file",
+    "filepath",
+    "path",
+    "pdf",
+    "pdfurl",
+    "download",
+    "doc",
+    "document",
+    "attachment",
+  ];
 
-  const decoded = decodeURIComponent(fn).trim();
-  if (/^https?:\/\//i.test(decoded)) return decoded;
+  for (const key of preferredKeys) {
+    const raw = u.searchParams.get(key);
+    if (!raw) continue;
 
-  const cleaned = decoded.replace(/^\/+/, "");
-  if (!cleaned.toLowerCase().includes(".pdf")) return null;
+    const candidate = normalizePdfCandidateUrl(raw, u);
+    if (candidate) return candidate;
+  }
 
-  return `${u.origin}/${cleaned}`;
+  for (const [, value] of u.searchParams.entries()) {
+    const candidate = normalizePdfCandidateUrl(value, u);
+    if (candidate) return candidate;
+  }
+
+  return null;
 }
 
 function filenameFromContentDisposition(cd: string | null): string | null {
@@ -211,9 +270,48 @@ async function cookieHeaderFor(
   targetUrl: string,
 ): Promise<string | null> {
   try {
-    const cookies = await page.cookies(targetUrl);
+    const currentUrl =
+      typeof page?.url === "function" ? String(page.url() || "") : "";
+
+    const urls = Array.from(
+      new Set(
+        [targetUrl, currentUrl].filter(
+          (v): v is string => typeof v === "string" && v.length > 0,
+        ),
+      ),
+    );
+
+    let cookies: any[] = [];
+
+    for (const u of urls) {
+      try {
+        const bucket = await page.cookies(u);
+        if (Array.isArray(bucket) && bucket.length) cookies.push(...bucket);
+      } catch {
+        // ignore per-url cookie failures
+      }
+    }
+
+    try {
+      const pageWide = await page.cookies();
+      if (Array.isArray(pageWide) && pageWide.length) cookies.push(...pageWide);
+    } catch {
+      // ignore page-wide cookie failures
+    }
+
     if (!Array.isArray(cookies) || cookies.length === 0) return null;
-    return cookies.map((c: any) => `${c.name}=${c.value}`).join("; ");
+
+    const seen = new Set<string>();
+    const deduped = cookies.filter((c: any) => {
+      const key = `${c.name}|${c.domain || ""}|${c.path || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (!deduped.length) return null;
+
+    return deduped.map((c: any) => `${c.name}=${c.value}`).join("; ");
   } catch {
     return null;
   }
@@ -226,63 +324,121 @@ async function extractPdfCandidates(
   try {
     const raw: string[] = await page.evaluate(() => {
       const out: string[] = [];
+
       const push = (u: any) => {
         if (!u || typeof u !== "string") return;
         const s = u.trim();
         if (!s) return;
-        // ignore huge inline data URIs
         if (s.startsWith("data:")) return;
+        if (s.startsWith("blob:")) return;
         out.push(s);
       };
 
-      // obvious embeds
-      document.querySelectorAll("iframe, embed, object").forEach((el: any) => {
-        push(el.src);
-        push(el.data);
+      const maybePdfish = (s: string) => {
+        const t = String(s || "").toLowerCase();
+        return (
+          t.includes(".pdf") ||
+          /(?:^|[?&#])(file|filename|pdf|download|path|attachment)=/i.test(t)
+        );
+      };
+
+      // obvious embeds and links
+      document
+        .querySelectorAll("iframe, embed, object, a[href], link[href]")
+        .forEach((el: any) => {
+          const src = el.getAttribute?.("src");
+          const href = el.getAttribute?.("href");
+          const data = el.getAttribute?.("data");
+
+          [src, href, data].forEach((v) => {
+            if (v && maybePdfish(v)) push(v);
+          });
+
+          const text = String(el.textContent || "").toLowerCase();
+          if (href && (text.includes("pdf") || text.includes("download"))) {
+            push(href);
+          }
+        });
+
+      // broader attribute scan for viewer widgets / JS-driven embeds
+      const attrNames = [
+        "src",
+        "href",
+        "data",
+        "data-url",
+        "data-src",
+        "data-file",
+        "data-pdf",
+        "data-download",
+      ];
+
+      document.querySelectorAll("*").forEach((el: any) => {
+        attrNames.forEach((attr) => {
+          const v = el.getAttribute?.(attr);
+          if (v && maybePdfish(v)) push(v);
+        });
       });
 
-      // anchors + links with pdf-ish hints
-      document.querySelectorAll("a[href], link[href]").forEach((el: any) => {
-        const href = el.getAttribute("href");
-        if (!href) return;
-        const t = (el.textContent || "").toLowerCase();
-        const h = href.toLowerCase();
-        if (
-          h.includes(".pdf") ||
-          h.includes("pdf") ||
-          t.includes("pdf") ||
-          t.includes("download")
-        ) {
-          push(href);
-        }
-      });
-
-      // pdf.js viewer patterns: ?file=... or #file=...
+      // current-page query params / hash patterns
       const url = new URL(window.location.href);
       const params = new URLSearchParams(url.search);
-      const file = params.get("file") || params.get("pdf");
-      if (file) push(file);
+
+      ["file", "filename", "pdf", "path", "download", "attachment"].forEach(
+        (key) => {
+          const v = params.get(key);
+          if (v) push(v);
+        },
+      );
+
       const hash = String(url.hash || "");
-      const m = hash.match(/(?:^|[?#&])file=([^&]+)/i);
-      if (m && m[1]) push(decodeURIComponent(m[1]));
+      const hashRe =
+        /(?:^|[?#&])(file|filename|pdf|path|download|attachment)=([^&]+)/gi;
+      let hm: RegExpExecArray | null;
+
+      while ((hm = hashRe.exec(hash)) !== null) {
+        if (hm[2]) {
+          try {
+            push(decodeURIComponent(hm[2]));
+          } catch {
+            push(hm[2]);
+          }
+        }
+      }
+
+      // meta tags sometimes carry the downloadable asset
+      document.querySelectorAll("meta[content]").forEach((el: any) => {
+        const v = el.getAttribute?.("content");
+        if (v && maybePdfish(v)) push(v);
+      });
+
+      // inline scripts often contain PDF.js config or direct asset URLs
+      document.querySelectorAll("script:not([src])").forEach((el: any) => {
+        const t = String(el.textContent || "");
+
+        const directRe = /(?:https?:\/\/|\/)[^"'`\s)]+\.pdf(?:\?[^"'`\s)]*)?/gi;
+        let dm: RegExpExecArray | null;
+        while ((dm = directRe.exec(t)) !== null) {
+          if (dm[0]) push(dm[0]);
+        }
+
+        const keyedRe =
+          /(?:file|filename|pdf|pdfUrl|downloadUrl|path)\s*[:=]\s*['"`]([^'"`]+)['"`]/gi;
+        let km: RegExpExecArray | null;
+        while ((km = keyedRe.exec(t)) !== null) {
+          if (km[1]) push(km[1]);
+        }
+      });
 
       return Array.from(new Set(out));
     });
 
-    const abs = raw
-      .map((u) => {
-        try {
-          return new URL(u, baseUrl).toString();
-        } catch {
-          return null;
-        }
-      })
+    const base = new URL(baseUrl);
+
+    const normalized = raw
+      .map((u) => normalizePdfCandidateUrl(u, base))
       .filter(Boolean) as string[];
 
-    // keep only http(s)
-    return abs.filter(
-      (u) => u.startsWith("http://") || u.startsWith("https://"),
-    );
+    return Array.from(new Set(normalized));
   } catch {
     return [];
   }
