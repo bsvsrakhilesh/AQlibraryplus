@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
-import { Collection } from '../../lib/types';
-import CloseIcon from '../icons/CloseIcon';
+import React, { useEffect } from "react";
+import { Collection } from "../../lib/types";
+import CloseIcon from "../icons/CloseIcon";
 
 interface Props {
   isOpen: boolean;
@@ -8,23 +8,23 @@ interface Props {
   collections: Collection[];
   onCancel: () => void;
   onConfirm: (collectionId: string) => void;
-  onCreate?: (name: string) => void;
+  onRequestCreate?: () => void;
 }
 
 const CollectionPickerModal: React.FC<Props> = ({
   isOpen,
-  title = 'Save to category',
+  title = "Save to collection",
   collections,
   onCancel,
   onConfirm,
-  onCreate,
+  onRequestCreate,
 }) => {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel();
+      if (e.key === "Escape") onCancel();
     }
-    if (isOpen) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    if (isOpen) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, onCancel]);
 
   if (!isOpen) return null;
@@ -35,12 +35,19 @@ const CollectionPickerModal: React.FC<Props> = ({
       onClick={onCancel}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-md shadow-xl border p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold">{title}</h3>
-          <button className="btn-ghost" onClick={onCancel} title="Close">
+          <button
+            className="btn-ghost"
+            onClick={onCancel}
+            title="Close"
+            type="button"
+          >
             <CloseIcon />
           </button>
         </div>
@@ -51,24 +58,21 @@ const CollectionPickerModal: React.FC<Props> = ({
               key={c.id}
               onClick={() => onConfirm(c.id)}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              type="button"
             >
               {c.name}
             </button>
           ))}
         </div>
 
-        {onCreate && (
+        {onRequestCreate && (
           <div className="mt-4 border-t pt-3">
             <button
-              onClick={() => {
-                const name = window.prompt('New category name?') || '';
-                const trimmed = name.trim();
-                if (!trimmed) return;
-                onCreate(trimmed);
-              }}
+              onClick={onRequestCreate}
               className="w-full px-3 py-2 rounded-lg border hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              type="button"
             >
-              + Create new category
+              + Create new collection
             </button>
           </div>
         )}
