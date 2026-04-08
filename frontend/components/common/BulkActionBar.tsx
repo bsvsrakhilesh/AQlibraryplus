@@ -16,6 +16,14 @@ interface BulkActionBarProps<T extends Selectable = Selectable> {
   onMoveTo?: (ids: string[]) => void;
   deleteLabel?: string;
   restoreLabel?: string;
+  copyLabel?: string;
+  cutLabel?: string;
+  pasteLabel?: string;
+  moveToLabel?: string;
+  copyTitle?: string;
+  cutTitle?: string;
+  pasteTitle?: string;
+  moveToTitle?: string;
 }
 
 function BulkActionBar<T extends Selectable>({
@@ -33,6 +41,14 @@ function BulkActionBar<T extends Selectable>({
   onMoveTo,
   deleteLabel = "Delete",
   restoreLabel = "Restore",
+  copyLabel = "Copy",
+  cutLabel = "Cut",
+  pasteLabel = "Paste",
+  moveToLabel = "Move to…",
+  copyTitle = "Copy (Ctrl/Cmd+C)",
+  cutTitle = "Cut (Ctrl/Cmd+X)",
+  pasteTitle = "Paste (Ctrl/Cmd+V)",
+  moveToTitle = "Move selected to category…",
 }: BulkActionBarProps<T>) {
   if (!selected.length) return null;
 
@@ -91,9 +107,9 @@ function BulkActionBar<T extends Selectable>({
         <button
           onClick={() => onMoveTo(selectedIds)}
           className={baseBtn}
-          title="Move selected to category…"
+          title={moveToTitle}
         >
-          Move to…
+          {moveToLabel}
         </button>
       )}
 
@@ -101,9 +117,9 @@ function BulkActionBar<T extends Selectable>({
         <button
           onClick={() => onCopy(selectedIds)}
           className={baseBtn}
-          title="Copy (Ctrl/Cmd+C)"
+          title={copyTitle}
         >
-          Copy
+          {copyLabel}
         </button>
       )}
 
@@ -111,9 +127,9 @@ function BulkActionBar<T extends Selectable>({
         <button
           onClick={() => onCut(selectedIds)}
           className={baseBtn}
-          title="Cut (Ctrl/Cmd+X)"
+          title={cutTitle}
         >
-          Cut
+          {cutLabel}
         </button>
       )}
 
@@ -122,9 +138,9 @@ function BulkActionBar<T extends Selectable>({
           onClick={onPaste}
           disabled={!canPaste}
           className={`${baseBtn} disabled:opacity-50`}
-          title="Paste (Ctrl/Cmd+V)"
+          title={pasteTitle}
         >
-          Paste
+          {pasteLabel}
         </button>
       )}
 

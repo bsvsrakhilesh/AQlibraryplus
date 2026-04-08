@@ -1222,24 +1222,99 @@ const SavedUrlsPage: React.FC = () => {
     [urls],
   );
 
+  const applyCollectionAssignment = useCallback(
+    (ids: string[], collectionId: string, mode: "add" | "move") => {
+      const items = byIds(ids);
+      if (!items.length) return;
+
+      const targetCollectionName =
+        collections.find((c) => c.id === collectionId)?.name ??
+        "selected collection";
+
+      if (mode === "add") {
+        items.forEach((u) => addUrlToCollection(collectionId, u.url));
+        setUrls((prev) =>
+          prev.map((u) =>
+            ids.includes(u.id)
+              ? {
+                  ...u,
+                  collections: Array.from(
+                    new Set([...(u.collections || []), collectionId]),
+                  ),
+                }
+              : u,
+          ),
+        );
+
+        notify({
+          text:
+            items.length === 1
+              ? `Added 1 URL to "${targetCollectionName}" without removing its other collections.`
+              : `Added ${items.length} URLs to "${targetCollectionName}" without removing their other collections.`,
+          kind: "success",
+        });
+      } else {
+        items.forEach((u) => setUrlCollections(u.url, [collectionId]));
+        setUrls((prev) =>
+          prev.map((u) =>
+            ids.includes(u.id) ? { ...u, collections: [collectionId] } : u,
+          ),
+        );
+
+        notify({
+          text:
+            items.length === 1
+              ? `Moved 1 URL into "${targetCollectionName}" as its only collection.`
+              : `Moved ${items.length} URLs into "${targetCollectionName}" as their only collection.`,
+          kind: "success",
+        });
+      }
+
+      setCollPickerOpen(false);
+      setMoveIds([]);
+    },
+    [byIds, collections, notify],
+  );
+
   const handleCopy = useCallback(
     (ids: string[]) => {
       const items = byIds(ids);
-      if (items.length) setClipboard({ mode: "copy", items });
+      if (!items.length) return;
+
+      setClipboard({ mode: "copy", items });
+
+      notify({
+        text:
+          items.length === 1
+            ? "Copied 1 URL for collection assignment. Select a destination collection, then use Paste into collection."
+            : `Copied ${items.length} URLs for collection assignment. Select a destination collection, then use Paste into collection.`,
+        kind: "info",
+      });
     },
-    [byIds],
+    [byIds, notify],
   );
 
   const handleCut = useCallback(
     (ids: string[]) => {
       const items = byIds(ids);
-      if (items.length) setClipboard({ mode: "cut", items });
+      if (!items.length) return;
+
+      setClipboard({ mode: "cut", items });
+
+      notify({
+        text:
+          items.length === 1
+            ? "Prepared 1 URL to move. Select a destination collection, then use Paste into collection."
+            : `Prepared ${items.length} URLs to move. Select a destination collection, then use Paste into collection.`,
+        kind: "warning",
+      });
     },
-    [byIds],
+    [byIds, notify],
   );
 
   const handlePaste = useCallback(async () => {
     if (!clipboard) return;
+
     if (!selectedCollectionId) {
       notify({
         text: "Choose a collection on the left before pasting.",
@@ -1247,14 +1322,17 @@ const SavedUrlsPage: React.FC = () => {
       });
       return;
     }
+
+    const items = clipboard.items;
+    const targetCollectionName =
+      selectedCollection?.name ?? "selected collection";
+
     try {
       if (clipboard.mode === "copy") {
-        clipboard.items.forEach((u) =>
-          addUrlToCollection(selectedCollectionId, u.url),
-        );
+        items.forEach((u) => addUrlToCollection(selectedCollectionId, u.url));
         setUrls((prev) =>
           prev.map((u) =>
-            clipboard.items.some((it) => it.id === u.id)
+            items.some((it) => it.id === u.id)
               ? {
                   ...u,
                   collections: Array.from(
@@ -1264,28 +1342,61 @@ const SavedUrlsPage: React.FC = () => {
               : u,
           ),
         );
+
+        notify({
+          text:
+            items.length === 1
+              ? `Added 1 URL to "${targetCollectionName}" without removing its other collections.`
+              : `Added ${items.length} URLs to "${targetCollectionName}" without removing their other collections.`,
+          kind: "success",
+        });
       } else {
-        clipboard.items.forEach((u) =>
-          setUrlCollections(u.url, [selectedCollectionId]),
-        );
+        const ok = await confirm({
+          title: "Move URLs into this collection only?",
+          description:
+            items.length === 1
+              ? `Move the selected URL into "${targetCollectionName}" and replace its current collection memberships?`
+              : `Move ${items.length} selected URLs into "${targetCollectionName}" and replace their current collection memberships?`,
+          confirmText: "Move only here",
+          cancelText: "Cancel",
+          danger: true,
+        });
+
+        if (!ok) return;
+
+        items.forEach((u) => setUrlCollections(u.url, [selectedCollectionId]));
         setUrls((prev) =>
           prev.map((u) =>
-            clipboard.items.some((it) => it.id === u.id)
+            items.some((it) => it.id === u.id)
               ? { ...u, collections: [selectedCollectionId] }
               : u,
           ),
         );
+
+        notify({
+          text:
+            items.length === 1
+              ? `Moved 1 URL into "${targetCollectionName}" as its only collection.`
+              : `Moved ${items.length} URLs into "${targetCollectionName}" as their only collection.`,
+          kind: "success",
+        });
       }
     } finally {
       setClipboard(null);
     }
-  }, [clipboard, selectedCollectionId]);
+  }, [clipboard, selectedCollectionId, selectedCollection, notify, confirm]);
 
   const handleMoveTo = useCallback((ids: string[]) => {
     if (!ids.length) return;
     setMoveIds(ids);
     setCollPickerOpen(true);
   }, []);
+
+  const openCollectionDialogFromPicker = useCallback(() => {
+    setCollPickerOpen(false);
+    setMoveIds([]);
+    openCollectionDialog();
+  }, [openCollectionDialog]);
 
   const canPaste = !!clipboard && !!selectedCollectionId;
 
@@ -1918,6 +2029,22 @@ const SavedUrlsPage: React.FC = () => {
                   onPaste={handlePaste}
                   canPaste={canPaste}
                   onMoveTo={handleMoveTo}
+                  moveToLabel="Assign collection…"
+                  moveToTitle="Choose whether to add these URLs to another collection or move them into it"
+                  copyLabel="Copy assignment"
+                  copyTitle="Copy the selected URLs so you can add them to another collection"
+                  cutLabel="Cut for move"
+                  cutTitle="Prepare the selected URLs to move into a different collection"
+                  pasteLabel={
+                    selectedCollection
+                      ? `Paste into ${selectedCollection.name}`
+                      : "Paste into collection"
+                  }
+                  pasteTitle={
+                    selectedCollection
+                      ? `Paste into "${selectedCollection.name}"`
+                      : "Select a collection in the sidebar, then paste into it"
+                  }
                 />
               </div>
             )}
@@ -2025,26 +2152,42 @@ const SavedUrlsPage: React.FC = () => {
 
             <CollectionPickerModal
               isOpen={collPickerOpen}
+              title={
+                moveIds.length === 1
+                  ? "Assign collection"
+                  : `Assign collection to ${moveIds.length} URLs`
+              }
+              description="Add keeps existing collection memberships. Move only here replaces them with the selected collection."
               collections={collections}
+              selectedCount={moveIds.length}
               onCancel={() => {
                 setCollPickerOpen(false);
                 setMoveIds([]);
               }}
-              onConfirm={(collectionId) => {
-                const ids = moveIds;
-                const items = byIds(ids);
-                items.forEach((u) => setUrlCollections(u.url, [collectionId]));
-                setUrls((prev) =>
-                  prev.map((u) =>
-                    ids.includes(u.id)
-                      ? { ...u, collections: [collectionId] }
-                      : u,
-                  ),
-                );
-                setCollPickerOpen(false);
-                setMoveIds([]);
+              onAddToCollection={(collectionId) => {
+                applyCollectionAssignment(moveIds, collectionId, "add");
               }}
-              onRequestCreate={openCollectionDialog}
+              onMoveToCollection={async (collectionId) => {
+                const targetCollectionName =
+                  collections.find((c) => c.id === collectionId)?.name ??
+                  "selected collection";
+
+                const ok = await confirm({
+                  title: "Move selected URLs into one collection?",
+                  description:
+                    moveIds.length === 1
+                      ? `Move the selected URL into "${targetCollectionName}" and replace its current collection memberships?`
+                      : `Move ${moveIds.length} selected URLs into "${targetCollectionName}" and replace their current collection memberships?`,
+                  confirmText: "Move only here",
+                  cancelText: "Cancel",
+                  danger: true,
+                });
+
+                if (!ok) return;
+
+                applyCollectionAssignment(moveIds, collectionId, "move");
+              }}
+              onRequestCreate={openCollectionDialogFromPicker}
             />
 
             <FolderPickerModal
