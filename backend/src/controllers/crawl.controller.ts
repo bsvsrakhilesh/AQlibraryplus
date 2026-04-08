@@ -483,78 +483,119 @@ async function downloadPdfWithWget(
   targetUrl: string,
   opts: { referer?: string; cookie?: string | null },
 ): Promise<{ bytes: Buffer; cd: string | null; ct: string | null } | null> {
-  const args: string[] = [
-    "--quiet",
-    "--server-response",
-    "--max-redirect=10",
-    "--timeout=45",
-    "--tries=1",
-    "--inet4-only",
-    "-O",
-    "-",
-    "--user-agent",
-    BROWSER_UA,
-    "--header",
-    "Accept: application/pdf,*/*",
-  ];
-
-  if (opts.referer) {
-    args.push("--referer", opts.referer);
-  }
-
-  if (opts.cookie) {
-    args.push("--header", `Cookie: ${opts.cookie}`);
-  }
-
-  args.push(targetUrl);
-
   const parseMeta = (stderrText: string) => {
     const ctMatch = stderrText.match(/^\s*Content-Type:\s*(.+)$/im);
     const cdMatch = stderrText.match(/^\s*Content-Disposition:\s*(.+)$/im);
+    const statusMatch = stderrText.match(/^\s*HTTP\/[0-9.]+\s+(\d{3})/im);
+
     return {
       ct: ctMatch?.[1]?.trim() ?? null,
       cd: cdMatch?.[1]?.trim() ?? null,
+      statusCode: statusMatch?.[1] ? Number(statusMatch[1]) : null,
     };
   };
 
-  return await new Promise((resolve) => {
-    execFile(
-      "wget",
-      args,
-      {
-        encoding: "buffer",
-        maxBuffer: PDF_INTERCEPT_MAX_BYTES,
-      } as any,
-      (error, stdout, stderr) => {
-        const out = Buffer.isBuffer(stdout)
-          ? stdout
-          : stdout
-            ? Buffer.from(stdout as any)
-            : Buffer.alloc(0);
+  const summarizeStderr = (stderrText: string) => {
+    return stderrText
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(-10)
+      .join(" | ")
+      .slice(0, 2000);
+  };
 
-        const errText = Buffer.isBuffer(stderr)
-          ? stderr.toString("utf8")
-          : String(stderr || "");
+  const runOne = async (
+    label: "default_stack" | "ipv4_only",
+    extraArgs: string[],
+  ): Promise<{
+    bytes: Buffer;
+    cd: string | null;
+    ct: string | null;
+  } | null> => {
+    const args: string[] = [
+      "--quiet",
+      "--server-response",
+      "--max-redirect=10",
+      "--timeout=120",
+      "--tries=2",
+      "-O",
+      "-",
+      "--user-agent",
+      BROWSER_UA,
+      "--header",
+      "Accept: application/pdf,*/*",
+      ...extraArgs,
+    ];
 
-        const meta = parseMeta(errText);
+    if (opts.referer) {
+      args.push("--referer", opts.referer);
+    }
 
-        if (out.length >= 1024 && isPdfMagic(out)) {
-          return resolve({
-            bytes: out,
-            cd: meta.cd,
-            ct: meta.ct,
+    if (opts.cookie) {
+      args.push("--header", `Cookie: ${opts.cookie}`);
+    }
+
+    args.push(targetUrl);
+
+    return await new Promise((resolve) => {
+      execFile(
+        "wget",
+        args,
+        {
+          encoding: "buffer",
+          maxBuffer: PDF_INTERCEPT_MAX_BYTES,
+        } as any,
+        (error, stdout, stderr) => {
+          const out = Buffer.isBuffer(stdout)
+            ? stdout
+            : stdout
+              ? Buffer.from(stdout as any)
+              : Buffer.alloc(0);
+
+          const errText = Buffer.isBuffer(stderr)
+            ? stderr.toString("utf8")
+            : String(stderr || "");
+
+          const meta = parseMeta(errText);
+
+          if (out.length >= 1024 && isPdfMagic(out)) {
+            log.info("crawl_pdf_wget_attempt_succeeded", {
+              targetUrl,
+              mode: label,
+              bytes: out.length,
+              statusCode: meta.statusCode,
+              contentType: meta.ct,
+            });
+
+            return resolve({
+              bytes: out,
+              cd: meta.cd,
+              ct: meta.ct,
+            });
+          }
+
+          log.info("crawl_pdf_wget_attempt_failed", {
+            targetUrl,
+            mode: label,
+            statusCode: meta.statusCode,
+            bytes: out.length,
+            contentType: meta.ct,
+            error: error ? String((error as any)?.message || error) : null,
+            stderr: summarizeStderr(errText),
           });
-        }
 
-        // wget may still hand back partial body on certain failures; only accept real PDFs.
-        if (error) {
           return resolve(null);
-        }
+        },
+      );
+    });
+  };
 
-        return resolve(null);
-      },
-    );
-  });
+  return (
+    (await runOne("default_stack", [])) ??
+    (await runOne("ipv4_only", ["--inet4-only"])) ??
+    null
+  );
 }
 
 async function tryClickPdfDownload(page: any): Promise<boolean> {
@@ -1288,7 +1329,7 @@ export async function crawlPdfHandler(
         const likelyPdf = looksLikePdfUrl(cu);
         let isPdf = likelyPdf;
 
-        // For obvious PDF URLs, do not depend on a fragile Range sniff first.
+        // For obvious .pdf URLs, do not depend on a fragile Range sniff first.
         if (!likelyPdf) {
           try {
             const sniff = await fetchWithTimeout(candidate, 30_000, {
@@ -1316,7 +1357,7 @@ export async function crawlPdfHandler(
               error: String((e as any)?.message || e),
             });
 
-            // Sniff failure should not abort the whole direct-download fast-path.
+            // Important: do NOT abort the whole direct-download block.
             continue;
           }
         }
