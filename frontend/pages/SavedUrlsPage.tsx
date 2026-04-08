@@ -1443,7 +1443,7 @@ const SavedUrlsPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 justify-end ">
             <span className="page-header-pill">
               <span className="page-header-pill-label">State</span>
               <span className="page-header-pill-value">
@@ -1457,7 +1457,7 @@ const SavedUrlsPage: React.FC = () => {
 
             <button
               type="button"
-              className="btn-outline px-3 py-2 rounded-lg"
+              className="btn-primary px-3 py-2 rounded-lg disabled:opacity-60"
               onClick={markVisibleReviewed}
               disabled={sorted.length === 0}
               title="Mark every visible result as reviewed right now"
@@ -1467,7 +1467,7 @@ const SavedUrlsPage: React.FC = () => {
 
             <button
               type="button"
-              className="btn-ghost px-3 py-2 rounded-lg disabled:opacity-50"
+              className="btn-primary px-3 py-2 rounded-lg disabled:opacity-60 "
               onClick={resetReviewView}
               disabled={!hasActiveReviewView}
               title="Reset filters, selected collection, queue, saved-search context, year, and sort"
@@ -1477,7 +1477,7 @@ const SavedUrlsPage: React.FC = () => {
 
             <button
               type="button"
-              className="btn-primary px-3 py-2 rounded-lg"
+              className="btn-primary px-3 py-2 rounded-lg disabled:opacity-60"
               onClick={saveCurrentSearch}
               title="Save the current filter, sort, collection, and queue state"
             >
@@ -1487,7 +1487,7 @@ const SavedUrlsPage: React.FC = () => {
             {activeSavedSearch && (
               <button
                 type="button"
-                className="btn-ghost px-3 py-2 rounded-lg"
+                className="btn-ghost px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/10 disabled:opacity-60"
                 onClick={deleteActiveSavedSearch}
                 title="Delete the active saved search"
               >
@@ -1497,7 +1497,7 @@ const SavedUrlsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-start xl:items-center">
           {reviewQueues.map((queue) => {
             const active = activeQueueId === queue.id;
             return (
