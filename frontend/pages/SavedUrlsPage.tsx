@@ -1126,6 +1126,15 @@ const SavedUrlsPage: React.FC = () => {
     }
   };
 
+  const openCapturePicker = useCallback(
+    (url: UISavedUrl, mode: "text" | "pdf") => {
+      setPickerTarget(url);
+      setPickerMode(mode);
+      setPickerOpen(true);
+    },
+    [],
+  );
+
   const handleNotesChange = async (id: string, notes: string) => {
     const idNum = Number(id);
     const before = urls.find((u) => u.id === id)?.notes ?? "";
@@ -2218,6 +2227,8 @@ const SavedUrlsPage: React.FC = () => {
                 onSelectAllVisible={selectAllFiltered}
                 onClearSelection={clearSelection}
                 onOpenDetail={(x) => setDetail(x)}
+                onFavoriteToggle={handleFavoriteToggle}
+                onCapture={openCapturePicker}
               />
             ) : (
               <StaggerList className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 2xl:gap-6">
@@ -2229,11 +2240,7 @@ const SavedUrlsPage: React.FC = () => {
                       onSelect={() => toggleSelect(u.id)}
                       onFavoriteToggle={handleFavoriteToggle}
                       onOpenDetail={(x) => setDetail(x)}
-                      onCapture={async (x, mode) => {
-                        setPickerTarget(x);
-                        setPickerMode(mode);
-                        setPickerOpen(true);
-                      }}
+                      onCapture={openCapturePicker}
                     />
                   </StaggerItem>
                 ))}
