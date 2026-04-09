@@ -407,7 +407,17 @@ const SavedUrlsPage: React.FC = () => {
 
   // Selection + detail
   const [selection, setSelection] = useState<Set<string>>(new Set());
-  const [detail, setDetail] = useState<UISavedUrl | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const detail = useMemo(
+    () => (detailId ? (urls.find((u) => u.id === detailId) ?? null) : null),
+    [detailId, urls],
+  );
+
+  useEffect(() => {
+    if (detailId && !urls.some((u) => u.id === detailId)) {
+      setDetailId(null);
+    }
+  }, [detailId, urls]);
 
   // Poll saved URLs briefly so newly-generated AI tags show up automatically
   const tagPollRef = useRef<number | null>(null);
@@ -1014,7 +1024,7 @@ const SavedUrlsPage: React.FC = () => {
     setActiveQueueId(DEFAULT_QUEUE_ID);
     setActiveSavedSearchId(null);
     setSelection(new Set());
-    setDetail(null);
+    setDetailId(null);
 
     notify({
       text: "Reset filters, queue, collection, saved search context, and sorting.",
@@ -2426,7 +2436,7 @@ const SavedUrlsPage: React.FC = () => {
                 onToggleSelect={toggleSelect}
                 onSelectAllVisible={selectAllFiltered}
                 onClearSelection={clearSelection}
-                onOpenDetail={(x) => setDetail(x)}
+                onOpenDetail={(x) => setDetailId(x.id)}
                 onFavoriteToggle={handleFavoriteToggle}
                 onCapture={openCapturePicker}
               />
@@ -2439,7 +2449,7 @@ const SavedUrlsPage: React.FC = () => {
                       selected={selection.has(u.id)}
                       onSelect={() => toggleSelect(u.id)}
                       onFavoriteToggle={handleFavoriteToggle}
-                      onOpenDetail={(x) => setDetail(x)}
+                      onOpenDetail={(x) => setDetailId(x.id)}
                       onCapture={openCapturePicker}
                     />
                   </StaggerItem>
@@ -2650,7 +2660,7 @@ const SavedUrlsPage: React.FC = () => {
               <SavedUrlDetailModal
                 url={detail}
                 isOpen={true}
-                onClose={() => setDetail(null)}
+                onClose={() => setDetailId(null)}
                 onFavoriteToggle={handleFavoriteToggle}
                 onTagUpdate={updateTags}
                 onNotesChange={handleNotesChange}
@@ -2659,9 +2669,6 @@ const SavedUrlsPage: React.FC = () => {
                   const next = toUISaved(fresh);
                   setUrls((prev) =>
                     prev.map((u) => (u.id === next.id ? { ...u, ...next } : u)),
-                  );
-                  setDetail((prev) =>
-                    prev && prev.id === next.id ? { ...prev, ...next } : prev,
                   );
                 }}
               />
