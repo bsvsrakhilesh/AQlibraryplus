@@ -27,20 +27,52 @@ import { probeUrlKind } from "../services/urlProbe.service";
 
 /* ----------------------- helpers ----------------------- */
 
-function parseTagsQuery(q: unknown): string[] | undefined {
+function parseMultiValueQuery(q: unknown): string[] | undefined {
   if (!q) return undefined;
   if (Array.isArray(q)) {
     const flat = q.flatMap((v) => String(v).split(","));
-    const tags = flat.map((s) => s.trim()).filter(Boolean);
-    return tags.length ? tags : undefined;
+    const values = flat.map((s) => s.trim()).filter(Boolean);
+    return values.length ? values : undefined;
   }
   const str = String(q).trim();
   if (!str) return undefined;
-  const tags = str
+  const values = str
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return tags.length ? tags : undefined;
+  return values.length ? values : undefined;
+}
+
+function parseSnapshotStatusQuery(
+  value: unknown,
+): GetAllOpts["snapshotStatus"] | undefined {
+  return value === "all" ||
+    value === "missing" ||
+    value === "stale" ||
+    value === "fresh"
+    ? value
+    : undefined;
+}
+
+function parseTaggingStatusQuery(
+  value: unknown,
+): GetAllOpts["taggingStatus"] | undefined {
+  return value === "all" ||
+    value === "NONE" ||
+    value === "PENDING" ||
+    value === "RUNNING" ||
+    value === "SUCCESS" ||
+    value === "FAILED"
+    ? value
+    : undefined;
+}
+
+function parseMetadataStateQuery(
+  value: unknown,
+): GetAllOpts["metadataState"] | undefined {
+  return value === "all" || value === "missing" || value === "complete"
+    ? value
+    : undefined;
 }
 
 function ensureNumericId(req: Request): number {
@@ -155,9 +187,20 @@ export async function getUrlsHandler(
       q,
       page,
       pageSize,
-    } = req.query as Partial<GetPagedUrlsOpts> as any;
+      collectionId,
+      favoritesOnly,
+      dateFrom,
+      dateTo,
+      snapshotStatus,
+      taggingStatus,
+      metadataState,
+    } = req.query as any;
 
-    const tags = parseTagsQuery(req.query.tags);
+    const tags = parseMultiValueQuery(req.query.tags);
+    const domains = parseMultiValueQuery(req.query.domains);
+    const parsedSnapshotStatus = parseSnapshotStatusQuery(snapshotStatus);
+    const parsedTaggingStatus = parseTaggingStatusQuery(taggingStatus);
+    const parsedMetadataState = parseMetadataStateQuery(metadataState);
 
     const hasPagination =
       Number.isInteger(Number(page)) && Number.isInteger(Number(pageSize));
@@ -171,6 +214,17 @@ export async function getUrlsHandler(
         sortKey: (sortKey as GetAllOpts["sortKey"]) ?? "createdAt",
         sortOrder: (sortOrder as GetAllOpts["sortOrder"]) ?? "desc",
         tags,
+        domains,
+        collectionId:
+          typeof collectionId === "string" && collectionId.trim()
+            ? collectionId
+            : undefined,
+        favoritesOnly: favoritesOnly === true || favoritesOnly === "true",
+        dateFrom: typeof dateFrom === "string" ? dateFrom : undefined,
+        dateTo: typeof dateTo === "string" ? dateTo : undefined,
+        snapshotStatus: parsedSnapshotStatus,
+        taggingStatus: parsedTaggingStatus,
+        metadataState: parsedMetadataState,
       });
       return res.json(out);
     }
@@ -178,27 +232,22 @@ export async function getUrlsHandler(
     // Back-compat (older clients expect an array)
     const data = await getAllUrls({
       year,
+      q: typeof q === "string" ? q : undefined,
       sortKey: (sortKey as GetAllOpts["sortKey"]) ?? "createdAt",
       sortOrder: (sortOrder as GetAllOpts["sortOrder"]) ?? "desc",
       tags,
+      domains,
+      collectionId:
+        typeof collectionId === "string" && collectionId.trim()
+          ? collectionId
+          : undefined,
+      favoritesOnly: favoritesOnly === true || favoritesOnly === "true",
+      dateFrom: typeof dateFrom === "string" ? dateFrom : undefined,
+      dateTo: typeof dateTo === "string" ? dateTo : undefined,
+      snapshotStatus: parsedSnapshotStatus,
+      taggingStatus: parsedTaggingStatus,
+      metadataState: parsedMetadataState,
     });
-
-    // Optional: client-side search without pagination (only for small libraries)
-    if (typeof q === "string" && q.trim()) {
-      const term = q.trim().toLowerCase();
-      const match = (u: any) =>
-        String(u.title ?? "")
-          .toLowerCase()
-          .includes(term) ||
-        String(u.url ?? "")
-          .toLowerCase()
-          .includes(term) ||
-        String(u.snippet ?? "")
-          .toLowerCase()
-          .includes(term);
-
-      return res.json(data.filter(match));
-    }
 
     return res.json(data);
   } catch (err) {

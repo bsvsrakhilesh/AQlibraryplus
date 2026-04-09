@@ -203,4 +203,5 @@ export interface Collection {
   ownerId: string;
   createdAt: string;
   visibility: Visibility;
+  urlCount?: number;
 }

@@ -122,8 +122,19 @@ r.get("/collections", async (_req, res, next) => {
   try {
     const rows = await prisma.collection.findMany({
       orderBy: { createdAt: "asc" },
+      include: {
+        _count: {
+          select: { urls: true },
+        },
+      },
     });
-    res.json(rows);
+
+    res.json(
+      rows.map(({ _count, ...row }) => ({
+        ...row,
+        urlCount: _count.urls,
+      })),
+    );
   } catch (e) {
     next(e);
   }

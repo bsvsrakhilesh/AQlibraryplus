@@ -4,6 +4,12 @@ import prisma from "../config/database";
 import { scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
 import { canonicalizeUrl } from "../utils/urlCanonical";
 
+const SNAPSHOT_STALE_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type SnapshotStatusFilter = "all" | "missing" | "stale" | "fresh";
+type MetadataStateFilter = "all" | "missing" | "complete";
+
 /** Payload used to create URLs from the URL Collector */
 export type CreateUrlInput = {
   url: string;
@@ -30,6 +36,15 @@ export type GetAllOpts = {
   sortOrder?: "asc" | "desc";
   /** Require that results contain ALL these tags */
   tags?: string[];
+  domains?: string[];
+  q?: string;
+  collectionId?: string;
+  favoritesOnly?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
+  snapshotStatus?: SnapshotStatusFilter;
+  taggingStatus?: TaggingStatus | "all";
+  metadataState?: MetadataStateFilter;
 };
 
 function buildOrderBy(
@@ -50,6 +65,108 @@ function buildYearWhere(year?: string): Prisma.UrlWhereInput | undefined {
   const start = new Date(Date.UTC(y, 0, 1, 0, 0, 0));
   const end = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0));
   return { createdAt: { gte: start, lt: end } };
+}
+
+function toValidDate(value?: string): Date | undefined {
+  if (!value) return undefined;
+  const dt = new Date(value);
+  return Number.isFinite(dt.getTime()) ? dt : undefined;
+}
+
+function buildListWhere(opts: GetAllOpts): Prisma.UrlWhereInput {
+  const and: Prisma.UrlWhereInput[] = [];
+
+  const yearWhere = buildYearWhere(opts.year);
+  if (yearWhere) and.push(yearWhere);
+
+  if (opts.tags && opts.tags.length) {
+    const tags = opts.tags.map((t) => t.trim()).filter(Boolean);
+    if (tags.length) and.push({ tags: { hasEvery: tags } });
+  }
+
+  if (opts.domains && opts.domains.length) {
+    const domains = opts.domains.map((d) => d.trim()).filter(Boolean);
+    if (domains.length) {
+      and.push({
+        OR: domains.map((domain) => ({
+          url: { contains: domain, mode: "insensitive" },
+        })),
+      });
+    }
+  }
+
+  if (opts.q && String(opts.q).trim()) {
+    const term = String(opts.q).trim();
+    and.push({
+      OR: [
+        { title: { contains: term, mode: "insensitive" } },
+        { url: { contains: term, mode: "insensitive" } },
+        { snippet: { contains: term, mode: "insensitive" } },
+        { notes: { contains: term, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (opts.collectionId) {
+    and.push({
+      collections: {
+        some: { collectionId: opts.collectionId },
+      },
+    });
+  }
+
+  if (opts.favoritesOnly) {
+    and.push({ isFavorited: true });
+  }
+
+  const createdAt: Prisma.DateTimeFilter = {};
+  const from = toValidDate(opts.dateFrom);
+  const to = toValidDate(opts.dateTo);
+
+  if (from) createdAt.gte = from;
+  if (to) createdAt.lte = to;
+  if (from || to) and.push({ createdAt });
+
+  if (opts.snapshotStatus && opts.snapshotStatus !== "all") {
+    const staleCutoff = new Date(Date.now() - SNAPSHOT_STALE_DAYS * DAY_MS);
+
+    if (opts.snapshotStatus === "missing") {
+      and.push({ snapshots: { none: {} } });
+    } else if (opts.snapshotStatus === "fresh") {
+      and.push({
+        snapshots: { some: { createdAt: { gte: staleCutoff } } },
+      });
+    } else if (opts.snapshotStatus === "stale") {
+      and.push({ snapshots: { some: {} } });
+      and.push({
+        snapshots: { none: { createdAt: { gte: staleCutoff } } },
+      });
+    }
+  }
+
+  if (opts.taggingStatus && opts.taggingStatus !== "all") {
+    and.push({ taggingStatus: opts.taggingStatus as TaggingStatus });
+  }
+
+  if (opts.metadataState === "missing") {
+    and.push({
+      OR: [
+        { publishedAt: null },
+        { authors: { isEmpty: true } },
+        { tags: { isEmpty: true } },
+      ],
+    });
+  } else if (opts.metadataState === "complete") {
+    and.push({ publishedAt: { not: null } });
+    and.push({
+      NOT: { authors: { isEmpty: true } },
+    } as Prisma.UrlWhereInput);
+    and.push({
+      NOT: { tags: { isEmpty: true } },
+    } as Prisma.UrlWhereInput);
+  }
+
+  return and.length ? { AND: and } : {};
 }
 
 type UrlWithCollectionLinks = Prisma.UrlGetPayload<{
@@ -75,17 +192,7 @@ function serializeUrlRow(
 
 /** List URLs with optional year + tag filters and sorting */
 export async function getAllUrls(opts: GetAllOpts) {
-  const where: Prisma.UrlWhereInput = {};
-
-  // year filter (inclusive)
-  const yearWhere = buildYearWhere(opts.year);
-  if (yearWhere) Object.assign(where, yearWhere);
-
-  // NEW: tags filter (hasEvery semantics)
-  if (opts.tags && opts.tags.length) {
-    const tags = opts.tags.map((t) => t.trim()).filter(Boolean);
-    if (tags.length) where.tags = { hasEvery: tags };
-  }
+  const where = buildListWhere(opts);
 
   const orderBy = buildOrderBy(opts.sortKey, opts.sortOrder);
 
@@ -142,24 +249,7 @@ export type GetPagedUrlsOpts = GetAllOpts & {
  * - Returns { items, total, page, pageSize }
  */
 export async function getUrlsPaged(opts: GetPagedUrlsOpts) {
-  const where: Prisma.UrlWhereInput = {};
-
-  const yearWhere = buildYearWhere(opts.year);
-  if (yearWhere) Object.assign(where, yearWhere);
-
-  if (opts.tags && opts.tags.length) {
-    const tags = opts.tags.map((t) => t.trim()).filter(Boolean);
-    if (tags.length) where.tags = { hasEvery: tags };
-  }
-
-  if (opts.q && String(opts.q).trim()) {
-    const term = String(opts.q).trim();
-    where.OR = [
-      { title: { contains: term, mode: "insensitive" } },
-      { url: { contains: term, mode: "insensitive" } },
-      { snippet: { contains: term, mode: "insensitive" } },
-    ];
-  }
+  const where = buildListWhere(opts);
 
   const orderBy = buildOrderBy(opts.sortKey, opts.sortOrder);
 

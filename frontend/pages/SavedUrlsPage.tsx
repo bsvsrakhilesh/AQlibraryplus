@@ -16,7 +16,7 @@ import CollectionPickerModal from "../components/savedurls/CollectionPickerModal
 import BulkActionBar from "../components/common/BulkActionBar";
 import SourceRegistryTable from "../components/savedurls/SourceRegistryTable";
 import {
-  fetchSavedUrls as apiFetchSavedUrls,
+  fetchSavedUrlsPage as apiFetchSavedUrlsPage,
   saveUrls as apiSaveUrls,
   patchUrl,
   deleteUrlsBulk,
@@ -114,6 +114,7 @@ const DEFAULT_SORT_KEY: SortKey = "createdAt";
 const DEFAULT_SORT_ORDER: SortOrder = "desc";
 const DEFAULT_YEAR = "all";
 const DEFAULT_QUEUE_ID: SavedUrlQueueId = "all";
+const PAGE_SIZE = 50;
 
 const DEFAULT_REVIEW_VIEW_SIGNATURE = JSON.stringify({
   filter: DEFAULT_URL_FILTER,
@@ -290,11 +291,6 @@ function toUISaved(row: BackendUrlRow): UISavedUrl {
   };
 }
 
-function upsertSavedUrl(prev: UISavedUrl[], next: UISavedUrl): UISavedUrl[] {
-  const withoutExisting = prev.filter((u) => u.id !== next.id);
-  return [next, ...withoutExisting];
-}
-
 function urlHasMissingMetadata(u: UISavedUrl) {
   return !u.publishedAt || !u.authors?.length || !u.tags?.length;
 }
@@ -334,14 +330,13 @@ const SavedUrlsPage: React.FC = () => {
   const collectionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
 
-    for (const url of urls) {
-      for (const collectionId of url.collections || []) {
-        counts[collectionId] = (counts[collectionId] ?? 0) + 1;
-      }
+    for (const collection of collections) {
+      counts[collection.id] =
+        typeof collection.urlCount === "number" ? collection.urlCount : 0;
     }
 
     return counts;
-  }, [urls]);
+  }, [collections]);
 
   const selectedCollection = useMemo(
     () => collections.find((c) => c.id === selectedCollectionId),
@@ -365,9 +360,93 @@ const SavedUrlsPage: React.FC = () => {
   const [sortKey, setSortKey] = useState<SortKey>(DEFAULT_SORT_KEY);
   const [sortOrder, setSortOrder] = useState<SortOrder>(DEFAULT_SORT_ORDER);
   const [year, setYear] = useState<string>(DEFAULT_YEAR); // 'all' or 'YYYY'
+  const [page, setPage] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const [libraryTotalCount, setLibraryTotalCount] = useState(0);
 
   const [activeQueueId, setActiveQueueId] =
     useState<SavedUrlQueueId>(DEFAULT_QUEUE_ID);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(totalResults / PAGE_SIZE)),
+    [totalResults],
+  );
+
+  const activeServerQueue = useMemo(
+    () => (activeQueueId === "updated-since-review" ? "all" : activeQueueId),
+    [activeQueueId],
+  );
+
+  const serverDateFrom = useMemo(() => {
+    if (!filter.dateFrom) return undefined;
+    const ms = startOfLocalDayMs(filter.dateFrom);
+    return ms === null ? undefined : new Date(ms).toISOString();
+  }, [filter.dateFrom]);
+
+  const serverDateTo = useMemo(() => {
+    if (!filter.dateTo) return undefined;
+    const ms = endOfLocalDayMs(filter.dateTo);
+    return ms === null ? undefined : new Date(ms).toISOString();
+  }, [filter.dateTo]);
+
+  const baseServerQuery = useMemo(() => {
+    const snapshotStatus =
+      activeServerQueue === "never-captured"
+        ? "missing"
+        : activeServerQueue === "stale-capture"
+          ? "stale"
+          : filter.snapshotStatus !== "all"
+            ? filter.snapshotStatus
+            : undefined;
+
+    const taggingStatus =
+      activeServerQueue === "ai-failed"
+        ? "FAILED"
+        : filter.taggingStatus !== "all"
+          ? filter.taggingStatus
+          : undefined;
+
+    const metadataState =
+      activeServerQueue === "metadata-missing"
+        ? "missing"
+        : filter.metadataState !== "all"
+          ? filter.metadataState
+          : undefined;
+
+    return {
+      q: filter.query.trim() || undefined,
+      year: year !== "all" ? year : undefined,
+      tags: filter.tags.length ? filter.tags : undefined,
+      domains: filter.domains.length ? filter.domains : undefined,
+      collectionId: selectedCollectionId || undefined,
+      favoritesOnly: filter.favoritesOnly || undefined,
+      dateFrom: serverDateFrom,
+      dateTo: serverDateTo,
+      snapshotStatus,
+      taggingStatus,
+      metadataState,
+      sortKey,
+      sortOrder,
+      pageSize: PAGE_SIZE,
+    };
+  }, [
+    activeServerQueue,
+    filter.dateFrom,
+    filter.dateTo,
+    filter.domains,
+    filter.favoritesOnly,
+    filter.metadataState,
+    filter.query,
+    filter.snapshotStatus,
+    filter.taggingStatus,
+    filter.tags,
+    selectedCollectionId,
+    serverDateFrom,
+    serverDateTo,
+    sortKey,
+    sortOrder,
+    year,
+  ]);
 
   const [reviewedAtById, setReviewedAtById] = useState<ReviewStampMap>(() =>
     loadReviewStampMap(SAVED_URLS_REVIEWED_KEY),
@@ -457,18 +536,62 @@ const SavedUrlsPage: React.FC = () => {
     setCollections(getCollections());
   }, []);
 
-  const refreshUrlsFromServer = useCallback(async () => {
-    const rows = await apiFetchSavedUrls();
-    setUrls(rows.map(toUISaved));
-    return rows;
+  const refreshLibraryTotalCount = useCallback(async () => {
+    const out = await apiFetchSavedUrlsPage({
+      page: 1,
+      pageSize: 1,
+    });
+    setLibraryTotalCount(out.total);
+    return out.total;
   }, []);
 
-  const refreshSavedUrlsWorkspace = useCallback(async () => {
-    await Promise.all([
-      refreshCollectionsFromServer(),
-      refreshUrlsFromServer(),
-    ]);
-  }, [refreshCollectionsFromServer, refreshUrlsFromServer]);
+  const refreshUrlsFromServer = useCallback(
+    async (pageOverride?: number) => {
+      const requestedPage = Math.max(1, pageOverride ?? page);
+
+      const out = await apiFetchSavedUrlsPage({
+        ...baseServerQuery,
+        page: requestedPage,
+      });
+
+      if (!out.items.length && out.total > 0 && requestedPage > 1) {
+        const fallbackPage = Math.max(1, Math.ceil(out.total / out.pageSize));
+        const fallback = await apiFetchSavedUrlsPage({
+          ...baseServerQuery,
+          page: fallbackPage,
+        });
+
+        setPage(fallback.page);
+        setTotalResults(fallback.total);
+
+        const nextUi = fallback.items.map(toUISaved);
+        setUrls(nextUi);
+        return nextUi;
+      }
+
+      setTotalResults(out.total);
+
+      const nextUi = out.items.map(toUISaved);
+      setUrls(nextUi);
+      return nextUi;
+    },
+    [baseServerQuery, page],
+  );
+
+  const refreshSavedUrlsWorkspace = useCallback(
+    async (pageOverride?: number) => {
+      await Promise.all([
+        refreshCollectionsFromServer(),
+        refreshLibraryTotalCount(),
+        refreshUrlsFromServer(pageOverride),
+      ]);
+    },
+    [
+      refreshCollectionsFromServer,
+      refreshLibraryTotalCount,
+      refreshUrlsFromServer,
+    ],
+  );
 
   const refreshTaggingSummary = useCallback(async () => {
     try {
@@ -533,8 +656,7 @@ const SavedUrlsPage: React.FC = () => {
       const out = await retryFailedUrlTagging();
       await refreshTaggingSummary();
 
-      const rows = await apiFetchSavedUrls();
-      setUrls(rows.map(toUISaved));
+      await refreshUrlsFromServer();
 
       if ((out?.scheduled ?? 0) === 0) {
         notify({
@@ -555,7 +677,7 @@ const SavedUrlsPage: React.FC = () => {
     } finally {
       setTagSummaryLoading(false);
     }
-  }, [refreshTaggingSummary, notify]);
+  }, [refreshTaggingSummary, refreshUrlsFromServer, notify]);
 
   async function runPool<T>(
     items: T[],
@@ -621,21 +743,23 @@ const SavedUrlsPage: React.FC = () => {
         await runPool(targets, 2, worker);
 
         // refresh list so latestSnapshot updates
-        const rows = await apiFetchSavedUrls();
-        setUrls(rows.map(toUISaved));
+        await refreshUrlsFromServer();
       } finally {
         setBulkRunning(false);
       }
     },
-    [],
+    [refreshUrlsFromServer],
   );
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        await refreshSavedUrlsWorkspace();
-        await refreshTaggingSummary();
+        await Promise.all([
+          refreshCollectionsFromServer(),
+          refreshLibraryTotalCount(),
+          refreshTaggingSummary(),
+        ]);
         setError(null);
       } catch (e: any) {
         setError(e?.message ?? "Failed to load saved URLs");
@@ -643,7 +767,25 @@ const SavedUrlsPage: React.FC = () => {
         setLoading(false);
       }
     })();
-  }, [refreshSavedUrlsWorkspace, refreshTaggingSummary]);
+  }, [
+    refreshCollectionsFromServer,
+    refreshLibraryTotalCount,
+    refreshTaggingSummary,
+  ]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        await refreshUrlsFromServer();
+        setError(null);
+      } catch (e: any) {
+        setError(e?.message ?? "Failed to load saved URLs");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [page, refreshUrlsFromServer]);
 
   useEffect(() => {
     hydrateSavedSearchesFromBackend().catch((e: any) => {
@@ -655,12 +797,9 @@ const SavedUrlsPage: React.FC = () => {
   }, [hydrateSavedSearchesFromBackend, notify]);
 
   useEffect(() => {
-    if (!tagSummary || tagSummary.inProgress <= 0) return;
-    const id = window.setInterval(() => {
-      refreshTaggingSummary();
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [tagSummary?.inProgress, refreshTaggingSummary]);
+    setPage(1);
+    setSelection(new Set());
+  }, [baseServerQuery]);
 
   useEffect(() => {
     const needsPolling = (rows: UISavedUrl[]) => {
@@ -704,9 +843,7 @@ const SavedUrlsPage: React.FC = () => {
     tagPollRef.current = window.setInterval(async () => {
       ticks++;
       try {
-        const rows = await apiFetchSavedUrls();
-        const ui = rows.map(toUISaved);
-        setUrls(ui);
+        const ui = await refreshUrlsFromServer();
 
         // If tags arrived (or time budget exceeded), stop polling
         if (!needsPolling(ui) || ticks >= MAX_TICKS) stop();
@@ -716,7 +853,7 @@ const SavedUrlsPage: React.FC = () => {
     }, 3000);
 
     return stop;
-  }, [urls]);
+  }, [refreshUrlsFromServer, urls]);
 
   // Domain/Tag options
   const availableDomains = useMemo(
@@ -752,131 +889,22 @@ const SavedUrlsPage: React.FC = () => {
     return ["all", ...Array.from(s).sort((a, b) => Number(b) - Number(a))];
   }, [urls]);
 
-  // Apply existing filters
-  const filteredByForm = useMemo(() => {
-    return urls.filter((u) => {
-      if (filter.visibility !== "all" && u.visibility !== filter.visibility)
-        return false;
-      if (filter.domains.length && !filter.domains.includes(u.domain))
-        return false;
-      if (
-        filter.tags.length &&
-        !(u.tags || []).some((t) => filter.tags.includes(t))
-      )
-        return false;
-      if (filter.favoritesOnly && !u.isFavorited) return false;
+  // The server now owns the primary query pipeline:
+  // search, tags, domains, favorites, date range, collection, snapshot state,
+  // tagging state, metadata state, year, sort, and pagination.
+  // Keep only the local "updated since review" queue on the client because it
+  // depends on browser-local review stamps.
 
-      if (
-        filter.taggingStatus &&
-        filter.taggingStatus !== "all" &&
-        (u.taggingStatus ?? "NONE") !== filter.taggingStatus
-      ) {
-        return false;
-      }
-
-      if (filter.metadataState === "missing" && !urlHasMissingMetadata(u)) {
-        return false;
-      }
-
-      if (filter.metadataState === "complete" && urlHasMissingMetadata(u)) {
-        return false;
-      }
-
-      if (filter.query) {
-        const q = filter.query.toLowerCase();
-        const hay = [
-          u.title,
-          u.url,
-          u.description ?? "",
-          u.domain ?? "",
-          u.notes ?? "",
-          ...(u.tags ?? []),
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        if (!hay.includes(q)) return false;
-      }
-      const createdAtMs = new Date(u.createdAt).getTime();
-      if (!Number.isFinite(createdAtMs)) return false;
-
-      if (filter.dateFrom) {
-        const from = startOfLocalDayMs(filter.dateFrom);
-        if (from !== null && createdAtMs < from) return false;
-      }
-
-      if (filter.dateTo) {
-        const to = endOfLocalDayMs(filter.dateTo);
-        if (to !== null && createdAtMs > to) return false;
-      }
-      // Snapshot filter
-      const snap = (filter as any).snapshotStatus || "all";
-      if (snap !== "all") {
-        const nowMs = Date.now();
-        const missing = isSnapshotMissing(u);
-        const stale = isSnapshotStale(u, nowMs);
-        const fresh = !missing && !stale;
-
-        if (snap === "missing" && !missing) return false;
-        if (snap === "stale" && !stale) return false;
-        if (snap === "fresh" && !fresh) return false;
-      }
-      return true;
-    });
-  }, [urls, filter]);
-
-  // Collection filter (if a category selected on left)
-  const filteredByCollection = useMemo(() => {
-    if (!selectedCollectionId) return filteredByForm;
-    return filteredByForm.filter((u) =>
-      (u.collections || []).includes(selectedCollectionId),
-    );
-  }, [filteredByForm, selectedCollectionId]);
+  const filteredByCollection = useMemo(() => urls, [urls]);
 
   const queueFiltered = useMemo(() => {
-    const nowMs = Date.now();
-
-    return filteredByCollection.filter((u) => {
-      if (activeQueueId === "all") return true;
-      if (activeQueueId === "never-captured") return isSnapshotMissing(u);
-      if (activeQueueId === "stale-capture") {
-        return !isSnapshotMissing(u) && isSnapshotStale(u, nowMs);
-      }
-      if (activeQueueId === "ai-failed") {
-        return (u.taggingStatus ?? "NONE") === "FAILED";
-      }
-      if (activeQueueId === "metadata-missing") {
-        return urlHasMissingMetadata(u);
-      }
-      if (activeQueueId === "updated-since-review") {
-        return isUpdatedSinceReview(u.updatedAt, reviewedAtById[u.id]);
-      }
-      return true;
-    });
-  }, [filteredByCollection, activeQueueId, reviewedAtById]);
-
-  // Year filter + sort
-  const yearFiltered = useMemo(() => {
-    if (year === "all") return queueFiltered;
-    return queueFiltered.filter(
-      (u) => String(new Date(u.createdAt).getFullYear()) === year,
+    if (activeQueueId !== "updated-since-review") return urls;
+    return urls.filter((u) =>
+      isUpdatedSinceReview(u.updatedAt, reviewedAtById[u.id]),
     );
-  }, [queueFiltered, year]);
+  }, [urls, activeQueueId, reviewedAtById]);
 
-  const sorted = useMemo(() => {
-    const dir = sortOrder === "asc" ? 1 : -1;
-    const arr = [...yearFiltered].sort((a, b) => {
-      if (sortKey === "title") {
-        const av = (a.title || "").toLowerCase();
-        const bv = (b.title || "").toLowerCase();
-        return av < bv ? -1 * dir : av > bv ? 1 * dir : 0;
-      }
-      const av = new Date(a[sortKey]).getTime();
-      const bv = new Date(b[sortKey]).getTime();
-      return av === bv ? 0 : (av < bv ? -1 : 1) * dir;
-    });
-    return arr;
-  }, [yearFiltered, sortKey, sortOrder]);
+  const sorted = useMemo(() => queueFiltered, [queueFiltered]);
 
   const reviewQueues = useMemo(() => {
     const nowMs = Date.now();
@@ -1541,7 +1569,7 @@ const SavedUrlsPage: React.FC = () => {
             ),
           );
 
-          await refreshUrlsFromServer();
+          await refreshSavedUrlsWorkspace();
 
           notify({
             text:
@@ -1561,7 +1589,7 @@ const SavedUrlsPage: React.FC = () => {
         });
       }
     },
-    [byIds, collections, notify, refreshUrlsFromServer],
+    [byIds, collections, notify, refreshSavedUrlsWorkspace],
   );
 
   const handleCopy = useCallback(
@@ -1632,7 +1660,7 @@ const SavedUrlsPage: React.FC = () => {
           ),
         );
 
-        await refreshUrlsFromServer();
+        await refreshSavedUrlsWorkspace();
 
         notify({
           text:
@@ -1686,7 +1714,7 @@ const SavedUrlsPage: React.FC = () => {
     clipboard,
     confirm,
     notify,
-    refreshUrlsFromServer,
+    refreshSavedUrlsWorkspace,
     selectedCollection,
     selectedCollectionId,
   ]);
@@ -1715,8 +1743,8 @@ const SavedUrlsPage: React.FC = () => {
       const savedRef = result.rows?.[0];
 
       if (!savedRef?.id) {
-        const rows = await apiFetchSavedUrls();
-        setUrls(rows.map(toUISaved));
+        setPage(1);
+        await refreshSavedUrlsWorkspace(1);
 
         notify({
           text:
@@ -1744,8 +1772,8 @@ const SavedUrlsPage: React.FC = () => {
         fresh = await getUrlById(savedRef.id);
       }
 
-      const hydrated = toUISaved(fresh);
-      setUrls((prev) => upsertSavedUrl(prev, hydrated));
+      setPage(1);
+      await refreshSavedUrlsWorkspace(1);
 
       notify({
         text: savedRef.isNew
@@ -2160,7 +2188,7 @@ const SavedUrlsPage: React.FC = () => {
               <CollectionSidebar
                 collections={collections}
                 collectionCounts={collectionCounts}
-                totalUrlCount={urls.length}
+                totalUrlCount={libraryTotalCount}
                 selectedCollectionId={selectedCollectionId}
                 onSelect={(id) => setSelectedCollectionId(id)}
                 onCreateClick={openCollectionDialog}
@@ -2427,6 +2455,48 @@ const SavedUrlsPage: React.FC = () => {
               </div>
             )}
 
+            {!loading && !error && totalResults > 0 && (
+              <div className="flex flex-col gap-3 rounded-xl border border-black/10 dark:border-white/10 px-4 py-3 md:flex-row md:items-center md:justify-between">
+                <div className="text-sm text-neutral-600 dark:text-neutral-300">
+                  Showing{" "}
+                  <span className="font-medium">
+                    {urls.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
+                  </span>{" "}
+                  –{" "}
+                  <span className="font-medium">
+                    {Math.min(page * PAGE_SIZE, totalResults)}
+                  </span>{" "}
+                  of <span className="font-medium">{totalResults}</span>{" "}
+                  matching URLs
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                  >
+                    Previous
+                  </button>
+
+                  <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                    Page <span className="font-medium">{page}</span> of{" "}
+                    <span className="font-medium">{totalPages}</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    className="rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Registry / Cards */}
             {viewMode === "registry" ? (
               <SourceRegistryTable
@@ -2590,8 +2660,7 @@ const SavedUrlsPage: React.FC = () => {
                         );
 
                   // refresh list so latestSnapshot appears immediately
-                  const rows = await apiFetchSavedUrls();
-                  setUrls(rows.map(toUISaved));
+                  await refreshUrlsFromServer();
 
                   const method = captured?.captureMeta?.method
                     ? `via ${captured.captureMeta.method}`

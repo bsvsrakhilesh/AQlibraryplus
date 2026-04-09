@@ -63,6 +63,16 @@ const listUrlsQuery = z.object({
   q: z.string().optional(),
   year: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
+  domains: z.union([z.string(), z.array(z.string())]).optional(),
+  collectionId: z.string().min(1).optional(),
+  favoritesOnly: z.coerce.boolean().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  snapshotStatus: z.enum(["all", "missing", "stale", "fresh"]).optional(),
+  taggingStatus: z
+    .enum(["all", "NONE", "PENDING", "RUNNING", "SUCCESS", "FAILED"])
+    .optional(),
+  metadataState: z.enum(["all", "missing", "complete"]).optional(),
   sortKey: z.enum(["createdAt", "updatedAt", "title"]).optional(),
   sortOrder: z.enum(["asc", "desc"]).optional(),
   page: z.coerce.number().int().positive().optional(),

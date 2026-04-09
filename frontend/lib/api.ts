@@ -499,10 +499,49 @@ export function normalizeFileDetail(input: any): FileDetail {
 }
 
 // ---------- Saved URLs API ----------
+export type FetchSavedUrlsParams = {
+  q?: string;
+  year?: string;
+  tags?: string[];
+  domains?: string[];
+  collectionId?: string;
+  favoritesOnly?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
+  snapshotStatus?: "all" | "missing" | "stale" | "fresh";
+  taggingStatus?: "all" | "NONE" | "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+  metadataState?: "all" | "missing" | "complete";
+  sortKey?: "createdAt" | "updatedAt" | "title";
+  sortOrder?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+};
+
+export type PagedSavedUrlsResponse = {
+  items: BackendUrlRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
 export async function fetchSavedUrls(): Promise<BackendUrlRow[]> {
   const res = await api.get("/api/urls");
   return res.data;
 }
+
+export async function fetchSavedUrlsPage(
+  params: FetchSavedUrlsParams,
+): Promise<PagedSavedUrlsResponse> {
+  const res = await api.get("/api/urls", {
+    params: {
+      ...params,
+      tags: params.tags?.length ? params.tags.join(",") : undefined,
+      domains: params.domains?.length ? params.domains.join(",") : undefined,
+    },
+  });
+  return res.data as PagedSavedUrlsResponse;
+}
+
 export async function saveUrls(
   rows: { url: string; title: string; snippet?: string }[],
 ): Promise<SaveUrlsResponse> {
@@ -636,6 +675,7 @@ export type BackendCollection = {
   visibility?: string;
   createdAt: string;
   updatedAt: string;
+  urlCount?: number;
 };
 
 export async function fetchCollections(): Promise<BackendCollection[]> {
