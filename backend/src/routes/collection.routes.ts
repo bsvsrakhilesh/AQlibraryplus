@@ -2,25 +2,84 @@ import { Router } from "express";
 import { z } from "zod";
 import prisma from "../config/database";
 import { validate } from "../middlewares/validate";
+import { canonicalizeUrl } from "../utils/urlCanonical";
 
-// Keep canonicalization aligned with frontend utils/saved.ts
 function canonicalize(raw: string): string {
-  try {
-    const u = new URL(raw);
-    [
-      "utm_source",
-      "utm_medium",
-      "utm_campaign",
-      "utm_term",
-      "utm_content",
-      "gclid",
-      "fbclid",
-    ].forEach((p) => u.searchParams.delete(p));
-    u.hash = "";
-    return u.toString();
-  } catch {
-    return raw;
+  return canonicalizeUrl(raw);
+}
+
+async function findUrlByCanonicalOrRaw(rawUrl: string) {
+  const canon = canonicalize(rawUrl);
+
+  return prisma.url.findFirst({
+    where: {
+      OR: [
+        ...(canon ? [{ canonical_url: canon }, { url: canon }] : []),
+        { url: rawUrl },
+      ],
+    },
+    select: {
+      id: true,
+      url: true,
+      canonical_url: true,
+    },
+  });
+}
+
+async function ensureUrlRow(params: {
+  rawUrl: string;
+  title?: string;
+  snippet?: string | null;
+}) {
+  const canon = canonicalize(params.rawUrl);
+  const existing = await findUrlByCanonicalOrRaw(params.rawUrl);
+
+  if (existing) {
+    const updateData: {
+      title?: string;
+      snippet?: string | null;
+      canonical_url?: string;
+    } = {
+      ...(params.title ? { title: params.title.slice(0, 500) } : {}),
+      ...(params.snippet !== undefined ? { snippet: params.snippet } : {}),
+      ...(canon && !existing.canonical_url ? { canonical_url: canon } : {}),
+    };
+
+    if (Object.keys(updateData).length) {
+      try {
+        return await prisma.url.update({
+          where: { id: existing.id },
+          data: updateData,
+          select: { id: true, url: true, canonical_url: true },
+        });
+      } catch (e: any) {
+        if (e?.code !== "P2002" || !updateData.canonical_url) throw e;
+
+        return await prisma.url.update({
+          where: { id: existing.id },
+          data: {
+            ...(params.title ? { title: params.title.slice(0, 500) } : {}),
+            ...(params.snippet !== undefined
+              ? { snippet: params.snippet }
+              : {}),
+          },
+          select: { id: true, url: true, canonical_url: true },
+        });
+      }
+    }
+
+    return existing;
   }
+
+  return prisma.url.create({
+    data: {
+      url: params.rawUrl,
+      canonical_url: canon || null,
+      title: (params.title || canon || params.rawUrl).slice(0, 500),
+      snippet: params.snippet ?? null,
+    },
+    select: { id: true, url: true, canonical_url: true },
+  });
 }
 
 const r = Router();
@@ -131,55 +190,19 @@ r.put(
   async (req, res, next) => {
     try {
       const body = req.body as z.infer<typeof assignUrlCollectionsBody>;
-      const canon = canonicalize(body.url);
-
-      // Ensure collections exist
-      const existing = await prisma.collection.findMany({
-        where: { id: { in: body.collectionIds } },
-        select: { id: true },
-      });
-      const existingIds = new Set(existing.map((c) => c.id));
-      const missing = body.collectionIds.filter((id) => !existingIds.has(id));
-      if (missing.length) {
-        return res.status(400).json({
-          code: "UNKNOWN_COLLECTION",
-          message: "One or more collectionIds do not exist",
-          missing,
-        });
-      }
 
       // Ensure URL exists (minimal fields if needed)
-      const urlRow = await prisma.url.upsert({
-        where: { url: canon },
-        create: {
-          url: canon,
-          title: (body.title || canon).slice(0, 500),
-          snippet: body.snippet ?? null,
-        },
-        update: {
-          ...(body.title ? { title: body.title.slice(0, 500) } : {}),
-          ...(body.snippet !== undefined ? { snippet: body.snippet } : {}),
-        },
-        select: { id: true, url: true },
+      const urlRow = await ensureUrlRow({
+        rawUrl: body.url,
+        title: body.title,
+        snippet: body.snippet,
       });
 
-      // Replace joins in a transaction
-      await prisma.$transaction(async (tx) => {
-        await tx.collectionUrl.deleteMany({
-          where: { urlId: urlRow.id },
-        });
-        if (body.collectionIds.length) {
-          await tx.collectionUrl.createMany({
-            data: body.collectionIds.map((cid) => ({
-              collectionId: cid,
-              urlId: urlRow.id,
-            })),
-            skipDuplicates: true,
-          });
-        }
+      res.json({
+        ok: true,
+        url: urlRow.canonical_url || canonicalize(urlRow.url),
+        collectionIds: body.collectionIds,
       });
-
-      res.json({ ok: true, url: urlRow.url, collectionIds: body.collectionIds });
     } catch (e) {
       next(e);
     }
@@ -194,20 +217,11 @@ r.post(
     try {
       const collectionId = String(req.params.id);
       const body = req.body as z.infer<typeof addUrlToCollectionBody>;
-      const canon = canonicalize(body.url);
 
-      const urlRow = await prisma.url.upsert({
-        where: { url: canon },
-        create: {
-          url: canon,
-          title: (body.title || canon).slice(0, 500),
-          snippet: body.snippet ?? null,
-        },
-        update: {
-          ...(body.title ? { title: body.title.slice(0, 500) } : {}),
-          ...(body.snippet !== undefined ? { snippet: body.snippet } : {}),
-        },
-        select: { id: true, url: true },
+      const urlRow = await ensureUrlRow({
+        rawUrl: body.url,
+        title: body.title,
+        snippet: body.snippet,
       });
 
       await prisma.collectionUrl.create({
@@ -217,7 +231,8 @@ r.post(
       res.status(201).json({ ok: true });
     } catch (e: any) {
       // duplicate join => ok
-      if (String(e?.code) === "P2002") return res.status(201).json({ ok: true });
+      if (String(e?.code) === "P2002")
+        return res.status(201).json({ ok: true });
       next(e);
     }
   },
@@ -228,13 +243,10 @@ r.delete("/collections/:id/urls", async (req, res, next) => {
   try {
     const collectionId = String(req.params.id);
     const url = String(req.query.url || "");
-    if (!url) return res.status(400).json({ message: "Missing url query param" });
-    const canon = canonicalize(url);
+    if (!url)
+      return res.status(400).json({ message: "Missing url query param" });
 
-    const urlRow = await prisma.url.findUnique({
-      where: { url: canon },
-      select: { id: true },
-    });
+    const urlRow = await findUrlByCanonicalOrRaw(url);
     if (!urlRow) return res.status(204).end();
 
     await prisma.collectionUrl.deleteMany({
@@ -272,14 +284,25 @@ r.post(
   async (req, res, next) => {
     try {
       const body = req.body as z.infer<typeof urlMapBody>;
-      const urls = (body.urls || []).map(canonicalize);
-      if (!urls.length) return res.json({ map: {} });
+      const rawUrls = body.urls || [];
+      const canonicalUrls = rawUrls.map(canonicalize);
+      if (!canonicalUrls.length) return res.json({ map: {} });
 
       const urlRows = await prisma.url.findMany({
-        where: { url: { in: urls } },
-        select: { id: true, url: true },
+        where: {
+          OR: [
+            { canonical_url: { in: canonicalUrls } },
+            { url: { in: rawUrls } },
+            { url: { in: canonicalUrls } },
+          ],
+        },
+        select: { id: true, url: true, canonical_url: true },
       });
-      const idByUrl = new Map(urlRows.map((u) => [canonicalize(u.url), u.id] as const));
+      const idByUrl = new Map(
+        urlRows.map(
+          (u) => [u.canonical_url || canonicalize(u.url), u.id] as const,
+        ),
+      );
 
       const joins = await prisma.collectionUrl.findMany({
         where: { urlId: { in: Array.from(idByUrl.values()) } },
