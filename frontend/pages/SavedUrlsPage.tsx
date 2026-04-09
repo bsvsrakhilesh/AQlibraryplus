@@ -287,6 +287,14 @@ const SavedUrlsPage: React.FC = () => {
     [collections, selectedCollectionId],
   );
 
+  const collectionNamesById = useMemo(
+    () =>
+      Object.fromEntries(
+        collections.map((collection) => [collection.id, collection.name]),
+      ) as Record<string, string>,
+    [collections],
+  );
+
   // Filters
   const [filter, setFilter] = useState<UrlFilterState>({
     ...DEFAULT_URL_FILTER,
@@ -2583,6 +2591,7 @@ const SavedUrlsPage: React.FC = () => {
                 onFavoriteToggle={handleFavoriteToggle}
                 onTagUpdate={updateTags}
                 onNotesChange={handleNotesChange}
+                collectionNamesById={collectionNamesById}
                 onUrlHydrate={(fresh) => {
                   const next = toUISaved(fresh);
                   setUrls((prev) =>

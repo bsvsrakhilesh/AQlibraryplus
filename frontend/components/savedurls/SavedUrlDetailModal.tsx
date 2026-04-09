@@ -30,6 +30,7 @@ interface SavedUrlDetailModalProps {
   onTagUpdate?: (urlId: string, newTags: string[]) => void;
   onNotesChange?: (urlId: string, notes: string) => void;
   onUrlHydrate?: (fresh: any) => void;
+  collectionNamesById?: Record<string, string>;
 }
 
 function isPdfUrlLike(raw: string): boolean {
@@ -182,6 +183,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   onTagUpdate,
   onNotesChange,
   onUrlHydrate,
+  collectionNamesById = {},
 }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -439,6 +441,15 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   };
 
   const sourceHost = getUrlSourceHost(url);
+  const readableCollections = useMemo(
+    () =>
+      (url.collections || [])
+        .map(
+          (collectionId) => collectionNamesById[collectionId] || collectionId,
+        )
+        .filter(Boolean),
+    [url.collections, collectionNamesById],
+  );
   const latestRevision = revisions[0] ?? null;
   const latestSnapshot = snapshots[0] ?? url.latestSnapshot ?? null;
   const notebookFileId =
@@ -584,7 +595,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
     },
     {
       label: "Collections",
-      value: url.collections.length ? url.collections.join(", ") : "—",
+      value: readableCollections.length ? readableCollections.join(", ") : "—",
     },
     {
       label: "Latest snapshot",
