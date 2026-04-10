@@ -94,6 +94,45 @@ type SavedUrlsTextDialog =
     }
   | { kind: "saved-search"; value: string };
 
+type BulkAiTagFailure = {
+  id: string;
+  title: string;
+  message: string;
+};
+
+type BulkAiTagRunStatus =
+  | "idle"
+  | "running"
+  | "cancelling"
+  | "completed"
+  | "cancelled";
+
+type BulkAiTagRunState = {
+  status: BulkAiTagRunStatus;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  currentTitle: string | null;
+  currentUrl: string | null;
+  failures: BulkAiTagFailure[];
+  startedAt: number | null;
+  finishedAt: number | null;
+};
+
+const EMPTY_BULK_AI_TAG_RUN: BulkAiTagRunState = {
+  status: "idle",
+  total: 0,
+  completed: 0,
+  succeeded: 0,
+  failed: 0,
+  currentTitle: null,
+  currentUrl: null,
+  failures: [],
+  startedAt: null,
+  finishedAt: null,
+};
+
 const SAVED_URLS_VIEW_KEY = "saved-urls:view-mode";
 
 const SNAPSHOT_STALE_DAYS = 30;
@@ -542,10 +581,46 @@ const SavedUrlsPage: React.FC = () => {
   // Selection + detail
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [bulkAiTagRun, setBulkAiTagRun] = useState<BulkAiTagRunState>(
+    EMPTY_BULK_AI_TAG_RUN,
+  );
+  const bulkAiTagCancelRef = useRef(false);
+
   const detail = useMemo(
     () => (detailId ? (urls.find((u) => u.id === detailId) ?? null) : null),
     [detailId, urls],
   );
+
+  const bulkAiTagIsBusy =
+    bulkAiTagRun.status === "running" || bulkAiTagRun.status === "cancelling";
+
+  const bulkAiTagProgressPercent = useMemo(() => {
+    if (bulkAiTagRun.total <= 0) return 0;
+    return Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round((bulkAiTagRun.completed / bulkAiTagRun.total) * 100),
+      ),
+    );
+  }, [bulkAiTagRun.completed, bulkAiTagRun.total]);
+
+  const bulkAiTagRemaining = Math.max(
+    0,
+    bulkAiTagRun.total - bulkAiTagRun.completed,
+  );
+
+  const dismissBulkAiTagRun = useCallback(() => {
+    if (bulkAiTagIsBusy) return;
+    setBulkAiTagRun(EMPTY_BULK_AI_TAG_RUN);
+  }, [bulkAiTagIsBusy]);
+
+  const cancelBulkAiTagRun = useCallback(() => {
+    bulkAiTagCancelRef.current = true;
+    setBulkAiTagRun((prev) =>
+      prev.status === "running" ? { ...prev, status: "cancelling" } : prev,
+    );
+  }, []);
 
   useEffect(() => {
     if (detailId && !urls.some((u) => u.id === detailId)) {
@@ -1578,15 +1653,57 @@ const SavedUrlsPage: React.FC = () => {
   const onAutoTagSelected = useCallback(
     async (ids: string[]) => {
       if (!ids?.length) return;
+
+      if (bulkAiTagIsBusy) {
+        notify({
+          text: "AI auto-tag is already running for a page selection.",
+          kind: "warning",
+        });
+        return;
+      }
+
       const targets = urls.filter((u) => ids.includes(u.id));
+      if (!targets.length) return;
+
+      bulkAiTagCancelRef.current = false;
+
+      setBulkAiTagRun({
+        status: "running",
+        total: targets.length,
+        completed: 0,
+        succeeded: 0,
+        failed: 0,
+        currentTitle: null,
+        currentUrl: null,
+        failures: [],
+        startedAt: Date.now(),
+        finishedAt: null,
+      });
+
+      let completed = 0;
+      let succeeded = 0;
+      let failed = 0;
 
       for (const u of targets) {
+        if (bulkAiTagCancelRef.current) break;
+
+        setBulkAiTagRun((prev) => ({
+          ...prev,
+          status: bulkAiTagCancelRef.current ? "cancelling" : prev.status,
+          currentTitle: u.title || u.url,
+          currentUrl: u.url,
+        }));
+
         try {
           const idNum = Number(u.id);
           const { jobId } = await startUrlTagJob(idNum);
 
           let attempt = 0;
+          let success = false;
+
           while (attempt < 90) {
+            if (bulkAiTagCancelRef.current) break;
+
             const data = await getUrlTagJob(jobId, idNum);
 
             if (data?.state === "SUCCESS") {
@@ -1598,6 +1715,8 @@ const SavedUrlsPage: React.FC = () => {
               setUrls((prev) =>
                 prev.map((x) => (x.id === u.id ? { ...x, tags: merged } : x)),
               );
+
+              success = true;
               break;
             }
 
@@ -1608,17 +1727,107 @@ const SavedUrlsPage: React.FC = () => {
             await new Promise((r) => setTimeout(r, 1000));
             attempt++;
           }
-        } catch (err) {
-          console.error("Auto-tag URL failed", u.id, err);
+
+          if (bulkAiTagCancelRef.current) break;
+
+          if (!success) {
+            throw new Error("Timed out waiting for AI auto-tagging.");
+          }
+
+          completed += 1;
+          succeeded += 1;
+
+          setBulkAiTagRun((prev) => ({
+            ...prev,
+            completed,
+            succeeded,
+            failed,
+          }));
+        } catch (err: any) {
+          if (bulkAiTagCancelRef.current) break;
+
+          const failure: BulkAiTagFailure = {
+            id: u.id,
+            title: u.title || u.url,
+            message: err?.message || "AI tagging failed",
+          };
+
+          completed += 1;
+          failed += 1;
+
+          setBulkAiTagRun((prev) => ({
+            ...prev,
+            completed,
+            succeeded,
+            failed,
+            failures: [...prev.failures, failure],
+          }));
         }
       }
+
+      const cancelled = bulkAiTagCancelRef.current;
+
+      setBulkAiTagRun((prev) => ({
+        ...prev,
+        status: cancelled ? "cancelled" : "completed",
+        completed,
+        succeeded,
+        failed,
+        currentTitle: null,
+        currentUrl: null,
+        finishedAt: Date.now(),
+      }));
 
       await Promise.all([
         refreshTaggingSummary(),
         refreshRowsAndFacetsAndQueue(),
       ]);
+
+      if (cancelled) {
+        notify({
+          text:
+            completed === 0
+              ? "Cancelled AI auto-tag before any rows finished."
+              : `Cancelled AI auto-tag after processing ${completed} of ${targets.length} selected rows on this page.`,
+          kind: "warning",
+        });
+        return;
+      }
+
+      if (failed === 0) {
+        notify({
+          text:
+            succeeded === 1
+              ? "AI auto-tag completed for 1 selected row on this page."
+              : `AI auto-tag completed for ${succeeded} selected rows on this page.`,
+          kind: "success",
+        });
+        return;
+      }
+
+      if (succeeded === 0) {
+        notify({
+          text:
+            failed === 1
+              ? "AI auto-tag failed for 1 selected row on this page."
+              : `AI auto-tag failed for ${failed} selected rows on this page.`,
+          kind: "error",
+        });
+        return;
+      }
+
+      notify({
+        text: `AI auto-tag finished with partial success: ${succeeded} succeeded, ${failed} failed.`,
+        kind: "warning",
+      });
     },
-    [refreshRowsAndFacetsAndQueue, refreshTaggingSummary, urls],
+    [
+      bulkAiTagIsBusy,
+      notify,
+      refreshRowsAndFacetsAndQueue,
+      refreshTaggingSummary,
+      urls,
+    ],
   );
 
   const onAddTag = async (ids: string[], tag: string) => {
@@ -2528,6 +2737,124 @@ const SavedUrlsPage: React.FC = () => {
               </div>
             </header>
 
+            {bulkAiTagRun.status !== "idle" && (
+              <div className="card p-4 space-y-4 border border-brand-primary/15 bg-brand-primary/5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {bulkAiTagRun.status === "running" &&
+                        "AI auto-tag is running"}
+                      {bulkAiTagRun.status === "cancelling" &&
+                        "Cancelling AI auto-tag…"}
+                      {bulkAiTagRun.status === "cancelled" &&
+                        "AI auto-tag cancelled"}
+                      {bulkAiTagRun.status === "completed" &&
+                        (bulkAiTagRun.failed > 0
+                          ? "AI auto-tag finished with some failures"
+                          : "AI auto-tag finished")}
+                    </div>
+
+                    <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      {bulkAiTagRun.completed} of {bulkAiTagRun.total} processed
+                      · {bulkAiTagRun.succeeded} succeeded ·{" "}
+                      {bulkAiTagRun.failed} failed
+                    </div>
+
+                    {bulkAiTagRun.currentTitle && bulkAiTagIsBusy && (
+                      <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                        Current: {bulkAiTagRun.currentTitle}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {bulkAiTagIsBusy ? (
+                      <button
+                        type="button"
+                        onClick={cancelBulkAiTagRun}
+                        className="btn-ghost px-3 py-2 rounded-lg transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      >
+                        Cancel run
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={dismissBulkAiTagRun}
+                        className="btn-ghost px-3 py-2 rounded-lg transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      >
+                        Dismiss
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="h-2 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-brand-primary transition-all duration-300"
+                    style={{ width: `${bulkAiTagProgressPercent}%` }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+                  <div className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2">
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Completed
+                    </div>
+                    <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                      {bulkAiTagRun.completed}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2">
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Remaining
+                    </div>
+                    <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                      {bulkAiTagRemaining}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2">
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Succeeded
+                    </div>
+                    <div className="mt-1 font-semibold text-emerald-700 dark:text-emerald-300">
+                      {bulkAiTagRun.succeeded}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2">
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Failed
+                    </div>
+                    <div className="mt-1 font-semibold text-red-700 dark:text-red-300">
+                      {bulkAiTagRun.failed}
+                    </div>
+                  </div>
+                </div>
+
+                {bulkAiTagRun.failures.length > 0 && (
+                  <div className="rounded-xl border border-red-200/70 bg-red-50/70 p-3 dark:border-red-500/20 dark:bg-red-500/10">
+                    <div className="text-xs font-semibold text-red-700 dark:text-red-300">
+                      Failed rows
+                    </div>
+
+                    <ul className="mt-2 space-y-1 text-xs text-red-700 dark:text-red-200">
+                      {bulkAiTagRun.failures.slice(0, 5).map((failure) => (
+                        <li key={`${failure.id}-${failure.message}`}>
+                          <span className="font-medium">{failure.title}</span>:{" "}
+                          {failure.message}
+                        </li>
+                      ))}
+                    </ul>
+
+                    {bulkAiTagRun.failures.length > 5 && (
+                      <div className="mt-2 text-xs text-red-700 dark:text-red-200">
+                        +{bulkAiTagRun.failures.length - 5} more failures
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Selection controls */}
             {sorted.length > 0 && (
               <div className="flex flex-col gap-3 text-sm text-gray-600 dark:text-gray-300 md:flex-row md:items-center md:justify-between">
@@ -2564,11 +2891,19 @@ const SavedUrlsPage: React.FC = () => {
                     onClick={() =>
                       onAutoTagSelected(selectedItems.map((u) => u.id))
                     }
-                    disabled={selectedItems.length === 0}
+                    disabled={selectedItems.length === 0 || bulkAiTagIsBusy}
                     className="btn-primary inline-flex items-center gap-2 px-3 py-2 rounded-lg shadow-sm transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Run AI auto-tag on the selected rows on this page"
+                    title={
+                      bulkAiTagIsBusy
+                        ? "Bulk AI auto-tag is already running for a page selection"
+                        : "Run AI auto-tag on the selected rows on this page"
+                    }
                   >
-                    AI Auto-Tag page selection
+                    {bulkAiTagRun.status === "cancelling"
+                      ? "Cancelling…"
+                      : bulkAiTagIsBusy
+                        ? "AI Auto-Tag running…"
+                        : "AI Auto-Tag page selection"}
                   </button>
                 </div>
               </div>
