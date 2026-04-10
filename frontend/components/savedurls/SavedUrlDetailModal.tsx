@@ -29,7 +29,7 @@ interface SavedUrlDetailModalProps {
   onFavoriteToggle: (url: SavedUrl) => void;
   onTagUpdate?: (urlId: string, newTags: string[]) => void;
   onNotesChange?: (urlId: string, notes: string) => void;
-  onUrlHydrate?: (fresh: any) => void;
+  onUrlHydrate?: (fresh: any) => void | Promise<void>;
   collectionNamesById?: Record<string, string>;
 }
 
@@ -922,7 +922,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                           setMetaRefreshing(true);
                           await refreshUrlMetadata(Number(url.id));
                           const fresh = await getUrlById(Number(url.id));
-                          onUrlHydrate?.(fresh);
+                          await onUrlHydrate?.(fresh);
                           setPublishedAt((fresh as any).publishedAt ?? null);
                           setPublishedAtMeta(
                             (fresh as any)?.tagsMetaRaw?.publishedAtMeta ??

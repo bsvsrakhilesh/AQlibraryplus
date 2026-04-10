@@ -664,6 +664,27 @@ const SavedUrlsPage: React.FC = () => {
     ],
   );
 
+  const refreshRowsAndQueueSummary = useCallback(
+    async (pageOverride?: number) => {
+      await Promise.all([
+        refreshQueueSummary(),
+        refreshUrlsFromServer(pageOverride),
+      ]);
+    },
+    [refreshQueueSummary, refreshUrlsFromServer],
+  );
+
+  const refreshRowsAndFacetsAndQueue = useCallback(
+    async (pageOverride?: number) => {
+      await Promise.all([
+        refreshFacetSummary(),
+        refreshQueueSummary(),
+        refreshUrlsFromServer(pageOverride),
+      ]);
+    },
+    [refreshFacetSummary, refreshQueueSummary, refreshUrlsFromServer],
+  );
+
   const refreshSavedUrlsWorkspace = useCallback(
     async (pageOverride?: number) => {
       await Promise.all([
@@ -735,9 +756,11 @@ const SavedUrlsPage: React.FC = () => {
     try {
       setTagSummaryLoading(true);
       const out = await retryFailedUrlTagging();
-      await refreshTaggingSummary();
 
-      await refreshUrlsFromServer();
+      await Promise.all([
+        refreshTaggingSummary(),
+        refreshRowsAndQueueSummary(),
+      ]);
 
       if ((out?.scheduled ?? 0) === 0) {
         notify({
@@ -758,7 +781,7 @@ const SavedUrlsPage: React.FC = () => {
     } finally {
       setTagSummaryLoading(false);
     }
-  }, [refreshTaggingSummary, refreshUrlsFromServer, notify]);
+  }, [refreshRowsAndQueueSummary, refreshTaggingSummary, notify]);
 
   async function runPool<T>(
     items: T[],
@@ -823,13 +846,13 @@ const SavedUrlsPage: React.FC = () => {
         // limit=2 keeps load sane; bump to 3 if you want faster
         await runPool(targets, 2, worker);
 
-        // refresh list so latestSnapshot updates
-        await refreshUrlsFromServer();
+        // Refresh rows and queue summary so snapshot-related pills stay correct.
+        await refreshRowsAndQueueSummary();
       } finally {
         setBulkRunning(false);
       }
     },
-    [refreshUrlsFromServer],
+    [refreshRowsAndQueueSummary],
   );
 
   useEffect(() => {
@@ -1448,6 +1471,22 @@ const SavedUrlsPage: React.FC = () => {
   const allPageRowsSelected =
     sorted.length > 0 && sorted.every((u) => selection.has(u.id));
 
+  const shouldRefetchAfterFavoriteMutation = useMemo(
+    () =>
+      filter.favoritesOnly ||
+      sortKey === "updatedAt" ||
+      activeQueueId === "updated-since-review",
+    [activeQueueId, filter.favoritesOnly, sortKey],
+  );
+
+  const shouldRefetchAfterNotesMutation = useMemo(
+    () =>
+      Boolean(filter.query.trim()) ||
+      sortKey === "updatedAt" ||
+      activeQueueId === "updated-since-review",
+    [activeQueueId, filter.query, sortKey],
+  );
+
   // Persisted actions
   const handleFavoriteToggle = async (u: UISavedUrl) => {
     const idNum = Number(u.id);
@@ -1458,6 +1497,10 @@ const SavedUrlsPage: React.FC = () => {
     );
     try {
       await patchUrl(idNum, { isFavorited: !u.isFavorited });
+
+      if (shouldRefetchAfterFavoriteMutation) {
+        await refreshUrlsFromServer();
+      }
     } catch {
       setUrls((prev) =>
         prev.map((x) =>
@@ -1483,6 +1526,10 @@ const SavedUrlsPage: React.FC = () => {
     setUrls((prev) => prev.map((x) => (x.id === id ? { ...x, notes } : x)));
     try {
       await patchUrl(idNum, { notes });
+
+      if (shouldRefetchAfterNotesMutation) {
+        await refreshUrlsFromServer();
+      }
     } catch {
       setUrls((prev) =>
         prev.map((x) => (x.id === id ? { ...x, notes: before } : x)),
@@ -1497,6 +1544,7 @@ const SavedUrlsPage: React.FC = () => {
     setUrls((prev) => prev.map((x) => (x.id === id ? { ...x, tags } : x)));
     try {
       await patchUrl(idNum, { tags });
+      await refreshRowsAndFacetsAndQueue();
     } catch {
       setUrls((prev) =>
         prev.map((x) => (x.id === id ? { ...x, tags: before } : x)),
@@ -1515,6 +1563,10 @@ const SavedUrlsPage: React.FC = () => {
       await Promise.all(
         idsNum.map((id) => patchUrl(id, { isFavorited: true })),
       );
+
+      if (shouldRefetchAfterFavoriteMutation) {
+        await refreshUrlsFromServer();
+      }
     } catch {
       notify({
         text: "Some selected rows on this page could not be marked as favorite.",
@@ -1530,14 +1582,11 @@ const SavedUrlsPage: React.FC = () => {
 
       for (const u of targets) {
         try {
-          // 1) start job
           const idNum = Number(u.id);
           const { jobId } = await startUrlTagJob(idNum);
 
-          // 2) poll job
           let attempt = 0;
           while (attempt < 90) {
-            // ~90s
             const data = await getUrlTagJob(jobId, idNum);
 
             if (data?.state === "SUCCESS") {
@@ -1546,22 +1595,9 @@ const SavedUrlsPage: React.FC = () => {
               );
               const merged = Array.from(new Set([...(u.tags ?? []), ...ai]));
 
-              // 3) update UI immediately
               setUrls((prev) =>
                 prev.map((x) => (x.id === u.id ? { ...x, tags: merged } : x)),
               );
-
-              // replace optimistic tags with server truth (backend merge + meta)
-              try {
-                const freshRow = await getUrlById(idNum);
-                setUrls((prev) =>
-                  prev.map((x) => (x.id === u.id ? toUISaved(freshRow) : x)),
-                );
-              } catch (e) {
-                console.warn("Failed to refresh URL after AI tag", idNum, e);
-              }
-
-              // Persist is handled by GET /api/tag-jobs/:jobId?urlId=... when state=SUCCESS
               break;
             }
 
@@ -1576,8 +1612,13 @@ const SavedUrlsPage: React.FC = () => {
           console.error("Auto-tag URL failed", u.id, err);
         }
       }
+
+      await Promise.all([
+        refreshTaggingSummary(),
+        refreshRowsAndFacetsAndQueue(),
+      ]);
     },
-    [urls],
+    [refreshRowsAndFacetsAndQueue, refreshTaggingSummary, urls],
   );
 
   const onAddTag = async (ids: string[], tag: string) => {
@@ -1598,9 +1639,11 @@ const SavedUrlsPage: React.FC = () => {
           return patchUrl(id, { tags: next });
         }),
       );
+
+      await refreshRowsAndFacetsAndQueue();
     } catch {
       notify({
-        text: "Failed to add the tag to some selected rows on this page.",
+        text: "Failed to add a tag to some selected rows on this page.",
         kind: "warning",
       });
     }
@@ -1628,6 +1671,8 @@ const SavedUrlsPage: React.FC = () => {
       actuallyDeletedUrls.forEach((u) => reconcileUrlCollections(u));
 
       if (result.failures.length === 0) {
+        await refreshSavedUrlsWorkspace(page);
+
         notify({
           text:
             result.deleted.length === 1
@@ -1641,6 +1686,8 @@ const SavedUrlsPage: React.FC = () => {
       // Restore only the rows that failed deletion
       setUrls(backup.filter((u) => !deletedIdSet.has(u.id)));
       setSelection(new Set(failedIds));
+
+      await refreshSavedUrlsWorkspace(page);
 
       const deletedCount = result.deleted.length;
       const failureCount = result.failures.length;
@@ -2919,11 +2966,13 @@ const SavedUrlsPage: React.FC = () => {
                 onTagUpdate={updateTags}
                 onNotesChange={handleNotesChange}
                 collectionNamesById={collectionNamesById}
-                onUrlHydrate={(fresh) => {
+                onUrlHydrate={async (fresh) => {
                   const next = toUISaved(fresh);
                   setUrls((prev) =>
                     prev.map((u) => (u.id === next.id ? { ...u, ...next } : u)),
                   );
+
+                  await refreshRowsAndFacetsAndQueue();
                 }}
               />
             )}
