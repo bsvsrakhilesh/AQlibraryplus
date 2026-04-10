@@ -647,11 +647,10 @@ const SavedUrlsPage: React.FC = () => {
     [baseServerQuery, page],
   );
 
-  const refreshSavedUrlsWorkspace = useCallback(
+  const refreshSavedUrlsScope = useCallback(
     async (pageOverride?: number) => {
       await Promise.all([
         refreshCollectionsFromServer(),
-        refreshLibraryTotalCount(),
         refreshFacetSummary(),
         refreshQueueSummary(),
         refreshUrlsFromServer(pageOverride),
@@ -660,10 +659,19 @@ const SavedUrlsPage: React.FC = () => {
     [
       refreshCollectionsFromServer,
       refreshFacetSummary,
-      refreshLibraryTotalCount,
       refreshQueueSummary,
       refreshUrlsFromServer,
     ],
+  );
+
+  const refreshSavedUrlsWorkspace = useCallback(
+    async (pageOverride?: number) => {
+      await Promise.all([
+        refreshLibraryTotalCount(),
+        refreshSavedUrlsScope(pageOverride),
+      ]);
+    },
+    [refreshLibraryTotalCount, refreshSavedUrlsScope],
   );
 
   const refreshTaggingSummary = useCallback(async () => {
@@ -1341,7 +1349,7 @@ const SavedUrlsPage: React.FC = () => {
         setSelectedCollectionId(undefined);
       }
 
-      await refreshSavedUrlsWorkspace();
+      await refreshSavedUrlsScope();
 
       notify({
         text: `Deleted collection "${collection.name}".`,
@@ -1352,7 +1360,7 @@ const SavedUrlsPage: React.FC = () => {
       collectionCounts,
       confirm,
       notify,
-      refreshSavedUrlsWorkspace,
+      refreshSavedUrlsScope,
       selectedCollectionId,
     ],
   );
@@ -1684,7 +1692,7 @@ const SavedUrlsPage: React.FC = () => {
             ),
           );
 
-          await refreshUrlsFromServer();
+          await refreshSavedUrlsScope();
 
           notify({
             text:
@@ -1703,7 +1711,7 @@ const SavedUrlsPage: React.FC = () => {
             ),
           );
 
-          await refreshSavedUrlsWorkspace();
+          await refreshSavedUrlsScope();
 
           notify({
             text:
@@ -1723,7 +1731,7 @@ const SavedUrlsPage: React.FC = () => {
         });
       }
     },
-    [byIds, collections, notify, refreshSavedUrlsWorkspace],
+    [byIds, collections, notify, refreshSavedUrlsScope],
   );
 
   const handleCopy = useCallback(
@@ -1794,7 +1802,7 @@ const SavedUrlsPage: React.FC = () => {
           ),
         );
 
-        await refreshSavedUrlsWorkspace();
+        await refreshSavedUrlsScope();
 
         notify({
           text:
@@ -1826,7 +1834,7 @@ const SavedUrlsPage: React.FC = () => {
           ),
         );
 
-        await refreshUrlsFromServer();
+        await refreshSavedUrlsScope();
 
         notify({
           text:
@@ -1848,7 +1856,7 @@ const SavedUrlsPage: React.FC = () => {
     clipboard,
     confirm,
     notify,
-    refreshSavedUrlsWorkspace,
+    refreshSavedUrlsScope,
     selectedCollection,
     selectedCollectionId,
   ]);
