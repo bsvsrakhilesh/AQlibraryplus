@@ -14,12 +14,19 @@ interface BulkActionBarProps<T extends Selectable = Selectable> {
   onPaste?: () => void;
   canPaste?: boolean;
   onMoveTo?: (ids: string[]) => void;
+  selectionSummary?: string;
   deleteLabel?: string;
   restoreLabel?: string;
+  exportLabel?: string;
   copyLabel?: string;
   cutLabel?: string;
   pasteLabel?: string;
   moveToLabel?: string;
+  favoriteTitle?: string;
+  addTagTitle?: string;
+  deleteTitle?: string;
+  restoreTitle?: string;
+  exportTitle?: string;
   copyTitle?: string;
   cutTitle?: string;
   pasteTitle?: string;
@@ -39,12 +46,19 @@ function BulkActionBar<T extends Selectable>({
   onPaste,
   canPaste,
   onMoveTo,
+  selectionSummary,
   deleteLabel = "Delete",
   restoreLabel = "Restore",
+  exportLabel = "Export",
   copyLabel = "Copy",
   cutLabel = "Cut",
   pasteLabel = "Paste",
   moveToLabel = "Move to…",
+  favoriteTitle = "Mark the selected items as favorite",
+  addTagTitle = "Add a tag to the selected items",
+  deleteTitle = "Delete the selected items",
+  restoreTitle = "Restore the selected items",
+  exportTitle = "Export the selected items as CSV",
   copyTitle = "Copy (Ctrl/Cmd+C)",
   cutTitle = "Cut (Ctrl/Cmd+X)",
   pasteTitle = "Paste (Ctrl/Cmd+V)",
@@ -81,24 +95,22 @@ function BulkActionBar<T extends Selectable>({
 
   return (
     <div className="card p-2 flex flex-wrap items-center gap-2">
-      <div className="text-sm">{selected.length} selected</div>
+      <div className="text-sm">
+        {selectionSummary ?? `${selected.length} selected`}
+      </div>
 
       {onFavorite && (
         <button
           onClick={() => onFavorite(selectedIds)}
           className={baseBtn}
-          title="Mark as favorite"
+          title={favoriteTitle}
         >
           Favorite
         </button>
       )}
 
       {(onAddTag || onRequestAddTag) && (
-        <button
-          onClick={addTag}
-          className={baseBtn}
-          title="Add a tag to all selected"
-        >
+        <button onClick={addTag} className={baseBtn} title={addTagTitle}>
           + Tag
         </button>
       )}
@@ -149,16 +161,16 @@ function BulkActionBar<T extends Selectable>({
       <button
         onClick={() => onExport(selected)}
         className={baseBtn}
-        title="Export selected as CSV"
+        title={exportTitle}
       >
-        Export
+        {exportLabel}
       </button>
 
       {onRestore && (
         <button
           onClick={() => onRestore(selectedIds)}
           className={`${baseBtn} text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100`}
-          title="Restore selected items from Trash"
+          title={restoreTitle}
         >
           {restoreLabel}
         </button>
@@ -168,7 +180,7 @@ function BulkActionBar<T extends Selectable>({
         <button
           onClick={() => onDelete(selectedIds)}
           className={`${baseBtn} text-red-600 hover:bg-red-100 active:bg-red-200`}
-          title={deleteLabel}
+          title={deleteTitle}
         >
           {deleteLabel}
         </button>

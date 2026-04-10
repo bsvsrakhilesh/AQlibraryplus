@@ -1516,7 +1516,10 @@ const SavedUrlsPage: React.FC = () => {
         idsNum.map((id) => patchUrl(id, { isFavorited: true })),
       );
     } catch {
-      notify({ text: "Some favorites failed to update.", kind: "warning" });
+      notify({
+        text: "Some selected rows on this page could not be marked as favorite.",
+        kind: "warning",
+      });
     }
   };
   // Bulk AI auto-tag selected URLs
@@ -1596,7 +1599,10 @@ const SavedUrlsPage: React.FC = () => {
         }),
       );
     } catch {
-      notify({ text: "Failed to add a tag to some items.", kind: "warning" });
+      notify({
+        text: "Failed to add the tag to some selected rows on this page.",
+        kind: "warning",
+      });
     }
   };
 
@@ -1625,8 +1631,8 @@ const SavedUrlsPage: React.FC = () => {
         notify({
           text:
             result.deleted.length === 1
-              ? "Deleted 1 saved URL."
-              : `Deleted ${result.deleted.length} saved URLs.`,
+              ? "Deleted 1 selected URL from this page."
+              : `Deleted ${result.deleted.length} selected URLs from this page.`,
           kind: "success",
         });
         return;
@@ -1656,7 +1662,8 @@ const SavedUrlsPage: React.FC = () => {
       setUrls(backup);
       setSelection(new Set(ids));
       notify({
-        text: e?.message ?? "Failed to delete the selected URLs.",
+        text:
+          e?.message ?? "Failed to delete the selected rows from this page.",
         kind: "error",
       });
     }
@@ -2514,7 +2521,7 @@ const SavedUrlsPage: React.FC = () => {
                     className="btn-primary inline-flex items-center gap-2 px-3 py-2 rounded-lg shadow-sm transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Run AI auto-tag on the selected rows on this page"
                   >
-                    AI Auto-Tag selected
+                    AI Auto-Tag page selection
                   </button>
                 </div>
               </div>
@@ -2525,6 +2532,7 @@ const SavedUrlsPage: React.FC = () => {
               <div className="sticky top-20 lg:top-[76px] z-20">
                 <BulkActionBar
                   selected={selectedItems}
+                  selectionSummary={`${selectedItems.length} selected on this page`}
                   onDelete={onDelete}
                   onAddTag={onAddTag}
                   onFavorite={onFavorite}
@@ -2555,7 +2563,7 @@ const SavedUrlsPage: React.FC = () => {
                     });
                     const a = document.createElement("a");
                     a.href = URL.createObjectURL(blob);
-                    a.download = "saved_urls.csv";
+                    a.download = "saved_urls_page_selection.csv";
                     a.click();
                     URL.revokeObjectURL(a.href);
                   }}
@@ -2564,12 +2572,16 @@ const SavedUrlsPage: React.FC = () => {
                   onPaste={handlePaste}
                   canPaste={canPaste}
                   onMoveTo={handleMoveTo}
-                  moveToLabel="Assign collection…"
-                  moveToTitle="Choose whether to add these URLs to another collection or move them into it"
-                  copyLabel="Copy assignment"
-                  copyTitle="Copy the selected URLs so you can add them to another collection"
-                  cutLabel="Cut for move"
-                  cutTitle="Prepare the selected URLs to move into a different collection"
+                  deleteLabel="Delete selected"
+                  deleteTitle="Delete the selected rows on this page"
+                  exportLabel="Export page selection"
+                  exportTitle="Export the selected rows on this page as CSV"
+                  moveToLabel="Assign page selection…"
+                  moveToTitle="Choose whether to add the selected rows on this page to another collection or move them into it"
+                  copyLabel="Copy page selection"
+                  copyTitle="Copy the selected rows on this page so you can add them to another collection"
+                  cutLabel="Cut page selection"
+                  cutTitle="Prepare the selected rows on this page to move into a different collection"
                   pasteLabel={
                     selectedCollection
                       ? `Paste into ${selectedCollection.name}`
@@ -2577,7 +2589,7 @@ const SavedUrlsPage: React.FC = () => {
                   }
                   pasteTitle={
                     selectedCollection
-                      ? `Paste into "${selectedCollection.name}"`
+                      ? `Paste the copied page selection into "${selectedCollection.name}"`
                       : "Select a collection in the sidebar, then paste into it"
                   }
                 />
@@ -2605,7 +2617,26 @@ const SavedUrlsPage: React.FC = () => {
             )}
             {!loading && !error && sorted.length === 0 && (
               <div className="card p-10 text-center text-gray-600 dark:text-gray-300">
-                No saved URLs match your filters.
+                {libraryTotalCount === 0 ? (
+                  <div className="space-y-2">
+                    <div className="font-medium text-gray-800 dark:text-gray-100">
+                      No saved URLs yet.
+                    </div>
+                    <div>
+                      Paste a URL above and press Enter to save your first one.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="font-medium text-gray-800 dark:text-gray-100">
+                      No rows on this page match the current filters.
+                    </div>
+                    <div>
+                      Try clearing filters, switching queues, or choosing a
+                      different collection.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2621,7 +2652,7 @@ const SavedUrlsPage: React.FC = () => {
                     {Math.min(page * PAGE_SIZE, totalResults)}
                   </span>{" "}
                   of <span className="font-medium">{totalResults}</span>{" "}
-                  matching URLs
+                  matching URLs across all pages
                 </div>
 
                 <div className="flex items-center gap-2">
