@@ -201,6 +201,9 @@ r.put(
   async (req, res, next) => {
     try {
       const body = req.body as z.infer<typeof assignUrlCollectionsBody>;
+      const collectionIds = Array.from(
+        new Set((body.collectionIds || []).filter(Boolean)),
+      );
 
       // Ensure URL exists (minimal fields if needed)
       const urlRow = await ensureUrlRow({
@@ -209,10 +212,54 @@ r.put(
         snippet: body.snippet,
       });
 
+      // Validate requested collections before mutating memberships
+      if (collectionIds.length > 0) {
+        const existingCollections = await prisma.collection.findMany({
+          where: { id: { in: collectionIds } },
+          select: { id: true },
+        });
+
+        const existingIds = new Set(existingCollections.map((c) => c.id));
+        const missingIds = collectionIds.filter((id) => !existingIds.has(id));
+
+        if (missingIds.length > 0) {
+          return res.status(400).json({
+            message: "One or more collection IDs do not exist.",
+            missingCollectionIds: missingIds,
+          });
+        }
+      }
+
+      await prisma.$transaction(async (tx) => {
+        if (collectionIds.length === 0) {
+          await tx.collectionUrl.deleteMany({
+            where: { urlId: urlRow.id },
+          });
+          return;
+        }
+
+        // Remove memberships that are no longer selected
+        await tx.collectionUrl.deleteMany({
+          where: {
+            urlId: urlRow.id,
+            collectionId: { notIn: collectionIds },
+          },
+        });
+
+        // Add memberships that are newly selected
+        await tx.collectionUrl.createMany({
+          data: collectionIds.map((collectionId) => ({
+            collectionId,
+            urlId: urlRow.id,
+          })),
+          skipDuplicates: true,
+        });
+      });
+
       res.json({
         ok: true,
         url: urlRow.canonical_url || canonicalize(urlRow.url),
-        collectionIds: body.collectionIds,
+        collectionIds,
       });
     } catch (e) {
       next(e);
