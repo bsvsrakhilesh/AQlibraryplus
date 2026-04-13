@@ -1746,7 +1746,7 @@ export default function GovernanceWorkspacePage() {
                           {candidate.kind === "URL" ? "Saved URL" : "File"}
                         </span>
                         <span>•</span>
-                        <span>Score {candidate.matchScore}</span>
+                        <span>Total score {candidate.matchScore}</span>
                         {candidate.anchor ? (
                           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
                             Anchor
@@ -1781,6 +1781,42 @@ export default function GovernanceWorkspacePage() {
                         ))}
                       </div>
 
+                      <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Why this source
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                            Signal {candidate.signalScore}
+                          </span>
+                          <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                            Authority {candidate.authorityScore}
+                          </span>
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                            Freshness {candidate.freshnessScore}
+                          </span>
+                          {candidate.anchorScore > 0 ? (
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                              Anchor {candidate.anchorScore}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {candidate.whyRanked.length ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {candidate.whyRanked.map((note) => (
+                              <span
+                                key={note}
+                                className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700"
+                              >
+                                {note}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
                         {candidate.matchedIssues.map((issue) => (
                           <span
@@ -1805,6 +1841,14 @@ export default function GovernanceWorkspacePage() {
                         <span>Events {candidate.stats.eventCount}</span>
                         <span>Gaps {candidate.stats.gapCount}</span>
                         <span>Relations {candidate.stats.relationCount}</span>
+                        {candidate.publishedAt ? (
+                          <span>
+                            Published{" "}
+                            {new Date(
+                              candidate.publishedAt,
+                            ).toLocaleDateString()}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );

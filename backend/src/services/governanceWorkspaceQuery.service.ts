@@ -32,6 +32,13 @@ type CandidateAccumulator = {
   matchedAgencies: Set<string>;
 };
 
+type RankedCandidate = CandidateAccumulator & {
+  authorityScore: number;
+  freshnessScore: number;
+  matchScore: number;
+  whyRanked: string[];
+};
+
 type GovernanceWorkspaceQueryType =
   | "broad_scan"
   | "case_review"
@@ -497,6 +504,106 @@ function documentDescriptor(doc: DocumentWithContext) {
   };
 }
 
+function parseIsoDate(value: string | null | undefined) {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function computeFreshnessScore(candidate: CandidateAccumulator) {
+  const bestDate =
+    parseIsoDate(candidate.publishedAt) ??
+    parseIsoDate(candidate.updatedAt) ??
+    parseIsoDate(candidate.createdAt);
+
+  if (!bestDate) return 0;
+
+  const ageDays = Math.max(
+    0,
+    Math.floor((Date.now() - bestDate) / (1000 * 60 * 60 * 24)),
+  );
+
+  if (ageDays <= 30) return 12;
+  if (ageDays <= 90) return 9;
+  if (ageDays <= 365) return 5;
+  if (ageDays <= 730) return 2;
+  return 0;
+}
+
+function computeAuthorityScore(candidate: CandidateAccumulator) {
+  const haystack =
+    `${candidate.title} ${candidate.sourceLabel ?? ""}`.toLowerCase();
+
+  let score = 0;
+
+  if (
+    /\b(gov|nic\.in|cpcb|spcb|dpcc|caqm|ministry|tribunal|court|board|commission|authority)\b/.test(
+      haystack,
+    )
+  ) {
+    score += 10;
+  }
+
+  score += Math.min(6, candidate.matchedIssues.size * 3);
+  score += Math.min(6, candidate.matchedAgencies.size * 3);
+
+  return score;
+}
+
+function buildRankingWhy(
+  candidate: CandidateAccumulator,
+  args: {
+    authorityScore: number;
+    freshnessScore: number;
+  },
+) {
+  const notes: string[] = [];
+
+  if (candidate.anchorScore > 0) {
+    notes.push("Pinned or anchor evidence");
+  }
+
+  if (candidate.signalScore >= 40) {
+    notes.push("Strong question match");
+  } else if (candidate.signalScore >= 24) {
+    notes.push("Relevant governance signal match");
+  }
+
+  if (args.authorityScore >= 10) {
+    notes.push("Institutional or official-source cues");
+  } else if (args.authorityScore >= 4) {
+    notes.push("Matched governance entities");
+  }
+
+  if (args.freshnessScore >= 9) {
+    notes.push("Recent source");
+  } else if (args.freshnessScore >= 2) {
+    notes.push("Moderately recent source");
+  }
+
+  return Array.from(new Set(notes)).slice(0, 4);
+}
+
+function rankCandidate(candidate: CandidateAccumulator): RankedCandidate {
+  const authorityScore = computeAuthorityScore(candidate);
+  const freshnessScore = computeFreshnessScore(candidate);
+
+  return {
+    ...candidate,
+    authorityScore,
+    freshnessScore,
+    matchScore:
+      candidate.anchorScore +
+      candidate.signalScore +
+      authorityScore +
+      freshnessScore,
+    whyRanked: buildRankingWhy(candidate, {
+      authorityScore,
+      freshnessScore,
+    }),
+  };
+}
+
 function addCandidate(
   map: Map<string, CandidateAccumulator>,
   args: {
@@ -939,12 +1046,12 @@ export async function queryGovernanceWorkspaceEvidence(
   }
 
   const ranked = Array.from(candidates.values())
-    .map((candidate) => ({
-      ...candidate,
-      matchScore: candidate.anchorScore + candidate.signalScore,
-    }))
+    .map((candidate) => rankCandidate(candidate))
     .sort((a, b) => {
       if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+      if (b.authorityScore !== a.authorityScore) {
+        return b.authorityScore - a.authorityScore;
+      }
       return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
     })
     .slice(0, input.limit);
@@ -975,8 +1082,11 @@ export async function queryGovernanceWorkspaceEvidence(
       matchScore: candidate.matchScore,
       anchorScore: candidate.anchorScore,
       signalScore: candidate.signalScore,
+      authorityScore: candidate.authorityScore,
+      freshnessScore: candidate.freshnessScore,
       anchor: candidate.anchor,
       reasons: Array.from(candidate.reasons).slice(0, 4),
+      whyRanked: candidate.whyRanked,
       matchedIssues: Array.from(candidate.matchedIssues).slice(0, 3),
       matchedAgencies: Array.from(candidate.matchedAgencies).slice(0, 3),
       stats,

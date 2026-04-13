@@ -1893,8 +1893,11 @@ export type GovernanceWorkspaceEvidenceCandidate = {
   matchScore: number;
   anchorScore: number;
   signalScore: number;
+  authorityScore: number;
+  freshnessScore: number;
   anchor: boolean;
   reasons: string[];
+  whyRanked: string[];
   matchedIssues: string[];
   matchedAgencies: string[];
   stats: {
