@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   BookOpen,
   Building2,
+  ChevronDown,
   FileText,
   GitBranch,
   Landmark,
@@ -13,9 +14,10 @@ import {
   Network,
   RefreshCcw,
   Search,
+  SlidersHorizontal,
   Sparkles,
+  X,
 } from "lucide-react";
-
 import SmartCard from "../components/ui/SmartCard";
 import CaseWorkspacePanel from "../components/governance/CaseWorkspacePanel";
 import {
@@ -496,6 +498,7 @@ export default function GovernanceWorkspacePage() {
     useState<GovernanceWorkspaceIntent | null>(null);
   const [documentInput, setDocumentInput] = useState("");
   const [workspaceQuestion, setWorkspaceQuestion] = useState("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [workspaceIntentMode, setWorkspaceIntentMode] =
     useState<WorkspaceIntakeMode>("auto");
   const questionInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -587,6 +590,28 @@ export default function GovernanceWorkspacePage() {
     launchIntent?.anchorDocumentIds,
     launchIntent?.anchorUrlIds,
   ]);
+
+  const clearAnchorIntake = React.useCallback(() => {
+    setLaunchIntent((current) => {
+      if (!current) return null;
+
+      return {
+        ...current,
+        anchorDocumentIds: [],
+        anchorUrlIds: [],
+        documentId: null,
+        urlId: null,
+        sourceScope: "all",
+      };
+    });
+  }, []);
+
+  const clearAdvancedFilters = React.useCallback(() => {
+    setDocumentInput("");
+    setSourceScope("all");
+    clearAnchorIntake();
+    setShowAdvancedFilters(false);
+  }, [clearAnchorIntake]);
 
   useEffect(() => {
     const el = questionInputRef.current;
@@ -847,6 +872,10 @@ export default function GovernanceWorkspacePage() {
   const sourceScopeLabel = formatSourceScopeLabel(sourceScope);
   const anchorDocumentCount = launchIntent?.anchorDocumentIds?.length ?? 0;
   const anchorUrlCount = launchIntent?.anchorUrlIds?.length ?? 0;
+  const hasPinnedAnchors = anchorDocumentCount > 0 || anchorUrlCount > 0;
+  const exactLookupId = documentInput.trim();
+  const hasAdvancedFiltersApplied =
+    exactLookupId.length > 0 || hasPinnedAnchors || sourceScope !== "all";
   const evidenceCandidates = workspaceEvidenceQuery.data?.candidates ?? [];
 
   const workflowPlan = useMemo(() => {
@@ -1388,89 +1417,230 @@ export default function GovernanceWorkspacePage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {sourceScopeOptions.map((option) => {
-                const active = option.value === sourceScope;
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {sourceScopeOptions.map((option) => {
+                  const active = option.value === sourceScope;
 
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setSourceScope(option.value)}
-                    className={[
-                      "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                      active
-                        ? "border-slate-950 bg-slate-950 text-white shadow-sm"
-                        : "border-white/70 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900",
-                    ].join(" ")}
-                    title={option.help}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),auto]">
-              <label className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-sm">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Document ID (advanced)
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <Search className="h-4 w-4 text-slate-400" />
-                  <input
-                    value={documentInput}
-                    onChange={(e) => setDocumentInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        loadDocumentFromInput();
-                      }
-                    }}
-                    placeholder="Paste a canonical document id"
-                    className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                  />
-                </div>
-              </label>
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setSourceScope(option.value)}
+                      className={[
+                        "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                        active
+                          ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                          : "border-white/70 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900",
+                      ].join(" ")}
+                      title={option.help}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={runWorkspaceEvidenceSearch}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl bg-sky-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/10 transition hover:-translate-y-0.5 hover:bg-sky-700"
+                  onClick={() => setShowAdvancedFilters((current) => !current)}
+                  className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white"
                 >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Find evidence
+                  <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
+                  Advanced filters
+                  <ChevronDown
+                    className={[
+                      "ml-2 h-3.5 w-3.5 transition-transform",
+                      showAdvancedFilters ? "rotate-180" : "",
+                    ].join(" ")}
+                  />
                 </button>
-                <button
-                  type="button"
-                  onClick={loadDocumentFromInput}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:bg-slate-900"
-                >
-                  Load dossier
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void issueDirectoryQuery.refetch();
-                    void agencyDirectoryQuery.refetch();
-                    if (workspaceQueryRunKey > 0)
-                      void workspaceEvidenceQuery.refetch();
 
-                    if (activeDocumentId) {
-                      void documentQuery.refetch();
-                      if (selectedIssueId) void timelineQuery.refetch();
-                      if (selectedIssueId) void relationsQuery.refetch();
-                      if (selectedAgencyId) void agencyLandscapeQuery.refetch();
-                    }
-                  }}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl border border-white/70 bg-white/80 px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
-                  title="Refresh workspace data"
-                >
-                  <RefreshCcw className="mr-2 h-4 w-4" />
-                  Refresh
-                </button>
+                {exactLookupId ? (
+                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                    Exact dossier: {exactLookupId}
+                  </span>
+                ) : null}
+
+                {anchorDocumentCount > 0 ? (
+                  <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                    File anchors: {anchorDocumentCount}
+                  </span>
+                ) : null}
+
+                {anchorUrlCount > 0 ? (
+                  <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700">
+                    URL anchors: {anchorUrlCount}
+                  </span>
+                ) : null}
+
+                {hasAdvancedFiltersApplied ? (
+                  <button
+                    type="button"
+                    onClick={clearAdvancedFilters}
+                    className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
+                  >
+                    <X className="mr-1.5 h-3.5 w-3.5" />
+                    Clear filters
+                  </button>
+                ) : null}
               </div>
+
+              {showAdvancedFilters ? (
+                <div className="grid gap-3 rounded-[24px] border border-white/70 bg-white/88 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur-sm xl:grid-cols-[minmax(0,1fr),300px]">
+                  <div className="space-y-3">
+                    <label className="block rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Exact dossier lookup
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Search className="h-4 w-4 text-slate-400" />
+                        <input
+                          value={documentInput}
+                          onChange={(e) => setDocumentInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              loadDocumentFromInput();
+                            }
+                          }}
+                          placeholder="Paste a canonical document id"
+                          className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                        />
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        Use this only when you already know the exact dossier
+                        you want to open. The main workflow should still start
+                        from a governance question.
+                      </p>
+                    </label>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                          Pinned anchor intake
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-emerald-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-emerald-800">
+                            Files: {anchorDocumentCount}
+                          </span>
+                          <span className="rounded-full border border-violet-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-violet-800">
+                            URLs: {anchorUrlCount}
+                          </span>
+                          <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-700">
+                            Scope: {sourceScopeLabel}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-slate-600">
+                          These anchors come from File Manager or Saved URLs and
+                          act as the initial retrieval evidence pack.
+                        </p>
+                        {hasPinnedAnchors ? (
+                          <button
+                            type="button"
+                            onClick={clearAnchorIntake}
+                            className="mt-3 inline-flex items-center rounded-full border border-emerald-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-white"
+                          >
+                            Clear pinned anchors
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-2xl border border-sky-200/70 bg-sky-50/60 p-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                          How narrowing works
+                        </div>
+                        <ul className="mt-2 space-y-2 text-xs leading-5 text-slate-600">
+                          <li>Question = main retrieval intent</li>
+                          <li>Source scope = preferred search family</li>
+                          <li>Exact dossier = direct document opening</li>
+                          <li>
+                            Pinned anchors = evidence-biased retrieval starting
+                            point
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={runWorkspaceEvidenceSearch}
+                      className="inline-flex h-12 items-center justify-center rounded-2xl bg-sky-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/10 transition hover:-translate-y-0.5 hover:bg-sky-700"
+                    >
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Find evidence
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={loadDocumentFromInput}
+                      className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:bg-slate-900"
+                    >
+                      Load dossier
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void issueDirectoryQuery.refetch();
+                        void agencyDirectoryQuery.refetch();
+                        if (workspaceQueryRunKey > 0)
+                          void workspaceEvidenceQuery.refetch();
+
+                        if (activeDocumentId) {
+                          void documentQuery.refetch();
+                          if (selectedIssueId) void timelineQuery.refetch();
+                          if (selectedIssueId) void relationsQuery.refetch();
+                          if (selectedAgencyId)
+                            void agencyLandscapeQuery.refetch();
+                        }
+                      }}
+                      className="inline-flex h-12 items-center justify-center rounded-2xl border border-white/70 bg-white/80 px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
+                      title="Refresh workspace data"
+                    >
+                      <RefreshCcw className="mr-2 h-4 w-4" />
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={runWorkspaceEvidenceSearch}
+                    className="inline-flex h-12 items-center justify-center rounded-2xl bg-sky-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/10 transition hover:-translate-y-0.5 hover:bg-sky-700"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Find evidence
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void issueDirectoryQuery.refetch();
+                      void agencyDirectoryQuery.refetch();
+                      if (workspaceQueryRunKey > 0)
+                        void workspaceEvidenceQuery.refetch();
+
+                      if (activeDocumentId) {
+                        void documentQuery.refetch();
+                        if (selectedIssueId) void timelineQuery.refetch();
+                        if (selectedIssueId) void relationsQuery.refetch();
+                        if (selectedAgencyId)
+                          void agencyLandscapeQuery.refetch();
+                      }
+                    }}
+                    className="inline-flex h-12 items-center justify-center rounded-2xl border border-white/70 bg-white/80 px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
+                    title="Refresh workspace data"
+                  >
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                    Refresh
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1517,6 +1687,12 @@ export default function GovernanceWorkspacePage() {
               URL anchors: {anchorUrlCount}
             </span>
           )}
+
+          {exactLookupId ? (
+            <span className="inline-flex items-center rounded-full border border-slate-200/80 bg-slate-50/80 px-3 py-1 shadow-sm">
+              Exact lookup: {exactLookupId}
+            </span>
+          ) : null}
 
           {activeDocumentId && (
             <span className="inline-flex items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 shadow-sm">
