@@ -1879,6 +1879,46 @@ export type AuditLogRow = {
   createdAt: string;
 };
 
+export type GovernanceWorkspaceEvidenceCandidate = {
+  documentId: string;
+  kind: "URL" | "FILE";
+  urlId: number | null;
+  primaryFileId: string | null;
+  title: string;
+  sourceLabel: string | null;
+  summary: string | null;
+  publishedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  matchScore: number;
+  anchorScore: number;
+  signalScore: number;
+  anchor: boolean;
+  reasons: string[];
+  matchedIssues: string[];
+  matchedAgencies: string[];
+  stats: {
+    claimCount: number;
+    eventCount: number;
+    gapCount: number;
+    relationCount: number;
+  };
+};
+
+export type GovernanceWorkspaceEvidenceResponse = {
+  query: {
+    question: string;
+    tokens: string[];
+    sourceScope: "all" | "files" | "urls" | "mixed";
+    anchorDocumentIds: string[];
+    anchorUrlIds: number[];
+    limit: number;
+  };
+  selectedDocumentId: string | null;
+  totalCandidates: number;
+  candidates: GovernanceWorkspaceEvidenceCandidate[];
+};
+
 function buildGovernanceQuery(params?: Record<string, unknown>) {
   const query = new URLSearchParams();
 
@@ -1899,6 +1939,27 @@ export async function getAuditLogs(params?: {
   return apiGet<AuditLogRow[]>(
     `/api/audit/logs${buildGovernanceQuery(params)}`,
   );
+}
+
+export async function queryGovernanceWorkspaceEvidence(payload: {
+  question?: string;
+  anchorDocumentIds?: string[];
+  anchorUrlIds?: number[];
+  sourceScope?: "all" | "files" | "urls" | "mixed";
+  limit?: number;
+}) {
+  try {
+    const res = await api.post<GovernanceWorkspaceEvidenceResponse>(
+      "/api/governance/workspace/query",
+      payload,
+      {
+        headers: { Accept: "application/json" },
+      },
+    );
+    return res.data;
+  } catch (err: any) {
+    normalizeApiError(err, "Governance workspace evidence retrieval failed");
+  }
 }
 
 export async function getDocumentGovernance(

@@ -10,6 +10,7 @@ import {
   getIssueRelationsHandler,
   getIssueTimelineHandler,
   getIssuesDirectoryHandler,
+  postGovernanceWorkspaceQueryHandler,
 } from "../controllers/governance.controller";
 
 const r = Router();
@@ -87,6 +88,20 @@ const agenciesDirectoryQuery = z.object({
   issueId: z.string().min(1).optional(),
   limit: z.coerce.number().int().positive().max(200).optional(),
 });
+
+const workspaceQueryBody = z.object({
+  question: z.string().trim().max(4000).optional(),
+  anchorDocumentIds: z.array(z.string().trim().min(1)).max(25).optional(),
+  anchorUrlIds: z.array(z.coerce.number().int().positive()).max(25).optional(),
+  sourceScope: z.enum(["all", "files", "urls", "mixed"]).optional(),
+  limit: z.coerce.number().int().positive().max(12).optional(),
+});
+
+r.post(
+  "/governance/workspace/query",
+  validate({ body: workspaceQueryBody }),
+  postGovernanceWorkspaceQueryHandler,
+);
 
 r.get(
   "/documents/:id/governance",

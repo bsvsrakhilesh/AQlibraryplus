@@ -9,6 +9,7 @@ import {
   listGovernanceAgencies,
   listGovernanceIssues,
 } from "../services/governanceRead.service";
+import { queryGovernanceWorkspaceEvidence } from "../services/governanceWorkspaceQuery.service";
 import { writeAuditLog } from "../services/audit.service";
 import {
   buildActorAuditMetadata,
@@ -306,6 +307,47 @@ export async function getAgencyLandscapeHandler(
       resourceType: "AGENCY",
       resourceId: id,
       metadata: { limit: parseLimit(req.query.limit) ?? null },
+    });
+
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postGovernanceWorkspaceQueryHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const body = (req as any).body ?? {};
+    const out = await queryGovernanceWorkspaceEvidence({
+      question: typeof body.question === "string" ? body.question : undefined,
+      anchorDocumentIds: Array.isArray(body.anchorDocumentIds)
+        ? body.anchorDocumentIds
+        : undefined,
+      anchorUrlIds: Array.isArray(body.anchorUrlIds)
+        ? body.anchorUrlIds
+        : undefined,
+      sourceScope:
+        typeof body.sourceScope === "string" ? body.sourceScope : undefined,
+      limit: typeof body.limit === "number" ? body.limit : undefined,
+    });
+
+    await logGovernanceAudit(req, {
+      action: "governance.workspace.query",
+      resourceType: "SYSTEM",
+      resourceId: "governance-workspace-query",
+      metadata: {
+        question: out.query.question || null,
+        sourceScope: out.query.sourceScope,
+        anchorDocumentIds: out.query.anchorDocumentIds,
+        anchorUrlIds: out.query.anchorUrlIds,
+        tokenCount: out.query.tokens.length,
+        totalCandidates: out.totalCandidates,
+        selectedDocumentId: out.selectedDocumentId,
+      },
     });
 
     res.json(out);

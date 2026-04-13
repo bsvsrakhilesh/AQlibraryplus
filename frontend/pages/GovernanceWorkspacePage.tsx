@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -28,6 +28,7 @@ import {
   getGovernanceIssuesDirectory,
   getGovernanceIssueTimeline,
   getUrlRevisions,
+  queryGovernanceWorkspaceEvidence,
   type AuditLogRow,
   type GovernanceAgency,
   type GovernanceIssue,
@@ -403,6 +404,7 @@ export default function GovernanceWorkspacePage() {
     useState<GovernanceWorkspaceIntent | null>(null);
   const [documentInput, setDocumentInput] = useState("");
   const [workspaceQuestion, setWorkspaceQuestion] = useState("");
+  const questionInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [sourceScope, setSourceScope] =
     useState<GovernanceWorkspaceSourceScope>("all");
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
@@ -415,6 +417,7 @@ export default function GovernanceWorkspacePage() {
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templatePreset, setTemplatePreset] =
     useState<NotebookTemplateKey>("governance_brief");
+  const [workspaceQueryRunKey, setWorkspaceQueryRunKey] = useState(0);
 
   const [issueSearch, setIssueSearch] = useState("");
   const [issueKindFilter, setIssueKindFilter] = useState("");
@@ -466,9 +469,40 @@ export default function GovernanceWorkspacePage() {
     ) {
       setWorkspaceMode("case");
     }
+
+    if (
+      pending.question?.trim() ||
+      pending.anchorDocumentIds?.length ||
+      pending.anchorUrlIds?.length
+    ) {
+      setWorkspaceQueryRunKey((current) => current + 1);
+    }
   }, []);
 
   const primaryAnchorUrlId = getPrimaryAnchorUrlId(launchIntent);
+
+  const runWorkspaceEvidenceSearch = React.useCallback(() => {
+    const hasQuestion = workspaceQuestion.trim().length > 0;
+    const hasAnchors =
+      Boolean(launchIntent?.anchorDocumentIds?.length) ||
+      Boolean(launchIntent?.anchorUrlIds?.length);
+
+    if (!hasQuestion && !hasAnchors) return;
+    setWorkspaceQueryRunKey((current) => current + 1);
+  }, [
+    workspaceQuestion,
+    launchIntent?.anchorDocumentIds,
+    launchIntent?.anchorUrlIds,
+  ]);
+
+  useEffect(() => {
+    const el = questionInputRef.current;
+    if (!el) return;
+
+    el.style.height = "0px";
+    const nextHeight = Math.max(92, Math.min(el.scrollHeight, 176));
+    el.style.height = `${nextHeight}px`;
+  }, [workspaceQuestion]);
 
   const urlResolutionQuery = useQuery({
     queryKey: ["governance-workspace", "resolve-url", primaryAnchorUrlId],
@@ -482,6 +516,40 @@ export default function GovernanceWorkspacePage() {
       setActiveDocumentId(urlResolutionQuery.data.documentId);
     }
   }, [urlResolutionQuery.data?.documentId]);
+
+  const workspaceEvidenceQuery = useQuery({
+    queryKey: [
+      "governance-workspace-evidence",
+      workspaceQueryRunKey,
+      workspaceQuestion,
+      sourceScope,
+      launchIntent?.anchorDocumentIds?.join("|") ?? "",
+      launchIntent?.anchorUrlIds?.join("|") ?? "",
+    ],
+    enabled:
+      workspaceQueryRunKey > 0 &&
+      (workspaceQuestion.trim().length > 0 ||
+        Boolean(launchIntent?.anchorDocumentIds?.length) ||
+        Boolean(launchIntent?.anchorUrlIds?.length)),
+    queryFn: async () =>
+      queryGovernanceWorkspaceEvidence({
+        question: workspaceQuestion.trim() || undefined,
+        anchorDocumentIds: launchIntent?.anchorDocumentIds ?? [],
+        anchorUrlIds: launchIntent?.anchorUrlIds ?? [],
+        sourceScope,
+        limit: 8,
+      }),
+  });
+
+  useEffect(() => {
+    const selectedDocumentId = workspaceEvidenceQuery.data?.selectedDocumentId;
+    if (!selectedDocumentId) return;
+    if (selectedDocumentId === activeDocumentId) return;
+
+    setDocumentInput(selectedDocumentId);
+    setActiveDocumentId(selectedDocumentId);
+    setSelectedProvenance(null);
+  }, [workspaceEvidenceQuery.data?.selectedDocumentId]);
 
   const documentQuery = useQuery({
     queryKey: ["governance-document", activeDocumentId],
@@ -650,6 +718,7 @@ export default function GovernanceWorkspacePage() {
   }, [selectedProvenance, timelineQuery.data]);
 
   const busy =
+    workspaceEvidenceQuery.isLoading ||
     documentQuery.isLoading ||
     urlResolutionQuery.isLoading ||
     issueDirectoryQuery.isLoading ||
@@ -659,6 +728,7 @@ export default function GovernanceWorkspacePage() {
     agencyLandscapeQuery.isLoading;
 
   const anyError =
+    (workspaceEvidenceQuery.error as Error | null) ||
     (urlResolutionQuery.error as Error | null) ||
     (documentQuery.error as Error | null) ||
     (issueDirectoryQuery.error as Error | null) ||
@@ -675,6 +745,7 @@ export default function GovernanceWorkspacePage() {
   const sourceScopeLabel = formatSourceScopeLabel(sourceScope);
   const anchorDocumentCount = launchIntent?.anchorDocumentIds?.length ?? 0;
   const anchorUrlCount = launchIntent?.anchorUrlIds?.length ?? 0;
+  const evidenceCandidates = workspaceEvidenceQuery.data?.candidates ?? [];
 
   const documentSummary = overview?.summary ?? {
     agencyCount: 0,
@@ -942,15 +1013,15 @@ export default function GovernanceWorkspacePage() {
   }
 
   return (
-    <div className="space-y-6 py-6">
+    <div className="space-y-6 py-6 px-4 sm:px-6 lg:px-8">
       <motion.section
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: "easeOut" }}
         className="relative overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.86),rgba(240,249,255,0.82),rgba(236,253,245,0.84))] p-6 shadow-[0_24px_60px_rgba(15,23,42,0.10)] backdrop-blur-xl"
       >
-        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_30%),radial-gradient(circle_at_left,rgba(16,185,129,0.12),transparent_35%)]" />
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_30%),radial-gradient(circle_at_left,rgba(16,185,129,0.12),transparent_35%)] " />
+        <div className="relative flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1fr),600px] xl:items-start">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/75 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 shadow-sm">
               <Sparkles className="h-3.5 w-3.5" />
@@ -969,7 +1040,7 @@ export default function GovernanceWorkspacePage() {
           </div>
 
           <div className="grid gap-3 lg:min-w-[580px]">
-            <label className="rounded-2xl border border-white/70 bg-white/85 p-3 shadow-sm">
+            <div className="rounded-[26px] border border-white/70 bg-white/88 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Governance question
@@ -979,20 +1050,23 @@ export default function GovernanceWorkspacePage() {
                 </span>
               </div>
 
-              <textarea
-                value={workspaceQuestion}
-                onChange={(e) => setWorkspaceQuestion(e.target.value)}
-                rows={3}
-                placeholder='Ask a question like: "What is currently in force for industrial emissions in Faridabad?"'
-                className="mt-3 w-full resize-none bg-transparent text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400"
-              />
+              <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 shadow-inner">
+                <textarea
+                  ref={questionInputRef}
+                  value={workspaceQuestion}
+                  onChange={(e) => setWorkspaceQuestion(e.target.value)}
+                  rows={1}
+                  placeholder='Ask a question '
+                  className="block min-h-[92px] max-h-44 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400"
+                />
+              </div>
 
               <div className="mt-3 text-xs leading-5 text-slate-500">
-                File Manager documents and Saved URLs should act as anchor
-                evidence. Retrieval can expand beyond them in the next backend
-                step.
+                File Manager documents and Saved URLs act as anchor evidence.
+                Evidence search can expand beyond them when ranking relevant
+                records.
               </div>
-            </label>
+            </div>
 
             <div className="flex flex-wrap gap-2">
               {sourceScopeOptions.map((option) => {
@@ -1039,7 +1113,15 @@ export default function GovernanceWorkspacePage() {
                 </div>
               </label>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={runWorkspaceEvidenceSearch}
+                  className="inline-flex h-12 items-center justify-center rounded-2xl bg-sky-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/10 transition hover:-translate-y-0.5 hover:bg-sky-700"
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Find evidence
+                </button>
                 <button
                   type="button"
                   onClick={loadDocumentFromInput}
@@ -1052,6 +1134,8 @@ export default function GovernanceWorkspacePage() {
                   onClick={() => {
                     void issueDirectoryQuery.refetch();
                     void agencyDirectoryQuery.refetch();
+                    if (workspaceQueryRunKey > 0)
+                      void workspaceEvidenceQuery.refetch();
 
                     if (activeDocumentId) {
                       void documentQuery.refetch();
@@ -1113,6 +1197,124 @@ export default function GovernanceWorkspacePage() {
             </span>
           )}
         </div>
+
+        {workspaceQueryRunKey > 0 ? (
+          <div className="rounded-[26px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+            <SectionHeader
+              icon={<Sparkles className="h-4 w-4" />}
+              title="Retrieved evidence"
+              subtitle="Question-ranked candidate documents from File Manager and Saved URLs."
+              action={
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                  {workspaceEvidenceQuery.data?.totalCandidates ?? 0} candidates
+                </span>
+              }
+            />
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-2">
+              {evidenceCandidates.length ? (
+                evidenceCandidates.map((candidate) => {
+                  const isActive = candidate.documentId === activeDocumentId;
+
+                  return (
+                    <button
+                      key={candidate.documentId}
+                      type="button"
+                      onClick={() => {
+                        setDocumentInput(candidate.documentId);
+                        setActiveDocumentId(candidate.documentId);
+                        setSelectedProvenance(null);
+                      }}
+                      className={[
+                        "rounded-2xl border p-4 text-left transition",
+                        isActive
+                          ? "border-sky-300 bg-sky-50/70 shadow-sm"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60",
+                      ].join(" ")}
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        <span>
+                          {candidate.kind === "URL" ? "Saved URL" : "File"}
+                        </span>
+                        <span>•</span>
+                        <span>Score {candidate.matchScore}</span>
+                        {candidate.anchor ? (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                            Anchor
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2 text-sm font-semibold text-slate-950">
+                        {candidate.title}
+                      </div>
+
+                      {candidate.sourceLabel ? (
+                        <div className="mt-1 truncate text-xs text-slate-500">
+                          {candidate.sourceLabel}
+                        </div>
+                      ) : null}
+
+                      {candidate.summary ? (
+                        <div className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">
+                          {candidate.summary}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                        {candidate.reasons.map((reason) => (
+                          <span
+                            key={reason}
+                            className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1"
+                          >
+                            {reason}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                        {candidate.matchedIssues.map((issue) => (
+                          <span
+                            key={issue}
+                            className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-700"
+                          >
+                            {issue}
+                          </span>
+                        ))}
+                        {candidate.matchedAgencies.map((agency) => (
+                          <span
+                            key={agency}
+                            className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-700"
+                          >
+                            {agency}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span>Claims {candidate.stats.claimCount}</span>
+                        <span>Events {candidate.stats.eventCount}</span>
+                        <span>Gaps {candidate.stats.gapCount}</span>
+                        <span>Relations {candidate.stats.relationCount}</span>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : workspaceEvidenceQuery.isFetched &&
+                !workspaceEvidenceQuery.isLoading ? (
+                <EmptyPanel
+                  title="No candidate evidence found"
+                  body="Refine the governance question, broaden the source scope, or keep a stronger anchor source selected."
+                />
+              ) : (
+                <EmptyPanel
+                  title="Evidence retrieval is ready"
+                  body="Use Find evidence to turn the question and anchor sources into a ranked document set."
+                />
+              )}
+            </div>
+          </div>
+        ) : null}
 
         {activeDocumentId ? (
           <div className="rounded-[26px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
