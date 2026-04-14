@@ -1,6 +1,11 @@
 import prisma from "../config/database";
 import { env } from "../config/env";
-import { Prisma, DocumentKind } from "../generated/prisma/client";
+import {
+  Prisma,
+  DocumentKind,
+  DocumentRelationType,
+} from "../generated/prisma/client";
+import { analyzeRelation } from "./contradictionAlignment.service";
 import { embedQuery, toPgVectorLiteral } from "./embeddings.service";
 
 type GovernanceWorkspaceSourceScope = "all" | "files" | "urls" | "mixed";
@@ -125,6 +130,54 @@ type GovernanceWorkspaceTemporalControl = {
   mode: "current_preference" | "historical_neutral" | "neutral";
   rationale: string;
   preferredSignals: string[];
+};
+
+type GovernanceWorkspaceContradictionCandidate = {
+  relationId: string;
+  relationType: DocumentRelationType;
+  bucket:
+    | "conflict"
+    | "alignment"
+    | "temporal_shift_candidate"
+    | "scope_variant_candidate"
+    | "reference";
+  requiresAnalystReview: boolean;
+  sameActor: boolean;
+  scopeWarning: boolean;
+  confidence: number | null;
+  reason: string;
+  rationale: string | null;
+  issueTitle: string | null;
+  fromDocumentId: string;
+  fromDocumentTitle: string;
+  toDocumentId: string;
+  toDocumentTitle: string;
+  fromAgencyName: string | null;
+  toAgencyName: string | null;
+};
+
+type GovernanceWorkspaceOverrideHint = {
+  relationId: string;
+  relationType: DocumentRelationType;
+  preferredDocumentId: string;
+  preferredDocumentTitle: string;
+  supersededDocumentId: string;
+  supersededDocumentTitle: string;
+  confidence: number | null;
+  basis: string;
+};
+
+type GovernanceWorkspaceContradictionFoundation = {
+  active: boolean;
+  rationale: string;
+  summary: {
+    contradictionCount: number;
+    reviewCount: number;
+    overrideHintCount: number;
+  };
+  candidates: GovernanceWorkspaceContradictionCandidate[];
+  overrideHints: GovernanceWorkspaceOverrideHint[];
+  involvedDocumentIds: string[];
 };
 
 const STOP_WORDS = new Set([
@@ -1055,6 +1108,308 @@ function aggregateClusterStats(
       relationCount: 0,
     },
   );
+}
+
+type WorkspaceDocumentPreview = {
+  documentId: string;
+  kind: DocumentKind;
+  title: string;
+  publishedAt: string | null;
+  updatedAt: string | null;
+  createdAt: string | null;
+};
+
+function previewWorkspaceDocument(
+  doc: DocumentWithContext | null | undefined,
+): WorkspaceDocumentPreview | null {
+  if (!doc) return null;
+
+  const descriptor = documentDescriptor(doc);
+  return {
+    documentId: doc.id,
+    kind: doc.kind,
+    title: descriptor.title,
+    publishedAt: descriptor.publishedAt,
+    updatedAt: descriptor.updatedAt,
+    createdAt: descriptor.createdAt,
+  };
+}
+
+function previewDocumentDateMs(value: WorkspaceDocumentPreview | null) {
+  if (!value) return null;
+  return (
+    parseIsoDate(value.publishedAt) ??
+    parseIsoDate(value.updatedAt) ??
+    parseIsoDate(value.createdAt)
+  );
+}
+
+function relationBucketPriority(
+  bucket: GovernanceWorkspaceContradictionCandidate["bucket"],
+) {
+  switch (bucket) {
+    case "conflict":
+      return 5;
+    case "temporal_shift_candidate":
+      return 4;
+    case "scope_variant_candidate":
+      return 3;
+    case "reference":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function inferOverrideHint(args: {
+  relationId: string;
+  relationType: DocumentRelationType;
+  confidence: number | null;
+  fromDocument: WorkspaceDocumentPreview;
+  toDocument: WorkspaceDocumentPreview;
+}): GovernanceWorkspaceOverrideHint {
+  const fromMs = previewDocumentDateMs(args.fromDocument);
+  const toMs = previewDocumentDateMs(args.toDocument);
+
+  let preferred = args.toDocument;
+  let superseded = args.fromDocument;
+  let basis =
+    args.relationType === DocumentRelationType.SUPERSEDES
+      ? "Supersedes-style relation indicates one document may displace the earlier position."
+      : "Override-style relation indicates one document may replace the earlier position.";
+
+  if (fromMs !== null && toMs !== null) {
+    if (fromMs > toMs) {
+      preferred = args.fromDocument;
+      superseded = args.toDocument;
+    } else {
+      preferred = args.toDocument;
+      superseded = args.fromDocument;
+    }
+    basis = "Newer-dated document may supersede the older position.";
+  }
+
+  return {
+    relationId: args.relationId,
+    relationType: args.relationType,
+    preferredDocumentId: preferred.documentId,
+    preferredDocumentTitle: preferred.title,
+    supersededDocumentId: superseded.documentId,
+    supersededDocumentTitle: superseded.title,
+    confidence: args.confidence,
+    basis,
+  };
+}
+
+async function buildContradictionFoundation(args: {
+  documentIds: string[];
+  workflowMode: "landscape" | "case_trace";
+}): Promise<GovernanceWorkspaceContradictionFoundation> {
+  if (args.documentIds.length < 2) {
+    return {
+      active: false,
+      rationale:
+        "At least two evidence documents are needed before contradiction and override signals can be compared.",
+      summary: {
+        contradictionCount: 0,
+        reviewCount: 0,
+        overrideHintCount: 0,
+      },
+      candidates: [],
+      overrideHints: [],
+      involvedDocumentIds: [],
+    };
+  }
+
+  const documentIdSet = new Set(args.documentIds);
+
+  const relationRows = await prisma.documentRelation.findMany({
+    where: {
+      OR: [
+        {
+          fromClaim: {
+            trace: {
+              sourceDocument: {
+                id: { in: args.documentIds },
+              },
+            },
+          },
+        },
+        {
+          toClaim: {
+            trace: {
+              sourceDocument: {
+                id: { in: args.documentIds },
+              },
+            },
+          },
+        },
+      ],
+    },
+    take: Math.max(args.documentIds.length * 8, 40),
+    orderBy: [{ confidence: "desc" }, { updatedAt: "desc" }],
+    include: {
+      issue: { select: { title: true } },
+      fromAgency: { select: { id: true, name: true } },
+      toAgency: { select: { id: true, name: true } },
+      fromClaim: {
+        select: {
+          scopeText: true,
+          trace: {
+            select: {
+              sourceDocument: {
+                select: documentContextSelect,
+              },
+            },
+          },
+        },
+      },
+      toClaim: {
+        select: {
+          scopeText: true,
+          trace: {
+            select: {
+              sourceDocument: {
+                select: documentContextSelect,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const contradictionCandidates: GovernanceWorkspaceContradictionCandidate[] =
+    [];
+  const overrideHints: GovernanceWorkspaceOverrideHint[] = [];
+  const involvedDocumentIds = new Set<string>();
+
+  for (const row of relationRows) {
+    const fromDocument = previewWorkspaceDocument(
+      row.fromClaim?.trace?.sourceDocument,
+    );
+    const toDocument = previewWorkspaceDocument(
+      row.toClaim?.trace?.sourceDocument,
+    );
+
+    if (!fromDocument || !toDocument) continue;
+    if (!documentIdSet.has(fromDocument.documentId)) continue;
+    if (!documentIdSet.has(toDocument.documentId)) continue;
+    if (fromDocument.documentId === toDocument.documentId) continue;
+
+    involvedDocumentIds.add(fromDocument.documentId);
+    involvedDocumentIds.add(toDocument.documentId);
+
+    const analysis = analyzeRelation({
+      id: row.id,
+      relationType: row.relationType,
+      fromAgency: row.fromAgency,
+      toAgency: row.toAgency,
+      fromClaim: row.fromClaim,
+      toClaim: row.toClaim,
+      confidence: row.confidence,
+    });
+
+    const contradictionLike =
+      row.relationType === DocumentRelationType.CONTRADICTION ||
+      row.relationType === DocumentRelationType.TENSION ||
+      analysis.bucket === "conflict" ||
+      analysis.bucket === "temporal_shift_candidate" ||
+      analysis.bucket === "scope_variant_candidate";
+
+    if (contradictionLike) {
+      contradictionCandidates.push({
+        relationId: row.id,
+        relationType: row.relationType,
+        bucket: analysis.bucket,
+        requiresAnalystReview: analysis.requiresAnalystReview,
+        sameActor: analysis.sameActor,
+        scopeWarning: analysis.scopeWarning,
+        confidence: row.confidence ?? null,
+        reason: analysis.reason,
+        rationale: row.rationale ?? null,
+        issueTitle: row.issue?.title ?? null,
+        fromDocumentId: fromDocument.documentId,
+        fromDocumentTitle: fromDocument.title,
+        toDocumentId: toDocument.documentId,
+        toDocumentTitle: toDocument.title,
+        fromAgencyName: row.fromAgency?.name ?? null,
+        toAgencyName: row.toAgency?.name ?? null,
+      });
+    }
+
+    if (
+      row.relationType === DocumentRelationType.OVERRIDE ||
+      row.relationType === DocumentRelationType.SUPERSEDES
+    ) {
+      overrideHints.push(
+        inferOverrideHint({
+          relationId: row.id,
+          relationType: row.relationType,
+          confidence: row.confidence ?? null,
+          fromDocument,
+          toDocument,
+        }),
+      );
+    }
+  }
+
+  const contradictionCount = contradictionCandidates.length;
+  const reviewCount = contradictionCandidates.filter(
+    (item) => item.requiresAnalystReview,
+  ).length;
+
+  const sortedCandidates = contradictionCandidates
+    .sort((a, b) => {
+      const byBucket =
+        relationBucketPriority(b.bucket) - relationBucketPriority(a.bucket);
+      if (byBucket !== 0) return byBucket;
+      return (b.confidence ?? 0) - (a.confidence ?? 0);
+    })
+    .slice(0, 6);
+
+  const sortedOverrideHints = Array.from(
+    new Map(
+      overrideHints.map((item) => [
+        `${item.preferredDocumentId}:${item.supersededDocumentId}:${item.relationType}`,
+        item,
+      ]),
+    ).values(),
+  )
+    .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+    .slice(0, 6);
+
+  if (!sortedCandidates.length && !sortedOverrideHints.length) {
+    return {
+      active: false,
+      rationale:
+        "No explicit contradiction, tension, override, or supersession relations were found inside the current evidence set.",
+      summary: {
+        contradictionCount: 0,
+        reviewCount: 0,
+        overrideHintCount: 0,
+      },
+      candidates: [],
+      overrideHints: [],
+      involvedDocumentIds: [],
+    };
+  }
+
+  return {
+    active: true,
+    rationale:
+      args.workflowMode === "case_trace"
+        ? "Cross-document conflict and override signals were found in the current case evidence. Treat these as analyst-reviewed leads, not final legal conclusions."
+        : "Cross-document conflict and override signals were found in the retrieved evidence set. Use them to inspect tensions, supersession, and position shifts.",
+    summary: {
+      contradictionCount,
+      reviewCount,
+      overrideHintCount: sortedOverrideHints.length,
+    },
+    candidates: sortedCandidates,
+    overrideHints: sortedOverrideHints,
+    involvedDocumentIds: Array.from(involvedDocumentIds),
+  };
 }
 
 function candidateBestKnownDate(candidate: RankedCandidate) {
@@ -2129,6 +2484,13 @@ export async function queryGovernanceWorkspaceEvidence(
 
   const diversified = diversityResult.items;
 
+  const contradictionFoundation = await buildContradictionFoundation({
+    documentIds: Array.from(
+      new Set(diversified.flatMap((candidate) => candidate.clusterDocumentIds)),
+    ),
+    workflowMode: workflow.resolvedMode,
+  });
+
   const retrievalDecision = resolveRetrievalDecision(diversified);
 
   const statsByDocument = await attachDocumentStats(
@@ -2190,6 +2552,7 @@ export async function queryGovernanceWorkspaceEvidence(
     queryUnderstanding,
     temporalControl,
     diversityControl: diversityResult.control,
+    contradictionFoundation,
     retrievalDecision,
     selectedDocumentId: retrievalDecision.shouldAutoSelect
       ? retrievalDecision.recommendedDocumentId

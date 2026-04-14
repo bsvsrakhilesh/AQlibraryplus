@@ -1975,6 +1975,67 @@ export type GovernanceWorkspaceEvidenceResponse = {
     rationale: string;
     balancedBy: string[];
   };
+  contradictionFoundation: {
+    active: boolean;
+    rationale: string;
+    summary: {
+      contradictionCount: number;
+      reviewCount: number;
+      overrideHintCount: number;
+    };
+    candidates: Array<{
+      relationId: string;
+      relationType:
+        | "CONTRADICTION"
+        | "TENSION"
+        | "OVERRIDE"
+        | "REINFORCEMENT"
+        | "ALIGNMENT"
+        | "DUPLICATION"
+        | "REFERENCE"
+        | "SUPERSEDES"
+        | "OTHER";
+      bucket:
+        | "conflict"
+        | "alignment"
+        | "temporal_shift_candidate"
+        | "scope_variant_candidate"
+        | "reference";
+      requiresAnalystReview: boolean;
+      sameActor: boolean;
+      scopeWarning: boolean;
+      confidence: number | null;
+      reason: string;
+      rationale: string | null;
+      issueTitle: string | null;
+      fromDocumentId: string;
+      fromDocumentTitle: string;
+      toDocumentId: string;
+      toDocumentTitle: string;
+      fromAgencyName: string | null;
+      toAgencyName: string | null;
+    }>;
+    overrideHints: Array<{
+      relationId: string;
+      relationType:
+        | "CONTRADICTION"
+        | "TENSION"
+        | "OVERRIDE"
+        | "REINFORCEMENT"
+        | "ALIGNMENT"
+        | "DUPLICATION"
+        | "REFERENCE"
+        | "SUPERSEDES"
+        | "OTHER";
+      preferredDocumentId: string;
+      preferredDocumentTitle: string;
+      supersededDocumentId: string;
+      supersededDocumentTitle: string;
+      confidence: number | null;
+      basis: string;
+    }>;
+    involvedDocumentIds: string[];
+  };
   retrievalDecision: {
     shouldAutoSelect: boolean;
     recommendedDocumentId: string | null;

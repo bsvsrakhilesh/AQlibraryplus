@@ -187,6 +187,35 @@ function formatTemporalModeLabel(
   }
 }
 
+function formatRelationTypeLabel(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatContradictionBucketLabel(
+  value:
+    | "conflict"
+    | "alignment"
+    | "temporal_shift_candidate"
+    | "scope_variant_candidate"
+    | "reference",
+) {
+  switch (value) {
+    case "conflict":
+      return "Conflict";
+    case "temporal_shift_candidate":
+      return "Position shift candidate";
+    case "scope_variant_candidate":
+      return "Scope variant candidate";
+    case "alignment":
+      return "Alignment";
+    default:
+      return "Reference";
+  }
+}
+
 function formatRetrievalLaneLabel(
   value:
     | "anchor"
@@ -1039,6 +1068,26 @@ export default function GovernanceWorkspacePage() {
       "Diversity balancing is inactive until a broad evidence run produces enough candidates.",
     balancedBy: [],
   };
+
+  const contradictionFoundation = workspaceEvidenceQuery.data
+    ?.contradictionFoundation ?? {
+    active: false,
+    rationale:
+      "No contradiction or override signals are available until a multi-document evidence set is retrieved.",
+    summary: {
+      contradictionCount: 0,
+      reviewCount: 0,
+      overrideHintCount: 0,
+    },
+    candidates: [],
+    overrideHints: [],
+    involvedDocumentIds: [],
+  };
+
+  const contradictionLinkedDocumentIds = useMemo(
+    () => new Set(contradictionFoundation.involvedDocumentIds),
+    [contradictionFoundation.involvedDocumentIds],
+  );
 
   const documentSummary = overview?.summary ?? {
     agencyCount: 0,
@@ -1924,6 +1973,129 @@ export default function GovernanceWorkspacePage() {
                 </div>
               ) : null}
 
+              {contradictionFoundation.active ? (
+                <div className="mt-3 rounded-2xl border border-rose-200/80 bg-rose-50/60 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-rose-700">
+                    Contradiction foundation
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {contradictionFoundation.rationale}
+                  </p>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-700">
+                      Contradiction signals{" "}
+                      {contradictionFoundation.summary.contradictionCount}
+                    </span>
+                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-700">
+                      Needs review {contradictionFoundation.summary.reviewCount}
+                    </span>
+                    <span className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-xs font-medium text-sky-700">
+                      Override hints{" "}
+                      {contradictionFoundation.summary.overrideHintCount}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                    <div className="rounded-2xl border border-white/80 bg-white/80 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Conflict candidates
+                      </div>
+
+                      {contradictionFoundation.candidates.length ? (
+                        <div className="mt-3 space-y-3">
+                          {contradictionFoundation.candidates.map((item) => (
+                            <div
+                              key={item.relationId}
+                              className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
+                                  {formatContradictionBucketLabel(item.bucket)}
+                                </span>
+                                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                                  {formatRelationTypeLabel(item.relationType)}
+                                </span>
+                                {item.requiresAnalystReview ? (
+                                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                    Analyst review
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="mt-2 text-sm font-semibold text-slate-900">
+                                {item.fromDocumentTitle} →{" "}
+                                {item.toDocumentTitle}
+                              </div>
+
+                              <p className="mt-2 text-sm leading-6 text-slate-600">
+                                {item.reason}
+                              </p>
+
+                              {item.rationale ? (
+                                <p className="mt-2 text-xs leading-5 text-slate-500">
+                                  {item.rationale}
+                                </p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm leading-6 text-slate-500">
+                          No explicit contradiction-style relations were
+                          surfaced in the current evidence set.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/80 bg-white/80 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Override hints
+                      </div>
+
+                      {contradictionFoundation.overrideHints.length ? (
+                        <div className="mt-3 space-y-3">
+                          {contradictionFoundation.overrideHints.map((item) => (
+                            <div
+                              key={item.relationId}
+                              className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                                  {formatRelationTypeLabel(item.relationType)}
+                                </span>
+                                {item.confidence !== null ? (
+                                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                                    Confidence {item.confidence.toFixed(2)}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="mt-2 text-sm font-semibold text-slate-900">
+                                Prefer {item.preferredDocumentTitle}
+                              </div>
+
+                              <p className="mt-2 text-sm leading-6 text-slate-600">
+                                {item.basis}
+                              </p>
+
+                              <div className="mt-2 text-xs text-slate-500">
+                                May supersede: {item.supersededDocumentTitle}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm leading-6 text-slate-500">
+                          No explicit override or supersession hints were
+                          surfaced yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {!retrievalDecision.shouldAutoSelect &&
               retrievalDecision.recommendedDocumentId ? (
                 <div className="mt-3">
@@ -1977,6 +2149,13 @@ export default function GovernanceWorkspacePage() {
                         retrievalDecision.recommendedDocumentId ? (
                           <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sky-700">
                             Top suggestion
+                          </span>
+                        ) : null}
+                        {contradictionLinkedDocumentIds.has(
+                          candidate.documentId,
+                        ) ? (
+                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-rose-700">
+                            Conflict-linked
                           </span>
                         ) : null}
                         {candidate.temporalReason ? (
