@@ -209,6 +209,21 @@ function formatCaseTrailEventTypeLabel(
   }
 }
 
+function formatComparisonSurfaceLabel(value: string) {
+  switch (value) {
+    case "conflict":
+      return "Conflict-heavy pair";
+    case "temporal_shift_candidate":
+      return "Position shift pair";
+    case "scope_variant_candidate":
+      return "Scope variant pair";
+    case "alignment":
+      return "Alignment pair";
+    default:
+      return "Reference-linked pair";
+  }
+}
+
 function formatContradictionBucketLabel(
   value:
     | "conflict"
@@ -1111,6 +1126,18 @@ export default function GovernanceWorkspacePage() {
       linkedDocumentCount: 0,
     },
     chains: [],
+  };
+
+  const comparisonSurface = workspaceEvidenceQuery.data?.comparisonSurface ?? {
+    active: false,
+    rationale:
+      "No document-to-document comparison pairs are available until contradiction and override signals are assembled.",
+    summary: {
+      comparisonCount: 0,
+      reviewCount: 0,
+      preferredPairCount: 0,
+    },
+    comparisons: [],
   };
 
   const caseTrailFoundation = workspaceEvidenceQuery.data
@@ -2227,6 +2254,94 @@ export default function GovernanceWorkspacePage() {
                       )}
                     </div>
                   </div>
+                </div>
+              ) : null}
+
+              {comparisonSurface.active ? (
+                <div className="mt-3 rounded-2xl border border-sky-200/80 bg-sky-50/40 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                    Document comparison surface
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {comparisonSurface.rationale}
+                  </p>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-xs font-medium text-sky-700">
+                      Comparisons {comparisonSurface.summary.comparisonCount}
+                    </span>
+                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-700">
+                      Needs review {comparisonSurface.summary.reviewCount}
+                    </span>
+                    <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-xs font-medium text-violet-700">
+                      Preferred pairs {comparisonSurface.summary.preferredPairCount}
+                    </span>
+                  </div>
+
+                  {comparisonSurface.comparisons.length ? (
+                    <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                      {comparisonSurface.comparisons.map((comparison) => (
+                        <div
+                          key={comparison.comparisonKey}
+                          className="rounded-2xl border border-slate-200/80 bg-white/80 p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                              {formatComparisonSurfaceLabel(
+                                comparison.strongestBucket,
+                              )}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                              Conflict signals {comparison.contradictionSignalCount}
+                            </span>
+                            {comparison.overrideHintCount > 0 ? (
+                              <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                                Override hints {comparison.overrideHintCount}
+                              </span>
+                            ) : null}
+                            {comparison.reviewCount > 0 ? (
+                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                Review {comparison.reviewCount}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-2 text-sm font-semibold text-slate-900">
+                            {comparison.documentTitles.join(" ↔ ")}
+                          </div>
+
+                          {comparison.issueTitle ? (
+                            <div className="mt-2">
+                              <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-xs font-medium text-fuchsia-700">
+                                {comparison.issueTitle}
+                              </span>
+                            </div>
+                          ) : null}
+
+                          <p className="mt-2 text-sm leading-6 text-slate-600">
+                            {comparison.changeSummary}
+                          </p>
+
+                          <div className="mt-2 text-xs leading-5 text-slate-500">
+                            {comparison.strongestReason}
+                          </div>
+
+                          {comparison.preferredDocumentTitle ? (
+                            <div className="mt-3 rounded-2xl border border-violet-200/80 bg-violet-50/60 px-3 py-2 text-xs leading-5 text-violet-800">
+                              Prefer {comparison.preferredDocumentTitle}
+                              {comparison.supersededDocumentTitle
+                                ? ` over ${comparison.supersededDocumentTitle}`
+                                : ""}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm leading-6 text-slate-500">
+                      No document-to-document comparison pairs were assembled for the current evidence set.
+                    </p>
+                  )}
                 </div>
               ) : null}
 

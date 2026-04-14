@@ -2070,6 +2070,48 @@ export type GovernanceWorkspaceEvidenceResponse = {
       basis: string;
     }>;
   };
+  comparisonSurface: {
+    active: boolean;
+    rationale: string;
+    summary: {
+      comparisonCount: number;
+      reviewCount: number;
+      preferredPairCount: number;
+    };
+    comparisons: Array<{
+      comparisonKey: string;
+      issueTitle: string | null;
+      documentIds: string[];
+      documentTitles: string[];
+      contradictionSignalCount: number;
+      reviewCount: number;
+      overrideHintCount: number;
+      strongestBucket:
+        | "conflict"
+        | "alignment"
+        | "temporal_shift_candidate"
+        | "scope_variant_candidate"
+        | "reference";
+      strongestReason: string;
+      relationTypes: Array<
+        | "CONTRADICTION"
+        | "TENSION"
+        | "OVERRIDE"
+        | "REINFORCEMENT"
+        | "ALIGNMENT"
+        | "DUPLICATION"
+        | "REFERENCE"
+        | "SUPERSEDES"
+        | "OTHER"
+      >;
+      preferredDocumentId: string | null;
+      preferredDocumentTitle: string | null;
+      supersededDocumentId: string | null;
+      supersededDocumentTitle: string | null;
+      involvedChainKeys: string[];
+      changeSummary: string;
+    }>;
+  };
   caseTrailFoundation: {
     active: boolean;
     rationale: string;

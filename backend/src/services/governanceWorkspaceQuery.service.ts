@@ -230,6 +230,41 @@ type GovernanceWorkspaceCaseTrailFoundation = {
   events: GovernanceWorkspaceCaseTrailEvent[];
 };
 
+type GovernanceWorkspaceDocumentComparison = {
+  comparisonKey: string;
+  issueTitle: string | null;
+  documentIds: string[];
+  documentTitles: string[];
+  contradictionSignalCount: number;
+  reviewCount: number;
+  overrideHintCount: number;
+  strongestBucket:
+    | "conflict"
+    | "alignment"
+    | "temporal_shift_candidate"
+    | "scope_variant_candidate"
+    | "reference";
+  strongestReason: string;
+  relationTypes: DocumentRelationType[];
+  preferredDocumentId: string | null;
+  preferredDocumentTitle: string | null;
+  supersededDocumentId: string | null;
+  supersededDocumentTitle: string | null;
+  involvedChainKeys: string[];
+  changeSummary: string;
+};
+
+type GovernanceWorkspaceComparisonSurface = {
+  active: boolean;
+  rationale: string;
+  summary: {
+    comparisonCount: number;
+    reviewCount: number;
+    preferredPairCount: number;
+  };
+  comparisons: GovernanceWorkspaceDocumentComparison[];
+};
+
 type GovernanceWorkspaceOverrideChain = {
   chainKey: string;
   documentIds: string[];
@@ -1627,10 +1662,204 @@ function caseTrailEventTypePriority(
   }
 }
 
+function buildComparisonSurface(args: {
+  contradictionFoundation: GovernanceWorkspaceContradictionFoundation;
+  overrideChainFoundation: GovernanceWorkspaceOverrideChainFoundation;
+}): GovernanceWorkspaceComparisonSurface {
+  const map = new Map<
+    string,
+    {
+      issueTitle: string | null;
+      documentIds: string[];
+      documentTitles: string[];
+      contradictionSignalCount: number;
+      reviewCount: number;
+      overrideHintCount: number;
+      strongestBucket:
+        | "conflict"
+        | "alignment"
+        | "temporal_shift_candidate"
+        | "scope_variant_candidate"
+        | "reference";
+      strongestReason: string;
+      strongestPriority: number;
+      relationTypes: Set<DocumentRelationType>;
+      preferredDocumentId: string | null;
+      preferredDocumentTitle: string | null;
+      supersededDocumentId: string | null;
+      supersededDocumentTitle: string | null;
+      involvedChainKeys: Set<string>;
+    }
+  >();
+
+  const ensurePair = (
+    documentIds: string[],
+    documentTitles: string[],
+    issueTitle: string | null,
+  ) => {
+    const normalizedIds = Array.from(new Set(documentIds)).sort();
+    const normalizedTitles = Array.from(new Set(documentTitles)).slice(0, 2);
+    const key = normalizedIds.join("::");
+    const existing = map.get(key) ?? {
+      issueTitle,
+      documentIds: normalizedIds,
+      documentTitles: normalizedTitles,
+      contradictionSignalCount: 0,
+      reviewCount: 0,
+      overrideHintCount: 0,
+      strongestBucket: "reference" as const,
+      strongestReason: "",
+      strongestPriority: 0,
+      relationTypes: new Set<DocumentRelationType>(),
+      preferredDocumentId: null,
+      preferredDocumentTitle: null,
+      supersededDocumentId: null,
+      supersededDocumentTitle: null,
+      involvedChainKeys: new Set<string>(),
+    };
+
+    if (!existing.issueTitle && issueTitle) existing.issueTitle = issueTitle;
+    if (!existing.documentTitles.length && normalizedTitles.length) {
+      existing.documentTitles = normalizedTitles;
+    }
+
+    map.set(key, existing);
+    return [key, existing] as const;
+  };
+
+  for (const item of args.contradictionFoundation.candidates) {
+    const [_, pair] = ensurePair(
+      [item.fromDocumentId, item.toDocumentId],
+      [item.fromDocumentTitle, item.toDocumentTitle],
+      item.issueTitle,
+    );
+
+    pair.contradictionSignalCount += 1;
+    if (item.requiresAnalystReview) pair.reviewCount += 1;
+    pair.relationTypes.add(item.relationType);
+
+    const priority = relationBucketPriority(item.bucket);
+    if (priority > pair.strongestPriority) {
+      pair.strongestPriority = priority;
+      pair.strongestBucket = item.bucket;
+      pair.strongestReason = item.reason;
+    }
+  }
+
+  for (const item of args.contradictionFoundation.overrideHints) {
+    const [_, pair] = ensurePair(
+      [item.preferredDocumentId, item.supersededDocumentId],
+      [item.preferredDocumentTitle, item.supersededDocumentTitle],
+      null,
+    );
+
+    pair.overrideHintCount += 1;
+    pair.relationTypes.add(item.relationType);
+    pair.preferredDocumentId = item.preferredDocumentId;
+    pair.preferredDocumentTitle = item.preferredDocumentTitle;
+    pair.supersededDocumentId = item.supersededDocumentId;
+    pair.supersededDocumentTitle = item.supersededDocumentTitle;
+
+    if (!pair.strongestReason) {
+      pair.strongestReason = item.basis;
+    }
+  }
+
+  for (const chain of args.overrideChainFoundation.chains) {
+    for (let i = 0; i < chain.documentIds.length - 1; i += 1) {
+      const leftId = chain.documentIds[i];
+      const rightId = chain.documentIds[i + 1];
+      const leftTitle = chain.documentTitles[i] ?? leftId;
+      const rightTitle = chain.documentTitles[i + 1] ?? rightId;
+      const [_, pair] = ensurePair(
+        [leftId, rightId],
+        [leftTitle, rightTitle],
+        null,
+      );
+      pair.involvedChainKeys.add(chain.chainKey);
+      if (!pair.strongestReason) {
+        pair.strongestReason = chain.basis;
+      }
+    }
+  }
+
+  const comparisons = Array.from(map.entries())
+    .map(([comparisonKey, value]) => {
+      const changeSummary = value.preferredDocumentTitle
+        ? `Likely position shift from ${value.supersededDocumentTitle ?? "earlier record"} to ${value.preferredDocumentTitle}.`
+        : value.strongestReason ||
+          "This document pair contains comparison signals worth analyst review.";
+
+      return {
+        comparisonKey,
+        issueTitle: value.issueTitle,
+        documentIds: value.documentIds,
+        documentTitles: value.documentTitles,
+        contradictionSignalCount: value.contradictionSignalCount,
+        reviewCount: value.reviewCount,
+        overrideHintCount: value.overrideHintCount,
+        strongestBucket: value.strongestBucket,
+        strongestReason: value.strongestReason || changeSummary,
+        relationTypes: Array.from(value.relationTypes),
+        preferredDocumentId: value.preferredDocumentId,
+        preferredDocumentTitle: value.preferredDocumentTitle,
+        supersededDocumentId: value.supersededDocumentId,
+        supersededDocumentTitle: value.supersededDocumentTitle,
+        involvedChainKeys: Array.from(value.involvedChainKeys),
+        changeSummary,
+      };
+    })
+    .sort((a, b) => {
+      const reviewGap = b.reviewCount - a.reviewCount;
+      if (reviewGap !== 0) return reviewGap;
+      const signalGap =
+        b.contradictionSignalCount +
+        b.overrideHintCount -
+        (a.contradictionSignalCount + a.overrideHintCount);
+      if (signalGap !== 0) return signalGap;
+      const bucketGap =
+        relationBucketPriority(b.strongestBucket) -
+        relationBucketPriority(a.strongestBucket);
+      if (bucketGap !== 0) return bucketGap;
+      return a.documentTitles
+        .join(" ")
+        .localeCompare(b.documentTitles.join(" "));
+    })
+    .slice(0, 8);
+
+  if (!comparisons.length) {
+    return {
+      active: false,
+      rationale:
+        "No document-to-document comparison pairs were assembled from the current contradiction and override signals.",
+      summary: {
+        comparisonCount: 0,
+        reviewCount: 0,
+        preferredPairCount: 0,
+      },
+      comparisons: [],
+    };
+  }
+
+  return {
+    active: true,
+    rationale:
+      "This comparison surface groups document pairs so you can inspect what conflicts, what changed, and what may supersede what.",
+    summary: {
+      comparisonCount: comparisons.length,
+      reviewCount: comparisons.filter((item) => item.reviewCount > 0).length,
+      preferredPairCount: comparisons.filter((item) => item.preferredDocumentId)
+        .length,
+    },
+    comparisons,
+  };
+}
+
 function buildCaseTrailFoundation(args: {
   ranked: RankedCandidate[];
   contradictionFoundation: GovernanceWorkspaceContradictionFoundation;
   overrideChainFoundation: GovernanceWorkspaceOverrideChainFoundation;
+  comparisonSurface: GovernanceWorkspaceComparisonSurface;
   workflowMode: "landscape" | "case_trace";
 }): GovernanceWorkspaceCaseTrailFoundation {
   if (!args.ranked.length) {
@@ -1769,8 +1998,37 @@ function buildCaseTrailFoundation(args: {
       };
     });
 
+  const comparisonEvents: GovernanceWorkspaceCaseTrailEvent[] =
+    args.comparisonSurface.comparisons.map((comparison) => {
+      const comparisonCandidates = comparison.documentIds
+        .map((documentId) => candidateByDocumentId.get(documentId))
+        .filter((item): item is RankedCandidate => Boolean(item));
+
+      const msValues = comparisonCandidates
+        .map((candidate) => candidateBestKnownDate(candidate))
+        .filter((value): value is number => value !== null);
+
+      const { sortDate, dateLabel } = formatCaseTrailDate(
+        msValues.length ? Math.max(...msValues) : null,
+      );
+
+      return {
+        eventId: `comparison:${comparison.comparisonKey}`,
+        eventType: "conflict_cluster",
+        title: comparison.documentTitles.join(" ↔ "),
+        subtitle: `${comparison.contradictionSignalCount} conflict signal${comparison.contradictionSignalCount === 1 ? "" : "s"}`,
+        issueTitle: comparison.issueTitle,
+        narrative: comparison.changeSummary,
+        sortDate,
+        dateLabel,
+        documentIds: comparison.documentIds,
+        confidence: null,
+      };
+    });
+
   const events = [
     ...documentEvents,
+    ...comparisonEvents,
     ...conflictEvents,
     ...overrideChainEvents,
     ...overrideEvents,
@@ -1802,12 +2060,12 @@ function buildCaseTrailFoundation(args: {
       args.ranked.length > 1,
     rationale:
       args.workflowMode === "case_trace"
-        ? "This case trail orders retrieved documents, conflict clusters, override chains, and override hints into a single evolving timeline."
-        : "This trail shows how the retrieved evidence evolves over time, including conflicts, override chains, and possible supersession.",
+        ? "This case trail orders retrieved documents, document comparisons, conflict clusters, override chains, and override hints into a single evolving timeline."
+        : "This trail shows how the retrieved evidence evolves over time, including document comparisons, conflicts, override chains, and possible supersession.",
     summary: {
       eventCount: events.length,
       documentEventCount: documentEvents.length,
-      conflictEventCount: conflictEvents.length,
+      conflictEventCount: conflictEvents.length + comparisonEvents.length,
       overrideEventCount: overrideEvents.length,
       overrideChainEventCount: overrideChainEvents.length,
     },
@@ -3017,10 +3275,16 @@ export async function queryGovernanceWorkspaceEvidence(
     contradictionFoundation,
   });
 
+  const comparisonSurface = buildComparisonSurface({
+    contradictionFoundation,
+    overrideChainFoundation,
+  });
+
   const caseTrailFoundation = buildCaseTrailFoundation({
     ranked: diversified,
     contradictionFoundation,
     overrideChainFoundation,
+    comparisonSurface,
     workflowMode: workflow.resolvedMode,
   });
 
@@ -3087,6 +3351,7 @@ export async function queryGovernanceWorkspaceEvidence(
     diversityControl: diversityResult.control,
     contradictionFoundation,
     overrideChainFoundation,
+    comparisonSurface,
     caseTrailFoundation,
     retrievalDecision,
     selectedDocumentId: retrievalDecision.shouldAutoSelect
