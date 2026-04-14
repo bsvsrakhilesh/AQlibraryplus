@@ -174,6 +174,19 @@ function formatDiversityBalancedByLabel(value: string) {
   }
 }
 
+function formatTemporalModeLabel(
+  value: "current_preference" | "historical_neutral" | "neutral",
+) {
+  switch (value) {
+    case "current_preference":
+      return "Current-state preference";
+    case "historical_neutral":
+      return "Historical neutrality";
+    default:
+      return "Temporal neutral";
+  }
+}
+
 function formatRetrievalLaneLabel(
   value:
     | "anchor"
@@ -1012,6 +1025,14 @@ export default function GovernanceWorkspacePage() {
     scoreMargin: null,
   };
 
+  const temporalControl = workspaceEvidenceQuery.data?.temporalControl ?? {
+    active: false,
+    mode: "neutral" as const,
+    rationale:
+      "No strong temporal preference is active until a question signals current-state or historical intent.",
+    preferredSignals: [],
+  };
+
   const diversityControl = workspaceEvidenceQuery.data?.diversityControl ?? {
     active: false,
     rationale:
@@ -1826,6 +1847,12 @@ export default function GovernanceWorkspacePage() {
                   {formatRetrievalConfidenceLabel(retrievalDecision.confidence)}
                 </span>
 
+                {temporalControl.active ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                    {formatTemporalModeLabel(temporalControl.mode)}
+                  </span>
+                ) : null}
+
                 {diversityControl.active ? (
                   <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700">
                     Diversity balancing active
@@ -1854,6 +1881,27 @@ export default function GovernanceWorkspacePage() {
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {retrievalDecision.rationale}
               </p>
+
+              {temporalControl.active ? (
+                <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                    Temporal control
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {temporalControl.rationale}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {temporalControl.preferredSignals.map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-700"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {diversityControl.active ? (
                 <div className="mt-3 rounded-2xl border border-violet-200/80 bg-violet-50/60 p-3">
@@ -1931,6 +1979,11 @@ export default function GovernanceWorkspacePage() {
                             Top suggestion
                           </span>
                         ) : null}
+                        {candidate.temporalReason ? (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
+                            Temporally preferred
+                          </span>
+                        ) : null}
                         {candidate.diversityReason ? (
                           <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2 py-0.5 text-fuchsia-700">
                             Diversity balanced
@@ -1968,6 +2021,12 @@ export default function GovernanceWorkspacePage() {
                       {candidate.clusterReason ? (
                         <div className="mt-3 rounded-2xl border border-violet-200/80 bg-violet-50/60 px-3 py-2 text-xs leading-5 text-violet-800">
                           {candidate.clusterReason}
+                        </div>
+                      ) : null}
+
+                      {candidate.temporalReason ? (
+                        <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50/60 px-3 py-2 text-xs leading-5 text-amber-800">
+                          {candidate.temporalReason}
                         </div>
                       ) : null}
 

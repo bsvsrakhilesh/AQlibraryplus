@@ -64,6 +64,7 @@ type RankedCandidate = CandidateAccumulator & {
   retrievalLanes: GovernanceWorkspaceRetrievalLane[];
   coverageFamilies: GovernanceWorkspaceCoverageFamily[];
   diversityReason: string | null;
+  temporalReason: string | null;
 };
 
 type GovernanceWorkspaceQueryType =
@@ -117,6 +118,13 @@ type GovernanceWorkspaceDiversityControl = {
   active: boolean;
   rationale: string;
   balancedBy: string[];
+};
+
+type GovernanceWorkspaceTemporalControl = {
+  active: boolean;
+  mode: "current_preference" | "historical_neutral" | "neutral";
+  rationale: string;
+  preferredSignals: string[];
 };
 
 const STOP_WORDS = new Set([
@@ -741,6 +749,7 @@ function rankCandidate(candidate: CandidateAccumulator): RankedCandidate {
     retrievalLanes,
     coverageFamilies,
     diversityReason: null,
+    temporalReason: null,
   };
 }
 
@@ -1046,6 +1055,163 @@ function aggregateClusterStats(
       relationCount: 0,
     },
   );
+}
+
+function candidateBestKnownDate(candidate: RankedCandidate) {
+  return (
+    parseIsoDate(candidate.publishedAt) ??
+    parseIsoDate(candidate.updatedAt) ??
+    parseIsoDate(candidate.createdAt)
+  );
+}
+
+function candidateAgeDays(candidate: RankedCandidate) {
+  const bestDate = candidateBestKnownDate(candidate);
+  if (bestDate === null) return null;
+
+  return Math.max(
+    0,
+    Math.floor((Date.now() - bestDate) / (1000 * 60 * 60 * 24)),
+  );
+}
+
+function candidateHasOrderCue(candidate: RankedCandidate) {
+  const haystack = `${candidate.title} ${candidate.summary ?? ""} ${
+    candidate.sourceLabel ?? ""
+  }`.toLowerCase();
+
+  return /\b(order|direction|notification|circular|guideline|guidelines|notice|mandate|regulation|compliance)\b/.test(
+    haystack,
+  );
+}
+
+function candidateHasCurrentCue(candidate: RankedCandidate) {
+  const haystack = `${candidate.title} ${candidate.summary ?? ""} ${
+    candidate.sourceLabel ?? ""
+  }`.toLowerCase();
+
+  return /\b(current|active|in force|effective|latest|ongoing|valid)\b/.test(
+    haystack,
+  );
+}
+
+function resolveTemporalControl(args: {
+  workflowMode: "landscape" | "case_trace";
+  queryType: GovernanceWorkspaceQueryType;
+  question: string;
+  timeHints: string[];
+}): GovernanceWorkspaceTemporalControl {
+  const lower = String(args.question || "").toLowerCase();
+
+  const historicalIntent =
+    args.queryType === "chronology_review" ||
+    /\b(history|historical|timeline|chronology|trace|from\s+\d{4}\s+to\s+\d{4})\b/.test(
+      lower,
+    ) ||
+    args.timeHints.includes("Chronology requested");
+
+  if (historicalIntent) {
+    return {
+      active: false,
+      mode: "historical_neutral",
+      rationale:
+        "This looks like a chronology or historical review, so the workspace avoids over-preferencing the newest evidence.",
+      preferredSignals: ["Chronology requested", "Historical range"],
+    };
+  }
+
+  const currentIntent =
+    args.workflowMode === "landscape" &&
+    (args.queryType === "broad_scan" ||
+      /\b(current|currently|active|latest|today|now|in force)\b/.test(lower) ||
+      args.timeHints.includes("Current or in-force view"));
+
+  if (currentIntent) {
+    return {
+      active: true,
+      mode: "current_preference",
+      rationale:
+        "This looks like a current-state governance question, so the workspace prefers recent and currently operative order-like evidence.",
+      preferredSignals: [
+        "Recent publication or update date",
+        "Order or direction cue",
+        "Current or active wording",
+      ],
+    };
+  }
+
+  return {
+    active: false,
+    mode: "neutral",
+    rationale:
+      "No strong temporal preference was applied for this evidence run.",
+    preferredSignals: [],
+  };
+}
+
+function applyTemporalPreference(args: {
+  ranked: RankedCandidate[];
+  control: GovernanceWorkspaceTemporalControl;
+}) {
+  if (!args.control.active || args.control.mode !== "current_preference") {
+    return args.ranked;
+  }
+
+  return [...args.ranked]
+    .map((candidate) => {
+      let temporalBoost = 0;
+      const notes: string[] = [];
+
+      const ageDays = candidateAgeDays(candidate);
+
+      if (ageDays !== null) {
+        if (ageDays <= 30) {
+          temporalBoost += 10;
+          notes.push("Very recent evidence");
+        } else if (ageDays <= 90) {
+          temporalBoost += 7;
+          notes.push("Recent evidence");
+        } else if (ageDays <= 365) {
+          temporalBoost += 3;
+          notes.push("Still relatively recent");
+        } else if (ageDays > 1095) {
+          temporalBoost -= 6;
+          notes.push("Older evidence for a current-state query");
+        }
+      }
+
+      if (candidateHasOrderCue(candidate)) {
+        temporalBoost += 5;
+        notes.push("Order/direction style record");
+      }
+
+      if (candidateHasCurrentCue(candidate)) {
+        temporalBoost += 4;
+        notes.push("Active/current wording");
+      }
+
+      if (temporalBoost === 0) {
+        return candidate;
+      }
+
+      const temporalReason = notes.join(" • ");
+
+      return {
+        ...candidate,
+        matchScore: candidate.matchScore + temporalBoost,
+        temporalReason,
+        whyRanked: Array.from(
+          new Set([...candidate.whyRanked, ...notes]),
+        ).slice(0, 6),
+      };
+    })
+    .sort((a, b) => {
+      if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+      if (b.authorityScore !== a.authorityScore) {
+        return b.authorityScore - a.authorityScore;
+      }
+      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    });
 }
 
 function normalizeDiversityValue(value: string | null | undefined) {
@@ -1944,8 +2110,18 @@ export async function queryGovernanceWorkspaceEvidence(
     return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
   });
 
+  const temporalControl = resolveTemporalControl({
+    workflowMode: workflow.resolvedMode,
+    queryType: queryUnderstanding.queryType,
+    question: input.question,
+    timeHints: queryUnderstanding.timeHints,
+  });
+
   const diversityResult = diversifyEvidenceCandidates({
-    ranked: clustered,
+    ranked: applyTemporalPreference({
+      ranked: clustered,
+      control: temporalControl,
+    }),
     workflowMode: workflow.resolvedMode,
     queryType: queryUnderstanding.queryType,
     limit: input.limit,
@@ -1995,6 +2171,7 @@ export async function queryGovernanceWorkspaceEvidence(
       retrievalLanes: candidate.retrievalLanes,
       coverageFamilies: candidate.coverageFamilies,
       diversityReason: candidate.diversityReason,
+      temporalReason: candidate.temporalReason,
       stats,
     };
   });
@@ -2011,6 +2188,7 @@ export async function queryGovernanceWorkspaceEvidence(
     },
     workflow,
     queryUnderstanding,
+    temporalControl,
     diversityControl: diversityResult.control,
     retrievalDecision,
     selectedDocumentId: retrievalDecision.shouldAutoSelect

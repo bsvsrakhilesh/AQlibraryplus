@@ -1917,6 +1917,7 @@ export type GovernanceWorkspaceEvidenceCandidate = {
   >;
   coverageFamilies: Array<"anchor" | "metadata" | "graph" | "chunk">;
   diversityReason: string | null;
+  temporalReason: string | null;
   stats: {
     claimCount: number;
     eventCount: number;
@@ -1962,6 +1963,12 @@ export type GovernanceWorkspaceEvidenceResponse = {
       category: string | null;
       jurisdiction: string | null;
     }>;
+  };
+  temporalControl: {
+    active: boolean;
+    mode: "current_preference" | "historical_neutral" | "neutral";
+    rationale: string;
+    preferredSignals: string[];
   };
   diversityControl: {
     active: boolean;
