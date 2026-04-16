@@ -53,6 +53,259 @@ function upstreamErrorMessage(error: any, fallback: string): string {
   return error?.response?.data?.message || error?.message || fallback;
 }
 
+export type InstitutionalSessionLoginProvider =
+  | "openathens"
+  | "proquest"
+  | "nexis"
+  | "pressreader"
+  | "custom";
+
+export type InstitutionalNodeHealth = {
+  ok: true;
+  enabled: boolean;
+  reachable: boolean;
+  nodeName: string | null;
+  browserReady: boolean;
+  headlessDefault: boolean | null;
+  lastLaunchAt: string | null;
+  lastCaptureAt: string | null;
+  lastLoginOpenedAt: string | null;
+  browserChannel: string | null;
+  message: string | null;
+};
+
+type UpstreamNodeHealth = Partial<InstitutionalNodeHealth> & {
+  ok?: boolean;
+  message?: string | null;
+};
+
+export async function getInstitutionalNodeHealthProxy(): Promise<InstitutionalNodeHealth> {
+  if (!env.ICN_ENABLED) {
+    return {
+      ok: true,
+      enabled: false,
+      reachable: false,
+      nodeName: null,
+      browserReady: false,
+      headlessDefault: null,
+      lastLaunchAt: null,
+      lastCaptureAt: null,
+      lastLoginOpenedAt: null,
+      browserChannel: null,
+      message: "Institutional capture is disabled on the backend.",
+    };
+  }
+
+  try {
+    const res = await axios.get<UpstreamNodeHealth>(`${icnBaseUrl()}/health`, {
+      timeout: env.ICN_TIMEOUT_MS,
+      headers: icnHeaders(),
+    });
+
+    const data = res.data || {};
+
+    return {
+      ok: true,
+      enabled: true,
+      reachable: true,
+      nodeName: data.nodeName ?? null,
+      browserReady: Boolean(data.browserReady),
+      headlessDefault:
+        typeof data.headlessDefault === "boolean" ? data.headlessDefault : null,
+      lastLaunchAt: data.lastLaunchAt ?? null,
+      lastCaptureAt: data.lastCaptureAt ?? null,
+      lastLoginOpenedAt: data.lastLoginOpenedAt ?? null,
+      browserChannel:
+        typeof data.browserChannel === "string" ? data.browserChannel : null,
+      message: data.message ?? null,
+    };
+  } catch (error: any) {
+    return {
+      ok: true,
+      enabled: true,
+      reachable: false,
+      nodeName: null,
+      browserReady: false,
+      headlessDefault: null,
+      lastLaunchAt: null,
+      lastCaptureAt: null,
+      lastLoginOpenedAt: null,
+      browserChannel: null,
+      message: upstreamErrorMessage(
+        error,
+        "Could not read institutional node health.",
+      ),
+    };
+  }
+}
+
+export type InstitutionalSessionStatus = {
+  ok: true;
+  enabled: boolean;
+  reachable: boolean;
+  authenticated: boolean;
+  nodeName: string | null;
+  pages: number;
+  cookieCount: number;
+  headless: boolean | null;
+  providerHints: string[];
+  lastLaunchAt: string | null;
+  lastCaptureAt: string | null;
+  lastLoginOpenedAt: string | null;
+  message: string | null;
+};
+
+type UpstreamSessionStatus = Partial<InstitutionalSessionStatus> & {
+  ok?: boolean;
+  message?: string | null;
+};
+
+export async function getInstitutionalSessionStatusProxy(): Promise<InstitutionalSessionStatus> {
+  if (!env.ICN_ENABLED) {
+    return {
+      ok: true,
+      enabled: false,
+      reachable: false,
+      authenticated: false,
+      nodeName: null,
+      pages: 0,
+      cookieCount: 0,
+      headless: null,
+      providerHints: [],
+      lastLaunchAt: null,
+      lastCaptureAt: null,
+      lastLoginOpenedAt: null,
+      message: "Institutional capture is disabled on the backend.",
+    };
+  }
+
+  try {
+    const res = await axios.get<UpstreamSessionStatus>(
+      `${icnBaseUrl()}/session/status`,
+      {
+        timeout: env.ICN_TIMEOUT_MS,
+        headers: icnHeaders(),
+      },
+    );
+
+    const data = res.data || {};
+    const cookieCount =
+      typeof data.cookieCount === "number" ? data.cookieCount : 0;
+    const providerHints = Array.isArray(data.providerHints)
+      ? data.providerHints.filter(Boolean)
+      : [];
+
+    return {
+      ok: true,
+      enabled: true,
+      reachable: true,
+      authenticated: cookieCount > 0 || providerHints.length > 0,
+      nodeName: data.nodeName ?? null,
+      pages: typeof data.pages === "number" ? data.pages : 0,
+      cookieCount,
+      headless: typeof data.headless === "boolean" ? data.headless : null,
+      providerHints,
+      lastLaunchAt: data.lastLaunchAt ?? null,
+      lastCaptureAt: data.lastCaptureAt ?? null,
+      lastLoginOpenedAt: data.lastLoginOpenedAt ?? null,
+      message: data.message ?? null,
+    };
+  } catch (error: any) {
+    return {
+      ok: true,
+      enabled: true,
+      reachable: false,
+      authenticated: false,
+      nodeName: null,
+      pages: 0,
+      cookieCount: 0,
+      headless: null,
+      providerHints: [],
+      lastLaunchAt: null,
+      lastCaptureAt: null,
+      lastLoginOpenedAt: null,
+      message: upstreamErrorMessage(
+        error,
+        "Could not read institutional session status.",
+      ),
+    };
+  }
+}
+
+export type InstitutionalOpenLoginResult = {
+  ok: true;
+  enabled: boolean;
+  reachable: boolean;
+  nodeName: string | null;
+  message: string | null;
+  startUrl: string | null;
+  browserChannel: string | null;
+};
+
+type UpstreamOpenLoginResult = Partial<InstitutionalOpenLoginResult> & {
+  ok?: boolean;
+  message?: string | null;
+};
+
+export async function openInstitutionalLoginProxy(input: {
+  provider?: InstitutionalSessionLoginProvider;
+  url?: string | null;
+}): Promise<InstitutionalOpenLoginResult> {
+  if (!env.ICN_ENABLED) {
+    return {
+      ok: true,
+      enabled: false,
+      reachable: false,
+      nodeName: null,
+      message: "Institutional capture is disabled on the backend.",
+      startUrl: null,
+      browserChannel: null,
+    };
+  }
+
+  try {
+    const res = await axios.post<UpstreamOpenLoginResult>(
+      `${icnBaseUrl()}/session/open-login`,
+      {
+        provider: input.provider,
+        url: input.url ?? null,
+      },
+      {
+        timeout: env.ICN_TIMEOUT_MS,
+        headers: {
+          ...icnHeaders(),
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const data = res.data || {};
+
+    return {
+      ok: true,
+      enabled: true,
+      reachable: true,
+      nodeName: data.nodeName ?? null,
+      message: data.message ?? null,
+      startUrl: data.startUrl ?? null,
+      browserChannel: data.browserChannel ?? null,
+    };
+  } catch (error: any) {
+    return {
+      ok: true,
+      enabled: true,
+      reachable: false,
+      nodeName: null,
+      message: upstreamErrorMessage(
+        error,
+        "Could not open institutional login window.",
+      ),
+      startUrl: null,
+      browserChannel: null,
+    };
+  }
+}
+
 export async function inspectInstitutionalArticleProxy(input: {
   url: string;
 }): Promise<InstitutionalArticleInspection> {
