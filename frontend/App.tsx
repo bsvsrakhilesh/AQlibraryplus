@@ -125,19 +125,16 @@ const App: React.FC = () => {
     hydrateCollectionsFromBackend();
   }, []);
 
-  const renderPages = () => (
-    <>
-      <div
-        style={{ display: currentPage === "url-collector" ? "block" : "none" }}
-      >
-        <UrlCollectorPage />
-      </div>
+  const renderPages = () => {
+    if (currentPage === "url-collector") return <UrlCollectorPage />;
+    if (currentPage === "saved-urls") return <SavedUrlsPage />;
+    if (currentPage === "file-manager") return <FileManagerPage />;
+    if (currentPage === "governance-workspace") {
+      return <GovernanceWorkspacePage />;
+    }
 
-      {currentPage === "saved-urls" && <SavedUrlsPage />}
-      {currentPage === "file-manager" && <FileManagerPage />}
-      {currentPage === "governance-workspace" && <GovernanceWorkspacePage />}
-    </>
-  );
+    return null;
+  };
 
   const isWorkspacePage = workspacePages.includes(currentPage);
 
