@@ -10,22 +10,13 @@ import type {
   ClaimCitationLink,
 } from "../../lib/notebookClient";
 import { Loader2 } from "lucide-react";
+import {
+  emitNotebookEvent,
+  subscribeNotebookEvent,
+} from "../../lib/notebookEvents";
 import CitationBadge from "./CitationBadge";
 import MessageActions from "./MessageActions";
 import SourceReaderDrawer from "./SourceReaderDrawer";
-
-type ChatPromptDetail =
-  | string
-  | {
-      prompt: string;
-      /** default true */
-      autoSend?: boolean;
-      /** if true, the final assistant answer is pushed into Notes as a new artifact */
-      saveToNotes?: boolean;
-      noteTitle?: string;
-      /** append (default) or replace the current note editor contents */
-      noteMode?: "append" | "replace";
-    };
 
 type Msg = {
   id: string;
@@ -332,15 +323,11 @@ export default function ChatPanel({
     const clean = String(payload?.content ?? "").trim();
     if (!clean) return;
 
-    window.dispatchEvent(
-      new CustomEvent("nb:add-note", {
-        detail: {
-          content: clean,
-          mode: "append",
-          citations: payload?.citations ?? null,
-        },
-      }),
-    );
+    emitNotebookEvent("add-note", {
+      content: clean,
+      mode: "append",
+      citations: payload?.citations ?? null,
+    });
   };
 
   const buildHistory = (maxMsgs = 12) => {
@@ -412,39 +399,35 @@ export default function ChatPanel({
         setMessages((m) => [...m, base]);
 
         if (saveToNotes?.title) {
-          window.dispatchEvent(
-            new CustomEvent("nb:add-note", {
-              detail: {
-                title: saveToNotes.title,
-                content: res.answer,
-                mode: saveToNotes.mode,
-                citations: {
-                  version: "note-provenance-v1",
-                  artifacts: [
-                    {
-                      kind: "chat-answer",
-                      runId: res.runId ?? null,
-                      promptVersion: res.promptVersion ?? null,
-                      model: res.model ?? null,
-                      answerMode: res.mode ?? null,
-                      createdAt: new Date().toISOString(),
-                      latencyMs: res.latencyMs ?? null,
-                      answer: res.answer,
-                      citations: res.citations ?? [],
-                      evidence:
-                        Array.isArray(res.evidence) && res.evidence.length
-                          ? res.evidence
-                          : undefined,
-                      claimLinks:
-                        Array.isArray(res.claimLinks) && res.claimLinks.length
-                          ? res.claimLinks
-                          : undefined,
-                    },
-                  ],
-                } as NoteProvenanceBundle,
-              },
-            }),
-          );
+          emitNotebookEvent("add-note", {
+            title: saveToNotes.title,
+            content: res.answer,
+            mode: saveToNotes.mode,
+            citations: {
+              version: "note-provenance-v1",
+              artifacts: [
+                {
+                  kind: "chat-answer",
+                  runId: res.runId ?? null,
+                  promptVersion: res.promptVersion ?? null,
+                  model: res.model ?? null,
+                  answerMode: res.mode ?? null,
+                  createdAt: new Date().toISOString(),
+                  latencyMs: res.latencyMs ?? null,
+                  answer: res.answer,
+                  citations: res.citations ?? [],
+                  evidence:
+                    Array.isArray(res.evidence) && res.evidence.length
+                      ? res.evidence
+                      : undefined,
+                  claimLinks:
+                    Array.isArray(res.claimLinks) && res.claimLinks.length
+                      ? res.claimLinks
+                      : undefined,
+                },
+              ],
+            } as NoteProvenanceBundle,
+          });
         }
 
         let i = 0;
@@ -485,8 +468,7 @@ export default function ChatPanel({
 
   // Notebook Guide / Studio can fire a "send this prompt" event.
   useEffect(() => {
-    function onPrompt(e: any) {
-      const d: ChatPromptDetail = e?.detail;
+    return subscribeNotebookEvent("chat-prompt", (d) => {
       const detailObj =
         typeof d === "string" ? { prompt: d } : d || { prompt: "" };
       const prompt = String((detailObj as any).prompt || "").trim();
@@ -498,7 +480,6 @@ export default function ChatPanel({
       const noteMode: "append" | "replace" =
         (detailObj as any).noteMode === "replace" ? "replace" : "append";
 
-      // Pre-fill composer for transparency
       setInput(prompt);
       composerRef.current?.focus();
 
@@ -506,17 +487,14 @@ export default function ChatPanel({
         setInput("");
         const note =
           saveToNotes && noteTitle
-            ? ({ title: noteTitle, mode: noteMode } as {
-                title: string;
-                mode: "append" | "replace";
-              })
+            ? ({
+                title: noteTitle,
+                mode: noteMode,
+              } as { title: string; mode: "append" | "replace" })
             : undefined;
         send(prompt, note);
       }
-    }
-
-    window.addEventListener("nb:chat-prompt", onPrompt as any);
-    return () => window.removeEventListener("nb:chat-prompt", onPrompt as any);
+    });
   }, [notebookId, pending, send]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -622,9 +600,7 @@ export default function ChatPanel({
 
           <button
             type="button"
-            onClick={() =>
-              window.dispatchEvent(new CustomEvent("nb:manage-sources"))
-            }
+            onClick={() => emitNotebookEvent("manage-sources", undefined)}
             className="text-[11px] px-3 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
             title="Manage which sources are included"
           >

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { notebookClient as api, ChunkReader } from "../../lib/notebookClient";
+import { emitNotebookEvent } from "../../lib/notebookEvents";
 
 function clsx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -298,18 +299,15 @@ export default function SourceReaderDrawer({
     const header = `${title} · page ${viewPage}`;
     await navigator.clipboard.writeText(`${header}\n\n${out}`.trim());
 
-    window.dispatchEvent(
-      new CustomEvent("nb:toast", {
-        detail: { kind: "success", text: "Evidence copied to clipboard." },
-      }),
-    );
+    emitNotebookEvent("toast", {
+      kind: "success",
+      text: "Evidence copied to clipboard.",
+    });
   };
 
   const jumpToSourceCard = () => {
     if (!reader) return;
-    window.dispatchEvent(
-      new CustomEvent("nb:focus-source", { detail: reader.sourceId }),
-    );
+    emitNotebookEvent("focus-source", reader.sourceId);
     onClose();
   };
 
@@ -349,7 +347,7 @@ export default function SourceReaderDrawer({
         : "- (No key points extracted)\n") +
       (sub ? `\n\n_Source: ${sub}_\n` : "\n");
 
-    window.dispatchEvent(new CustomEvent("nb:add-note", { detail: md }));
+    emitNotebookEvent("add-note", md);
     onClose();
   };
 

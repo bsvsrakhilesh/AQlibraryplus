@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notebookClient as api } from "../../lib/notebookClient";
+import { emitNotebookEvent } from "../../lib/notebookEvents";
 
 function clsx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -17,7 +18,7 @@ function uniqueById<T extends { id: string | number }>(items: T[]): T[] {
 }
 
 function sendChatPrompt(detail: any) {
-  window.dispatchEvent(new CustomEvent("nb:chat-prompt", { detail }));
+  emitNotebookEvent("chat-prompt", detail);
 }
 
 function prettyTime(ts?: string | number | Date) {
@@ -92,7 +93,7 @@ function TabButton({ active, onClick, children }: any) {
         "px-4 py-2 text-sm font-semibold",
         active
           ? "border-b-2 border-emerald-600 text-emerald-800"
-          : "text-slate-600 hover:text-slate-800"
+          : "text-slate-600 hover:text-slate-800",
       )}
     >
       {children}
@@ -298,14 +299,20 @@ function NotebookStudio() {
   );
 }
 
-function RecentNotes({ notebookId, notes }: { notebookId: string; notes: any[] }) {
+function RecentNotes({
+  notebookId,
+  notes,
+}: {
+  notebookId: string;
+  notes: any[];
+}) {
   const qc = useQueryClient();
 
   const delM = useMutation({
     mutationFn: (noteId: string) => api.deleteNote(notebookId, noteId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["nb:detail", notebookId] });
-      window.dispatchEvent(new CustomEvent("nb:new-note"));
+      emitNotebookEvent("new-note", undefined);
     },
   });
 
@@ -316,18 +323,22 @@ function RecentNotes({ notebookId, notes }: { notebookId: string; notes: any[] }
           key={n.id}
           role="button"
           tabIndex={0}
-          onClick={() => window.dispatchEvent(new CustomEvent("nb:open-note", { detail: n }))}
+          onClick={() => emitNotebookEvent("open-note", n)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              window.dispatchEvent(new CustomEvent("nb:open-note", { detail: n }));
+              emitNotebookEvent("open-note", n);
             }
           }}
           className="group border rounded-xl p-3 bg-white shadow-sm cursor-pointer hover:bg-slate-50 flex items-start justify-between gap-3"
         >
           <div className="min-w-0">
-            <div className="text-xs font-semibold truncate">{n.title || "Untitled"}</div>
-            <div className="text-[11px] text-gray-500">{prettyTime(n.updatedAt)}</div>
+            <div className="text-xs font-semibold truncate">
+              {n.title || "Untitled"}
+            </div>
+            <div className="text-[11px] text-gray-500">
+              {prettyTime(n.updatedAt)}
+            </div>
           </div>
 
           <button

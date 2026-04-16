@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { List, type RowComponentProps } from "react-window";
 import { apiGet } from "../../lib/api";
+import { emitNotebookEvent } from "../../lib/notebookEvents";
 import { notebookClient as api, type NBSource } from "../../lib/notebookClient";
 import UrlIcon from "../icons/UrlIcon";
 import FileIcon from "../icons/FileIcon";
-
-function emit(event: string, detail?: any) {
-  window.dispatchEvent(new CustomEvent(event, { detail }));
-}
 
 function clsx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -180,6 +178,7 @@ export default function SourcePicker({
   notebookId: string | null;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const qc = useQueryClient();
 
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -406,21 +405,19 @@ export default function SourcePicker({
 
   const attach = async () => {
     if (!notebookId) {
-      window.dispatchEvent(
-        new CustomEvent("nb:toast", {
-          detail: { kind: "error", text: "No active notebook selected." },
-        }),
-      );
+      emitNotebookEvent("toast", {
+        kind: "error",
+        text: "No active notebook selected.",
+      });
       return;
     }
 
     const selectedIds = [...selected].filter((id) => !attachedIds.has(id));
     if (!selectedIds.length) {
-      window.dispatchEvent(
-        new CustomEvent("nb:toast", {
-          detail: { kind: "info", text: "Nothing new to attach." },
-        }),
-      );
+      emitNotebookEvent("toast", {
+        kind: "info",
+        text: "Nothing new to attach.",
+      });
       return;
     }
 
@@ -429,35 +426,44 @@ export default function SourcePicker({
 
       const lookup = new Map(rows.map((r) => [String(r.id), r.raw]));
 
-      const optimisticSources = selectedIds
+      const optimisticSources: NBSource[] = selectedIds
         .map((id) => lookup.get(String(id)))
         .filter(Boolean)
-        .map((x: any) =>
-          kind === "url"
-            ? {
-                id: `temp-${Date.now()}-${x.id}`,
-                notebookId,
-                kind: "URL",
-                url: { id: String(x.id), url: x.url, title: x.title ?? null },
-                file: null,
-                createdAt: now,
-              }
-            : {
-                id: `temp-${Date.now()}-${x.id}`,
-                notebookId,
-                kind: "FILE",
-                url: null,
-                file: {
-                  id: String(x.id),
-                  fileName: x.fileName,
-                  mimeType: x.mimeType ?? null,
+        .map(
+          (x: any): NBSource =>
+            kind === "url"
+              ? {
+                  id: `temp-${Date.now()}-${x.id}`,
+                  notebookId,
+                  kind: "URL",
+                  url: { id: String(x.id), url: x.url, title: x.title ?? null },
+                  file: null,
+                  createdAt: now,
+                }
+              : {
+                  id: `temp-${Date.now()}-${x.id}`,
+                  notebookId,
+                  kind: "FILE",
+                  url: null,
+                  file: {
+                    id: String(x.id),
+                    fileName: x.fileName,
+                    mimeType: x.mimeType ?? null,
+                  },
+                  createdAt: now,
                 },
-                createdAt: now,
-              },
         );
 
-      onClose();
-      emit("nb:sources-optimistic", { notebookId, sources: optimisticSources });
+      qc.setQueryData(["nb:sources", notebookId], (prev: any) => {
+        const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
+        const byId = new Map<string, NBSource>();
+
+        for (const s of [...optimisticSources, ...cur]) {
+          byId.set(String(s.id), s);
+        }
+
+        return [...byId.values()];
+      });
 
       const results = await Promise.allSettled(
         selectedIds.map((id) =>
@@ -478,11 +484,46 @@ export default function SourcePicker({
       );
 
       if (ok.length) {
-        emit("nb:sources-confirmed", { notebookId, sources: ok });
+        qc.setQueryData(["nb:sources", notebookId], (prev: any) => {
+          const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
+          const real = ok as NBSource[];
+
+          const realUrlIds = new Set(
+            real
+              .filter((s) => s.kind === "URL" && s.url?.id)
+              .map((s) => String(s.url!.id)),
+          );
+          const realFileIds = new Set(
+            real
+              .filter((s) => s.kind === "FILE" && s.file?.id)
+              .map((s) => String(s.file!.id)),
+          );
+
+          const kept = cur.filter((s) => {
+            if (!String(s.id).startsWith("temp-")) return true;
+            if (s.kind === "URL") return !realUrlIds.has(String(s.url?.id));
+            if (s.kind === "FILE") return !realFileIds.has(String(s.file?.id));
+            return true;
+          });
+
+          const byId = new Map<string, NBSource>();
+          for (const s of [...real, ...kept]) {
+            byId.set(String(s.id), s);
+          }
+
+          return [...byId.values()];
+        });
+
+        qc.invalidateQueries({ queryKey: ["nb:sources", notebookId] });
+        qc.invalidateQueries({ queryKey: ["nb:detail", notebookId] });
       }
 
       if (!ok.length || bad.length) {
-        emit("nb:sources-rollback", { notebookId });
+        qc.setQueryData(["nb:sources", notebookId], (prev: any) => {
+          const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
+          return cur.filter((s) => !String(s.id).startsWith("temp-"));
+        });
+        qc.invalidateQueries({ queryKey: ["nb:sources", notebookId] });
       }
 
       if (bad.length) {
@@ -493,32 +534,23 @@ export default function SourcePicker({
             ? reason0
             : "Some items failed to attach.");
 
-        window.dispatchEvent(
-          new CustomEvent("nb:toast", {
-            detail: {
-              kind: ok.length ? "warning" : "error",
-              text: ok.length
-                ? `Attached ${ok.length}; failed ${bad.length}. ${msg}`
-                : `Attach failed. ${msg}`,
-            },
-          }),
-        );
+        emitNotebookEvent("toast", {
+          kind: ok.length ? "warning" : "error",
+          text: ok.length
+            ? `Attached ${ok.length}; failed ${bad.length}. ${msg}`
+            : `Attach failed. ${msg}`,
+        });
       } else {
-        window.dispatchEvent(
-          new CustomEvent("nb:toast", {
-            detail: { kind: "success", text: `Attached ${ok.length} items.` },
-          }),
-        );
+        emitNotebookEvent("toast", {
+          kind: "success",
+          text: `Attached ${ok.length} items.`,
+        });
       }
     } catch (e: any) {
-      emit("nb:sources-rollback", { notebookId });
+      emitNotebookEvent("sources-rollback", { notebookId });
 
       const msg = e?.message || "Failed to attach selected items.";
-      window.dispatchEvent(
-        new CustomEvent("nb:toast", {
-          detail: { kind: "error", text: msg },
-        }),
-      );
+      emitNotebookEvent("toast", { kind: "error", text: msg });
     }
   };
 

@@ -19,6 +19,10 @@ import { PlusButton } from "../components/ui/PlusButton";
 import { useToast } from "../components/providers/Toast";
 import { consumeNotebookOpenTarget } from "../lib/notebookLaunch";
 import { apiRequest } from "../lib/api";
+import {
+  emitNotebookEvent,
+  subscribeNotebookEvent,
+} from "../lib/notebookEvents";
 
 function clsx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -136,14 +140,10 @@ export default function NotebookPage() {
   const { notify } = useToast();
 
   useEffect(() => {
-    const onToast = (e: Event) => {
-      const detail = (e as CustomEvent).detail as any;
+    return subscribeNotebookEvent("toast", (detail) => {
       if (!detail) return;
       notify(detail);
-    };
-
-    window.addEventListener("nb:toast", onToast as any);
-    return () => window.removeEventListener("nb:toast", onToast as any);
+    });
   }, [notify]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -314,7 +314,7 @@ export default function NotebookPage() {
     );
     if (!note) return;
 
-    window.dispatchEvent(new CustomEvent("nb:open-note", { detail: note }));
+    emitNotebookEvent("open-note", note);
     pendingOpenTargetRef.current = null;
     setMobileTab("notes");
   }, [activeId, detailQ.data?.notes]);
@@ -853,23 +853,18 @@ export default function NotebookPage() {
 
   // listen for events (when backend maps chunkId -> sourceId, emit nb:focus-source)
   useEffect(() => {
-    const onFocus = (e: Event) => {
-      const sourceId = (e as CustomEvent).detail as string;
+    return subscribeNotebookEvent("focus-source", (sourceId) => {
       if (sourceId) focusSource(sourceId);
-    };
-    window.addEventListener("nb:focus-source", onFocus as any);
-    return () => window.removeEventListener("nb:focus-source", onFocus as any);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const onManage = () => {
-      if (typeof window !== "undefined" && window.innerWidth < 768)
+    return subscribeNotebookEvent("manage-sources", () => {
+      if (typeof window !== "undefined" && window.innerWidth < 768) {
         setMobileTab("sources");
-    };
-    window.addEventListener("nb:manage-sources", onManage as any);
-    return () =>
-      window.removeEventListener("nb:manage-sources", onManage as any);
+      }
+    });
   }, []);
 
   // =========================================================
@@ -877,23 +872,20 @@ export default function NotebookPage() {
   // SourcePicker emits nb:sources-optimistic / confirmed / rollback
   // =========================================================
   useEffect(() => {
-    const onOptimistic = (e: Event) => {
-      const d = (e as CustomEvent).detail as
-        | { notebookId: string; sources: NBSource[] }
-        | undefined;
-      if (!d || !d.notebookId) return;
-      if (d.notebookId !== activeId) return;
+    const unsubOptimistic = subscribeNotebookEvent(
+      "sources-optimistic",
+      (d) => {
+        if (!d || !d.notebookId) return;
+        if (d.notebookId !== activeId) return;
 
-      qc.setQueryData(["nb:sources", d.notebookId], (prev: any) => {
-        const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
-        return uniqueById([...d.sources, ...cur]);
-      });
-    };
+        qc.setQueryData(["nb:sources", d.notebookId], (prev: any) => {
+          const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
+          return uniqueById([...d.sources, ...cur]);
+        });
+      },
+    );
 
-    const onConfirmed = (e: Event) => {
-      const d = (e as CustomEvent).detail as
-        | { notebookId: string; sources: NBSource[] }
-        | undefined;
+    const unsubConfirmed = subscribeNotebookEvent("sources-confirmed", (d) => {
       if (!d || !d.notebookId) return;
       if (d.notebookId !== activeId) return;
 
@@ -924,10 +916,9 @@ export default function NotebookPage() {
 
       qc.invalidateQueries({ queryKey: ["nb:sources", d.notebookId] });
       qc.invalidateQueries({ queryKey: ["nb:detail", d.notebookId] });
-    };
+    });
 
-    const onRollback = (e: Event) => {
-      const d = (e as CustomEvent).detail as { notebookId: string } | undefined;
+    const unsubRollback = subscribeNotebookEvent("sources-rollback", (d) => {
       const nbId = d?.notebookId;
       if (!nbId) return;
       if (nbId !== activeId) return;
@@ -936,16 +927,14 @@ export default function NotebookPage() {
         const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
         return cur.filter((s) => !String(s.id).startsWith("temp-"));
       });
-      qc.invalidateQueries({ queryKey: ["nb:sources", nbId] });
-    };
 
-    window.addEventListener("nb:sources-optimistic", onOptimistic as any);
-    window.addEventListener("nb:sources-confirmed", onConfirmed as any);
-    window.addEventListener("nb:sources-rollback", onRollback as any);
+      qc.invalidateQueries({ queryKey: ["nb:sources", nbId] });
+    });
+
     return () => {
-      window.removeEventListener("nb:sources-optimistic", onOptimistic as any);
-      window.removeEventListener("nb:sources-confirmed", onConfirmed as any);
-      window.removeEventListener("nb:sources-rollback", onRollback as any);
+      unsubOptimistic();
+      unsubConfirmed();
+      unsubRollback();
     };
   }, [activeId, qc]);
 

@@ -4,6 +4,7 @@ import {
   notebookClient as api,
   type NoteProvenanceBundle,
 } from "../../lib/notebookClient";
+import { subscribeNotebookEvent } from "../../lib/notebookEvents";
 
 function isNoteProvenanceBundle(value: unknown): value is NoteProvenanceBundle {
   return (
@@ -170,10 +171,7 @@ export default function NotesEditor({
 
   // listen for Add-to-Notes events from Chat
   useEffect(() => {
-    function onAdd(e: any) {
-      const d = e?.detail;
-
-      // Backwards compatible: detail can be a plain markdown string.
+    return subscribeNotebookEvent("add-note", (d) => {
       if (typeof d === "string") {
         const md = d;
         setContent((prev) => (prev ? prev + "\n\n" + md : md));
@@ -206,16 +204,12 @@ export default function NotesEditor({
       }
 
       setDirty(true);
-    }
-
-    window.addEventListener("nb:add-note", onAdd as any);
-    return () => window.removeEventListener("nb:add-note", onAdd as any);
+    });
   }, []);
 
   // Open an existing note from the Recent notes list
   useEffect(() => {
-    function onOpen(e: any) {
-      const n = e.detail;
+    return subscribeNotebookEvent("open-note", (n) => {
       if (!n || !n.id) return;
 
       setActiveNoteId(n.id);
@@ -228,18 +222,13 @@ export default function NotesEditor({
       setCitationsPayload(n.citations ?? null);
 
       editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-
-    window.addEventListener("nb:open-note", onOpen as any);
-    return () => window.removeEventListener("nb:open-note", onOpen as any);
+    });
   }, []);
 
   useEffect(() => {
-    function onNew() {
+    return subscribeNotebookEvent("new-note", () => {
       startNewNote();
-    }
-    window.addEventListener("nb:new-note", onNew as any);
-    return () => window.removeEventListener("nb:new-note", onNew as any);
+    });
   }, [startNewNote]);
 
   // Cmd/Ctrl+S quick save
