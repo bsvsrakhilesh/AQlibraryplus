@@ -39,7 +39,18 @@ def ping() -> Dict[str, Any]:
 
 @app.get("/health")
 def health() -> Dict[str, Any]:
-    return {"ok": True, "version": app.version}
+    worker_names = _celery_worker_names()
+    worker_count = len(worker_names)
+
+    return {
+        "ok": True,
+        "ready": worker_count > 0,
+        "version": app.version,
+        "queue": {
+            "workers": worker_count,
+            "worker_names": worker_names,
+        },
+    }
 
 
 def _normalize_bool(val: Optional[str], default=True) -> bool:
@@ -48,6 +59,29 @@ def _normalize_bool(val: Optional[str], default=True) -> bool:
     if val is None:
         return default
     return str(val).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _celery_worker_stats() -> Dict[str, Any]:
+    """
+    Returns Celery worker stats if at least one worker is reachable.
+    Empty dict means: no worker reachable (or broker/inspect unavailable).
+    """
+    try:
+        inspector = CELERY.control.inspect(timeout=1.5)
+        stats = inspector.stats() or {}
+        return stats if isinstance(stats, dict) else {}
+    except Exception as e:
+        log.warning("Failed to inspect Celery workers: %s", e)
+        return {}
+
+
+def _celery_worker_names() -> list[str]:
+    stats = _celery_worker_stats()
+    return sorted(stats.keys())
+
+
+def _celery_worker_count() -> int:
+    return len(_celery_worker_names())
 
 
 @app.post("/jobs", response_model=JobAccepted)
@@ -69,6 +103,16 @@ async def create_job(
     """
     use_llm_bool = _normalize_bool(use_llm, default=True)
     topk = int(topk) if topk is not None else 20
+
+    worker_count = _celery_worker_count()
+    if worker_count == 0:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "No ai-tagger workers are available. Start at least one Celery worker before creating jobs.",
+                "code": "NO_TAGGER_WORKERS",
+            },
+        )
 
     # If standard field "file" arrived, use it; else scan form for ANY UploadFile
     upload: Optional[UploadFile] = file
