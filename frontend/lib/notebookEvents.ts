@@ -1,4 +1,4 @@
-import type { NBNote, NBSource, NoteProvenanceBundle } from "./notebookClient";
+import type { NBNote, NoteProvenanceBundle } from "./notebookClient";
 
 export type NotebookToastDetail = {
   kind: "success" | "error" | "info" | "warning";
@@ -24,15 +24,6 @@ export type NotebookAddNoteDetail =
       citations?: NoteProvenanceBundle | null;
     };
 
-export type NotebookSourcesPatchDetail = {
-  notebookId: string;
-  sources: NBSource[];
-};
-
-export type NotebookSourcesRollbackDetail = {
-  notebookId: string;
-};
-
 type NotebookEventMap = {
   toast: NotebookToastDetail;
   "open-note": NBNote;
@@ -41,9 +32,6 @@ type NotebookEventMap = {
   "chat-prompt": NotebookChatPromptDetail;
   "manage-sources": undefined;
   "focus-source": string;
-  "sources-optimistic": NotebookSourcesPatchDetail;
-  "sources-confirmed": NotebookSourcesPatchDetail;
-  "sources-rollback": NotebookSourcesRollbackDetail;
 };
 
 type NotebookEventName = keyof NotebookEventMap;

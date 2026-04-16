@@ -473,15 +473,31 @@ export default function SourcePicker({
         ),
       );
 
-      const ok = results
+      const okEntries = results
+        .map((result, index) => ({ result, selectedId: selectedIds[index] }))
         .filter(
-          (r): r is PromiseFulfilledResult<any> => r.status === "fulfilled",
-        )
-        .map((r) => r.value);
+          (
+            item,
+          ): item is {
+            result: PromiseFulfilledResult<any>;
+            selectedId: string;
+          } => item.result.status === "fulfilled",
+        );
 
-      const bad = results.filter(
-        (r): r is PromiseRejectedResult => r.status === "rejected",
-      );
+      const badEntries = results
+        .map((result, index) => ({ result, selectedId: selectedIds[index] }))
+        .filter(
+          (
+            item,
+          ): item is {
+            result: PromiseRejectedResult;
+            selectedId: string;
+          } => item.result.status === "rejected",
+        );
+
+      const ok = okEntries.map((item) => item.result.value as NBSource);
+      const okSelectedIds = okEntries.map((item) => String(item.selectedId));
+      const badSelectedIds = badEntries.map((item) => String(item.selectedId));
 
       if (ok.length) {
         qc.setQueryData(["nb:sources", notebookId], (prev: any) => {
@@ -514,20 +530,29 @@ export default function SourcePicker({
           return [...byId.values()];
         });
 
+        setAttachedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of okSelectedIds) next.add(String(id));
+          return next;
+        });
+
+        setSelected(new Set(badSelectedIds));
+
         qc.invalidateQueries({ queryKey: ["nb:sources", notebookId] });
         qc.invalidateQueries({ queryKey: ["nb:detail", notebookId] });
       }
 
-      if (!ok.length || bad.length) {
+      if (!ok.length || badEntries.length) {
         qc.setQueryData(["nb:sources", notebookId], (prev: any) => {
           const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
           return cur.filter((s) => !String(s.id).startsWith("temp-"));
         });
+
         qc.invalidateQueries({ queryKey: ["nb:sources", notebookId] });
       }
 
-      if (bad.length) {
-        const reason0: any = bad[0].reason;
+      if (badEntries.length) {
+        const reason0: any = badEntries[0].result.reason;
         const msg =
           reason0?.message ||
           (typeof reason0 === "string"
@@ -537,17 +562,24 @@ export default function SourcePicker({
         emitNotebookEvent("toast", {
           kind: ok.length ? "warning" : "error",
           text: ok.length
-            ? `Attached ${ok.length}; failed ${bad.length}. ${msg}`
+            ? `Attached ${ok.length}; failed ${badEntries.length}. ${msg}`
             : `Attach failed. ${msg}`,
         });
       } else {
+        setSelected(new Set());
+
         emitNotebookEvent("toast", {
           kind: "success",
           text: `Attached ${ok.length} items.`,
         });
       }
     } catch (e: any) {
-      emitNotebookEvent("sources-rollback", { notebookId });
+      qc.setQueryData(["nb:sources", notebookId], (prev: any) => {
+        const cur = Array.isArray(prev) ? (prev as NBSource[]) : [];
+        return cur.filter((s) => !String(s.id).startsWith("temp-"));
+      });
+
+      qc.invalidateQueries({ queryKey: ["nb:sources", notebookId] });
 
       const msg = e?.message || "Failed to attach selected items.";
       emitNotebookEvent("toast", { kind: "error", text: msg });
