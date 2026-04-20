@@ -4,6 +4,7 @@ import {
   getUrlFacetsHandler,
   getUrlReviewQueueSummaryHandler,
   getUrlByIdHandler,
+  recordUrlVisitHandler,
   createUrlsHandler,
   urlsExistHandler,
   deleteUrlByIdHandler,
@@ -102,6 +103,7 @@ r.post(
 );
 
 r.get("/urls/:id", getUrlByIdHandler);
+r.post("/urls/:id/visit", recordUrlVisitHandler);
 r.post("/urls/:id/refresh-metadata", refreshUrlMetadataHandler);
 r.get(
   "/urls/:id/snapshots",
