@@ -39,7 +39,7 @@
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.17.2",
-    "puppeteer": "^24.17.0",
+    "puppeteer-core": "^24.17.0",
     "robots-parser": "^3.0.1",
     "unzipper": "^0.12.3",
     "yazl": "^3.3.1",

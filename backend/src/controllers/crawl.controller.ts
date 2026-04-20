@@ -1,5 +1,4 @@
 // backend/src/controllers/crawl.controller.ts
-// backend/src/controllers/crawl.controller.ts
 import { Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
@@ -9,7 +8,8 @@ import { ensureDocumentRevisionForStoredFile } from "../services/document.servic
 import { recordCaptureEvent } from "../services/provenance.service";
 import { createDom } from "../utils/dom";
 import { Readability } from "@mozilla/readability";
-import puppeteer, { Browser, LaunchOptions, Page } from "puppeteer";
+import puppeteer, { Browser, LaunchOptions, Page } from "puppeteer-core";
+import { env } from "../config/env";
 import { scheduleAiTagForFile } from "../services/aiTagAuto.service";
 import dns from "node:dns/promises";
 import { setDefaultResultOrder } from "node:dns";
@@ -759,9 +759,37 @@ const isRetryablePptrError = (err: unknown) => {
   );
 };
 
+const DEFAULT_CHROMIUM_PATHS = [
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files\\Chromium\\Application\\chrome.exe",
+].filter(Boolean);
+
+function resolveChromiumExecutablePath(): string {
+  const candidates = [
+    process.env.CHROMIUM_EXECUTABLE_PATH,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    env.CHROMIUM_EXECUTABLE_PATH,
+    ...DEFAULT_CHROMIUM_PATHS,
+  ].filter((value): value is string => Boolean(value && value.trim()));
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  throw new Error(
+    "Chromium executable not found. Set CHROMIUM_EXECUTABLE_PATH (or PUPPETEER_EXECUTABLE_PATH) to a valid Chrome/Chromium binary.",
+  );
+}
+
 async function launchBrowser(): Promise<Browser> {
   const opts: LaunchOptions = {
     headless: true,
+    executablePath: resolveChromiumExecutablePath(),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -773,6 +801,7 @@ async function launchBrowser(): Promise<Browser> {
       "--disable-ipv6",
     ],
   };
+
   return await puppeteer.launch(opts);
 }
 

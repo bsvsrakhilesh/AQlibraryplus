@@ -29,6 +29,9 @@ const EnvSchema = z.object({
   OCR_RENDER_TIMEOUT_MS: z.coerce.number().optional().default(60_000),
   OCR_PAGE_TIMEOUT_MS: z.coerce.number().optional().default(120_000),
 
+  // Browser runtime for crawl/extraction
+  CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
+
   // Retrieval tuning (pgvector cosine distance; lower = more similar)
   RETRIEVAL_MAX_COSINE_DISTANCE: z.coerce.number().optional().default(0.42),
 

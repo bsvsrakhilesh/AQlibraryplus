@@ -4,8 +4,7 @@ FROM node:20-bookworm-slim AS base
 WORKDIR /app
 RUN npm install -g npm@latest
 # Faster Puppeteer installs & use system Chromium
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 # System deps for headless Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -44,8 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ENV FILE_STORAGE_DIR=/data
 
 # Copy runtime bits

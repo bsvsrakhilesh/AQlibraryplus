@@ -1,4 +1,4 @@
-import type { Page } from "puppeteer";
+import type { Page } from "puppeteer-core";
 import { createDom } from "./dom";
 import { Readability } from "@mozilla/readability";
 

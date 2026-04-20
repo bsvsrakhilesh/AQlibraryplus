@@ -35,6 +35,7 @@ services:
       PORT: 4000
       # File storage inside container (persisted via volume)
       FILE_STORAGE_DIR: /data
+      CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium
       # Talk to AI Tagger over the compose network
       TAGGER_PY_URL: http://ai-tagger:7071
       REDIS_URL: redis://redis:6379/0
@@ -79,6 +80,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       TAGGER_PY_URL: http://ai-tagger:7071
       FILE_STORAGE_DIR: /data
+      CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium
       EXTRACT_URL_TIMEOUT_MS: 30000
       INGESTION_QUEUE_CONCURRENCY: 2
     volumes:
