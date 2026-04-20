@@ -66,6 +66,7 @@ const listUrlsQuery = z.object({
   year: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
   domains: z.union([z.string(), z.array(z.string())]).optional(),
+  visibility: z.enum(["all", "public", "private"]).optional(),
   collectionId: z.string().min(1).optional(),
   favoritesOnly: z.coerce.boolean().optional(),
   dateFrom: z.string().optional(),
