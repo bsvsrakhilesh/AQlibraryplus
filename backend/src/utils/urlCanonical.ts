@@ -13,7 +13,10 @@ export function canonicalizeUrl(input: string): string {
 
   u.hostname = u.hostname.toLowerCase();
 
-  if ((u.protocol === "http:" && u.port === "80") || (u.protocol === "https:" && u.port === "443")) {
+  if (
+    (u.protocol === "http:" && u.port === "80") ||
+    (u.protocol === "https:" && u.port === "443")
+  ) {
     u.port = "";
   }
 
@@ -23,7 +26,9 @@ export function canonicalizeUrl(input: string): string {
   const dropPrefixes = ["utm_", "fbclid", "gclid", "mc_cid", "mc_eid"];
   for (const key of Array.from(u.searchParams.keys())) {
     const k = key.toLowerCase();
-    if (dropPrefixes.some((p) => k === p || k.startsWith(p))) u.searchParams.delete(key);
+    if (dropPrefixes.some((p) => k === p || k.startsWith(p))) {
+      u.searchParams.delete(key);
+    }
   }
 
   const sorted = new URLSearchParams();
@@ -35,4 +40,21 @@ export function canonicalizeUrl(input: string): string {
   u.hash = "";
 
   return u.toString();
+}
+
+export function normalizedDomainFromUrl(input: string): string | null {
+  const canonical = canonicalizeUrl(input);
+  if (!canonical) return null;
+
+  let s = canonical;
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+
+  try {
+    const u = new URL(s);
+    let hostname = (u.hostname || "").trim().toLowerCase().replace(/\.+$/, "");
+    if (hostname.startsWith("www.")) hostname = hostname.slice(4);
+    return hostname || null;
+  } catch {
+    return null;
+  }
 }

@@ -2,7 +2,10 @@
 import { Prisma, TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
-import { canonicalizeUrl } from "../utils/urlCanonical";
+import {
+  canonicalizeUrl,
+  normalizedDomainFromUrl,
+} from "../utils/urlCanonical";
 
 const SNAPSHOT_STALE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -103,13 +106,16 @@ function buildListWhere(opts: GetAllOpts): Prisma.UrlWhereInput {
   }
 
   if (opts.domains && opts.domains.length) {
-    const domains = opts.domains.map((d) => d.trim()).filter(Boolean);
+    const domains = Array.from(
+      new Set(
+        opts.domains
+          .map((d) => normalizedDomainFromUrl(d))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
     if (domains.length) {
-      and.push({
-        OR: domains.map((domain) => ({
-          url: { contains: domain, mode: "insensitive" },
-        })),
-      });
+      and.push({ normalizedDomain: { in: domains } });
     }
   }
 
@@ -218,12 +224,7 @@ function andWhere(
 }
 
 function safeHostnameFromUrl(rawUrl: string): string | null {
-  try {
-    const hostname = new URL(rawUrl).hostname.trim().toLowerCase();
-    return hostname || null;
-  } catch {
-    return null;
-  }
+  return normalizedDomainFromUrl(rawUrl);
 }
 
 function sortTextAsc(a: string, b: string) {
@@ -238,7 +239,7 @@ export async function getUrlFacets(opts: GetAllOpts): Promise<UrlFacetSummary> {
   const [domainRows, tagRows, yearRows] = await Promise.all([
     prisma.url.findMany({
       where: buildListWhere({ ...opts, domains: undefined }),
-      select: { url: true },
+      select: { normalizedDomain: true, canonical_url: true, url: true },
     }),
     prisma.url.findMany({
       where: buildListWhere({ ...opts, tags: undefined }),
@@ -253,7 +254,11 @@ export async function getUrlFacets(opts: GetAllOpts): Promise<UrlFacetSummary> {
   const domains = Array.from(
     new Set(
       domainRows
-        .map((row) => safeHostnameFromUrl(row.url))
+        .map(
+          (row) =>
+            row.normalizedDomain ||
+            safeHostnameFromUrl(row.canonical_url || row.url),
+        )
         .filter((value): value is string => Boolean(value)),
     ),
   ).sort(sortTextAsc);
@@ -553,6 +558,7 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
 
   for (const r0 of rows) {
     const canonical = canonicalizeUrl(r0.url);
+    const normalizedDomain = normalizedDomainFromUrl(canonical || r0.url);
 
     // If canonical exists already, skip (even if raw url differs).
     // This prevents duplicate rows before canonical_url becomes unique.
@@ -572,6 +578,7 @@ export async function createManyUrls(rows: CreateUrlInput[]) {
     const data: Prisma.UrlCreateInput = {
       url: r0.url,
       canonical_url: canonical,
+      normalizedDomain: normalizedDomain ?? null,
       title: r0.title?.trim() || r0.url,
       snippet: r0.snippet ?? null,
       publishedAt: r0.publishedAt ?? null,

@@ -2,7 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import prisma from "../config/database";
 import { validate } from "../middlewares/validate";
-import { canonicalizeUrl } from "../utils/urlCanonical";
+import {
+  canonicalizeUrl,
+  normalizedDomainFromUrl,
+} from "../utils/urlCanonical";
 
 function canonicalize(raw: string): string {
   return canonicalizeUrl(raw);
@@ -22,6 +25,7 @@ async function findUrlByCanonicalOrRaw(rawUrl: string) {
       id: true,
       url: true,
       canonical_url: true,
+      normalizedDomain: true,
     },
   });
 }
@@ -32,6 +36,7 @@ async function ensureUrlRow(params: {
   snippet?: string | null;
 }) {
   const canon = canonicalize(params.rawUrl);
+  const normalizedDomain = normalizedDomainFromUrl(canon || params.rawUrl);
   const existing = await findUrlByCanonicalOrRaw(params.rawUrl);
 
   if (existing) {
@@ -39,10 +44,14 @@ async function ensureUrlRow(params: {
       title?: string;
       snippet?: string | null;
       canonical_url?: string;
+      normalizedDomain?: string;
     } = {
       ...(params.title ? { title: params.title.slice(0, 500) } : {}),
       ...(params.snippet !== undefined ? { snippet: params.snippet } : {}),
       ...(canon && !existing.canonical_url ? { canonical_url: canon } : {}),
+      ...(normalizedDomain && !existing.normalizedDomain
+        ? { normalizedDomain }
+        : {}),
     };
 
     if (Object.keys(updateData).length) {
@@ -50,7 +59,12 @@ async function ensureUrlRow(params: {
         return await prisma.url.update({
           where: { id: existing.id },
           data: updateData,
-          select: { id: true, url: true, canonical_url: true },
+          select: {
+            id: true,
+            url: true,
+            canonical_url: true,
+            normalizedDomain: true,
+          },
         });
       } catch (e: any) {
         if (e?.code !== "P2002" || !updateData.canonical_url) throw e;
@@ -62,8 +76,16 @@ async function ensureUrlRow(params: {
             ...(params.snippet !== undefined
               ? { snippet: params.snippet }
               : {}),
+            ...(normalizedDomain && !existing.normalizedDomain
+              ? { normalizedDomain }
+              : {}),
           },
-          select: { id: true, url: true, canonical_url: true },
+          select: {
+            id: true,
+            url: true,
+            canonical_url: true,
+            normalizedDomain: true,
+          },
         });
       }
     }
@@ -75,10 +97,16 @@ async function ensureUrlRow(params: {
     data: {
       url: params.rawUrl,
       canonical_url: canon || null,
+      normalizedDomain: normalizedDomain ?? null,
       title: (params.title || canon || params.rawUrl).slice(0, 500),
       snippet: params.snippet ?? null,
     },
-    select: { id: true, url: true, canonical_url: true },
+    select: {
+      id: true,
+      url: true,
+      canonical_url: true,
+      normalizedDomain: true,
+    },
   });
 }
 

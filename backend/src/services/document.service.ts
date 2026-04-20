@@ -1,6 +1,9 @@
 // backend/src/services/document.service.ts
 import prisma from "../config/database";
-import { canonicalizeUrl } from "../utils/urlCanonical";
+import {
+  canonicalizeUrl,
+  normalizedDomainFromUrl,
+} from "../utils/urlCanonical";
 
 /**
  * Ensures a global canonical Document + DocumentRevision exist for a StoredFile.
@@ -56,6 +59,9 @@ export async function ensureDocumentRevisionForStoredFile(
       }
 
       const canonical = canonicalizeUrl(f.sourceUrl);
+      const normalizedDomain = normalizedDomainFromUrl(
+        canonical || f.sourceUrl,
+      );
 
       // Find by canonical_url when possible; otherwise fallback to raw url match.
       const existingUrl = await prisma.url.findFirst({
@@ -65,7 +71,7 @@ export async function ensureDocumentRevisionForStoredFile(
             { url: f.sourceUrl },
           ],
         },
-        select: { id: true, canonical_url: true },
+        select: { id: true, canonical_url: true, normalizedDomain: true },
       });
 
       let u: { id: number };
@@ -73,12 +79,22 @@ export async function ensureDocumentRevisionForStoredFile(
       if (existingUrl) {
         u = { id: existingUrl.id };
 
-        // World-class touch: backfill canonical_url if missing (best-effort, ignore conflicts).
-        if (canonical && !existingUrl.canonical_url) {
+        // Backfill canonical_url / normalizedDomain if missing.
+        if (
+          (canonical && !existingUrl.canonical_url) ||
+          (normalizedDomain && !existingUrl.normalizedDomain)
+        ) {
           try {
             await prisma.url.update({
               where: { id: existingUrl.id },
-              data: { canonical_url: canonical },
+              data: {
+                ...(canonical && !existingUrl.canonical_url
+                  ? { canonical_url: canonical }
+                  : {}),
+                ...(normalizedDomain && !existingUrl.normalizedDomain
+                  ? { normalizedDomain }
+                  : {}),
+              },
             });
           } catch {
             // ignore unique conflicts / race conditions
@@ -89,6 +105,7 @@ export async function ensureDocumentRevisionForStoredFile(
           data: {
             url: f.sourceUrl,
             canonical_url: canonical || null,
+            normalizedDomain: normalizedDomain ?? null,
             title: f.sourceUrl,
             snippet: null,
             tags: [],
