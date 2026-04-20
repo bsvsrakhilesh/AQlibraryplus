@@ -8,6 +8,8 @@ export interface UrlFilterState {
   visibility: "all" | "public" | "private";
   dateFrom?: string;
   dateTo?: string;
+  publishedFrom?: string;
+  publishedTo?: string;
   favoritesOnly: boolean;
   snapshotStatus?: "all" | "missing" | "stale" | "fresh";
   taggingStatus?: "all" | "NONE" | "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
@@ -31,6 +33,8 @@ const buildFilterState = (
   visibility: initial.visibility || "all",
   dateFrom: initial.dateFrom,
   dateTo: initial.dateTo,
+  publishedFrom: initial.publishedFrom,
+  publishedTo: initial.publishedTo,
   favoritesOnly: initial.favoritesOnly || false,
   snapshotStatus: initial.snapshotStatus || "all",
   taggingStatus: initial.taggingStatus || "all",
@@ -53,6 +57,8 @@ const countActiveFilters = (state: UrlFilterState) => {
   if (state.visibility !== "all") count += 1;
   if (state.dateFrom) count += 1;
   if (state.dateTo) count += 1;
+  if (state.publishedFrom) count += 1;
+  if (state.publishedTo) count += 1;
   if (state.favoritesOnly) count += 1;
   if ((state.snapshotStatus ?? "all") !== "all") count += 1;
   if ((state.taggingStatus ?? "all") !== "all") count += 1;
@@ -154,8 +160,10 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
             />
 
             <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-              Search matches title, URL, description, notes, and exact tags.
-              Filters update automatically. Press Enter to apply immediately.
+              Search matches title, URL, description, notes, and exact tags. Use
+              Saved date for library ingestion time and Published date for
+              source metadata. Filters update automatically. Press Enter to
+              apply immediately.
             </p>
           </div>
 
@@ -251,48 +259,108 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
           </div>
         </div>
 
-        {/* Other */}
+        {/* Dates & status */}
         <div className="card p-3">
-          <div className="font-semibold mb-2">Other</div>
+          <div className="font-semibold mb-2">Dates & status</div>
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="flex-1 min-w-0">
-                <label
-                  className="block text-xs mb-1"
-                  htmlFor="saved-urls-date-from"
-                >
-                  From
-                </label>
-                <input
-                  id="saved-urls-date-from"
-                  name="saved_urls_date_from"
-                  type="date"
-                  value={state.dateFrom || ""}
-                  onChange={(e) =>
-                    setState((s) => ({ ...s, dateFrom: e.target.value }))
-                  }
-                  className="input w-full rounded-lg px-3 py-2"
-                />
+            <div>
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                Saved date
               </div>
-              <div className="flex-1 min-w-0">
-                <label
-                  className="block text-xs mb-1"
-                  htmlFor="saved-urls-date-to"
-                >
-                  To
-                </label>
-                <input
-                  id="saved-urls-date-to"
-                  name="saved_urls_date_to"
-                  type="date"
-                  value={state.dateTo || ""}
-                  onChange={(e) =>
-                    setState((s) => ({ ...s, dateTo: e.target.value }))
-                  }
-                  className="input w-full rounded-lg px-3 py-2"
-                />
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1 min-w-0">
+                  <label
+                    className="block text-xs mb-1"
+                    htmlFor="saved-urls-date-from"
+                  >
+                    Saved from
+                  </label>
+                  <input
+                    id="saved-urls-date-from"
+                    name="saved_urls_date_from"
+                    type="date"
+                    value={state.dateFrom || ""}
+                    onChange={(e) =>
+                      setState((s) => ({ ...s, dateFrom: e.target.value }))
+                    }
+                    className="input w-full rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label
+                    className="block text-xs mb-1"
+                    htmlFor="saved-urls-date-to"
+                  >
+                    Saved to
+                  </label>
+                  <input
+                    id="saved-urls-date-to"
+                    name="saved_urls_date_to"
+                    type="date"
+                    value={state.dateTo || ""}
+                    onChange={(e) =>
+                      setState((s) => ({ ...s, dateTo: e.target.value }))
+                    }
+                    className="input w-full rounded-lg px-3 py-2"
+                  />
+                </div>
               </div>
             </div>
+
+            <div>
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                Published date
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1 min-w-0">
+                  <label
+                    className="block text-xs mb-1"
+                    htmlFor="saved-urls-published-from"
+                  >
+                    Published from
+                  </label>
+                  <input
+                    id="saved-urls-published-from"
+                    name="saved_urls_published_from"
+                    type="date"
+                    value={state.publishedFrom || ""}
+                    onChange={(e) =>
+                      setState((s) => ({
+                        ...s,
+                        publishedFrom: e.target.value,
+                      }))
+                    }
+                    className="input w-full rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label
+                    className="block text-xs mb-1"
+                    htmlFor="saved-urls-published-to"
+                  >
+                    Published to
+                  </label>
+                  <input
+                    id="saved-urls-published-to"
+                    name="saved_urls_published_to"
+                    type="date"
+                    value={state.publishedTo || ""}
+                    onChange={(e) =>
+                      setState((s) => ({
+                        ...s,
+                        publishedTo: e.target.value,
+                      }))
+                    }
+                    className="input w-full rounded-lg px-3 py-2"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Saved date uses when the URL entered your library. Published date
+              uses the source metadata and may be missing for some URLs.
+            </p>
 
             <label className="inline-flex items-center gap-2">
               <input

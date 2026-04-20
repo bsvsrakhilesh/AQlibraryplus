@@ -146,6 +146,8 @@ const DEFAULT_URL_FILTER: UrlFilterState = {
   visibility: "all",
   dateFrom: "",
   dateTo: "",
+  publishedFrom: "",
+  publishedTo: "",
   snapshotStatus: "all",
   taggingStatus: "all",
   metadataState: "all",
@@ -451,6 +453,18 @@ const SavedUrlsPage: React.FC = () => {
     return ms === null ? undefined : new Date(ms).toISOString();
   }, [filter.dateTo]);
 
+  const serverPublishedFrom = useMemo(() => {
+    if (!filter.publishedFrom) return undefined;
+    const ms = startOfLocalDayMs(filter.publishedFrom);
+    return ms === null ? undefined : new Date(ms).toISOString();
+  }, [filter.publishedFrom]);
+
+  const serverPublishedTo = useMemo(() => {
+    if (!filter.publishedTo) return undefined;
+    const ms = endOfLocalDayMs(filter.publishedTo);
+    return ms === null ? undefined : new Date(ms).toISOString();
+  }, [filter.publishedTo]);
+
   const queueSummaryServerQuery = useMemo(() => {
     return {
       q: filter.query.trim() || undefined,
@@ -462,6 +476,8 @@ const SavedUrlsPage: React.FC = () => {
       visibility: filter.visibility !== "all" ? filter.visibility : undefined,
       dateFrom: serverDateFrom,
       dateTo: serverDateTo,
+      publishedFrom: serverPublishedFrom,
+      publishedTo: serverPublishedTo,
       snapshotStatus:
         filter.snapshotStatus !== "all" ? filter.snapshotStatus : undefined,
       taggingStatus:
@@ -475,6 +491,8 @@ const SavedUrlsPage: React.FC = () => {
     filter.domains,
     filter.favoritesOnly,
     filter.metadataState,
+    filter.publishedFrom,
+    filter.publishedTo,
     filter.query,
     filter.snapshotStatus,
     filter.taggingStatus,
@@ -483,6 +501,8 @@ const SavedUrlsPage: React.FC = () => {
     selectedCollectionId,
     serverDateFrom,
     serverDateTo,
+    serverPublishedFrom,
+    serverPublishedTo,
     year,
   ]);
 
@@ -520,6 +540,8 @@ const SavedUrlsPage: React.FC = () => {
       visibility: filter.visibility !== "all" ? filter.visibility : undefined,
       dateFrom: serverDateFrom,
       dateTo: serverDateTo,
+      publishedFrom: serverPublishedFrom,
+      publishedTo: serverPublishedTo,
       snapshotStatus,
       taggingStatus,
       metadataState,
@@ -534,6 +556,8 @@ const SavedUrlsPage: React.FC = () => {
     filter.domains,
     filter.favoritesOnly,
     filter.metadataState,
+    filter.publishedFrom,
+    filter.publishedTo,
     filter.query,
     filter.snapshotStatus,
     filter.taggingStatus,
@@ -542,6 +566,8 @@ const SavedUrlsPage: React.FC = () => {
     selectedCollectionId,
     serverDateFrom,
     serverDateTo,
+    serverPublishedFrom,
+    serverPublishedTo,
     sortKey,
     sortOrder,
     year,
@@ -2803,20 +2829,21 @@ const SavedUrlsPage: React.FC = () => {
               {/* Row 2: ALL SELECTS IN ONE ROW */}
               <div className="col-span-12">
                 <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap md:whitespace-normal md:overflow-visible">
-                  {/* Year */}
+                  {/* Saved year */}
                   <label className="sr-only" htmlFor="year-filter">
-                    Filter by year
+                    Filter by saved year
                   </label>
                   <select
                     id="year-filter"
-                    className="input-pill w-auto shrink-0 min-w-[9rem] text-sm py-2 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                    className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                     value={year}
                     onChange={(e) => setYear(e.target.value)}
-                    title="Filter by year"
+                    title="Filter by saved year"
+                    aria-label="Filter by saved year"
                   >
                     {availableYears.map((y) => (
                       <option key={y} value={y}>
-                        {y === "all" ? "All years" : y}
+                        {y === "all" ? "All saved years" : y}
                       </option>
                     ))}
                   </select>
@@ -2832,7 +2859,7 @@ const SavedUrlsPage: React.FC = () => {
                     onChange={(e) => setSortKey(e.target.value as SortKey)}
                     title="Sort key"
                   >
-                    <option value="createdAt">Sort: Created</option>
+                    <option value="createdAt">Sort: Saved date</option>
                     <option value="updatedAt">Sort: Updated</option>
                     <option value="title">Sort: Title</option>
                   </select>

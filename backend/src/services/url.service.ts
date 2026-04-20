@@ -36,7 +36,6 @@ export type GetAllOpts = {
   year?: string;
   sortKey?: "createdAt" | "updatedAt" | "title";
   sortOrder?: "asc" | "desc";
-  /** Require that results contain ALL these tags */
   tags?: string[];
   domains?: string[];
   q?: string;
@@ -45,6 +44,8 @@ export type GetAllOpts = {
   visibility?: "all" | UrlVisibility;
   dateFrom?: string;
   dateTo?: string;
+  publishedFrom?: string;
+  publishedTo?: string;
   snapshotStatus?: SnapshotStatusFilter;
   taggingStatus?: TaggingStatus | "all";
   metadataState?: MetadataStateFilter;
@@ -150,6 +151,14 @@ function buildListWhere(opts: GetAllOpts): Prisma.UrlWhereInput {
   if (from) createdAt.gte = from;
   if (to) createdAt.lte = to;
   if (from || to) and.push({ createdAt });
+
+  const publishedAt: Prisma.DateTimeNullableFilter = {};
+  const publishedFrom = toValidDate(opts.publishedFrom);
+  const publishedTo = toValidDate(opts.publishedTo);
+
+  if (publishedFrom) publishedAt.gte = publishedFrom;
+  if (publishedTo) publishedAt.lte = publishedTo;
+  if (publishedFrom || publishedTo) and.push({ publishedAt });
 
   if (opts.snapshotStatus && opts.snapshotStatus !== "all") {
     const staleCutoff = new Date(Date.now() - SNAPSHOT_STALE_DAYS * DAY_MS);

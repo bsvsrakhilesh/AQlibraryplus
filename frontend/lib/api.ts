@@ -588,6 +588,8 @@ export type FetchSavedUrlsParams = {
   favoritesOnly?: boolean;
   dateFrom?: string;
   dateTo?: string;
+  publishedFrom?: string;
+  publishedTo?: string;
   snapshotStatus?: "all" | "missing" | "stale" | "fresh";
   taggingStatus?: "all" | "NONE" | "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
   metadataState?: "all" | "missing" | "complete";

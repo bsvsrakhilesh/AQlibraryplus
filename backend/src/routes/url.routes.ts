@@ -72,6 +72,8 @@ const listUrlsQuery = z.object({
   favoritesOnly: z.coerce.boolean().optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
+  publishedFrom: z.string().optional(),
+  publishedTo: z.string().optional(),
   snapshotStatus: z.enum(["all", "missing", "stale", "fresh"]).optional(),
   taggingStatus: z
     .enum(["all", "NONE", "PENDING", "RUNNING", "SUCCESS", "FAILED"])
