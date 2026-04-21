@@ -4702,498 +4702,533 @@ export default function FileManagerPage() {
                       }}
                     >
                       <div className="fm-panel-header">
-                        <div className="fm-panel-headbar">
-                          <div className="fm-panel-headcopy">
-                            <span className="fm-panel-eyebrow">
-                              {activeModeLabel}
-                            </span>
-                            <h2 className="fm-panel-heading">
-                              {activeLocationLabel}
-                            </h2>
-                            {search ? (
-                              <p className="fm-panel-caption">
-                                Filtering results for “{search}”
-                              </p>
-                            ) : (
-                              <p className="fm-panel-caption">
-                                Browse and manage files in this workspace
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="fm-panel-headmeta">
-                            <span className="fm-panel-meta-pill">
-                              {visibleFiles.length} items
-                            </span>
-                            {selected.length > 0 && (
-                              <span className="fm-panel-meta-pill fm-panel-meta-pill--accent">
-                                {selected.length} selected
+                        <div className="fm-panel-body">
+                          <div className="fm-panel-headbar">
+                            <div className="fm-panel-headcopy">
+                              <span className="fm-panel-eyebrow">
+                                {activeModeLabel}
                               </span>
+                              <h2 className="fm-panel-heading">
+                                {activeLocationLabel}
+                              </h2>
+                              {search ? (
+                                <p className="fm-panel-caption">
+                                  Filtering results for “{search}”
+                                </p>
+                              ) : (
+                                <p className="fm-panel-caption">
+                                  Browse and manage files in this workspace
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="fm-panel-headmeta">
+                              <span className="fm-panel-meta-pill">
+                                {visibleFiles.length} items
+                              </span>
+                              {selected.length > 0 && (
+                                <span className="fm-panel-meta-pill fm-panel-meta-pill--accent">
+                                  {selected.length} selected
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isLoading && (
+                          <div className="fm-panel-content fm-panel-content--center">
+                            <div className="fm-panel-feedback">Loading…</div>
+                          </div>
+                        )}
+                        {error && !isLoading && (
+                          <div
+                            className={
+                              isStaleView
+                                ? "m-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800/70 dark:bg-amber-900/20 dark:text-amber-100"
+                                : "m-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-800 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-200"
+                            }
+                          >
+                            {isStaleView ? (
+                              <div className="space-y-1">
+                                <div className="text-sm font-semibold">
+                                  Showing the last successful results
+                                </div>
+                                <div className="text-sm opacity-90">
+                                  {error}
+                                </div>
+                              </div>
+                            ) : (
+                              error
                             )}
                           </div>
-                        </div>
-                      </div>
+                        )}
+                        {!isLoading && !error && visibleFiles.length === 0 && (
+                          <div className="fm-panel-content fm-panel-content--center">
+                            <div
+                              className="fm-empty"
+                              onContextMenu={(e) => {
+                                const t = e.target as HTMLElement;
 
-                      {isLoading && (
-                        <div className="p-6 text-sm opacity-70">Loading…</div>
-                      )}
-                      {error && !isLoading && (
-                        <div
-                          className={
-                            isStaleView
-                              ? "m-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800/70 dark:bg-amber-900/20 dark:text-amber-100"
-                              : "m-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-800 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-200"
-                          }
-                        >
-                          {isStaleView ? (
-                            <div className="space-y-1">
-                              <div className="text-sm font-semibold">
-                                Showing the last successful results
-                              </div>
-                              <div className="text-sm opacity-90">{error}</div>
-                            </div>
-                          ) : (
-                            error
-                          )}
-                        </div>
-                      )}
-                      {!isLoading && !error && visibleFiles.length === 0 && (
-                        <div
-                          className="fm-empty"
-                          onContextMenu={(e) => {
-                            const t = e.target as HTMLElement;
+                                if (
+                                  t.closest(
+                                    "button, a, input, textarea, select",
+                                  )
+                                )
+                                  return;
 
-                            if (t.closest("button, a, input, textarea, select"))
-                              return;
+                                e.preventDefault();
+                                setEmptyBgMenu({ x: e.clientX, y: e.clientY });
+                              }}
+                              onMouseDown={() => setEmptyBgMenu(null)}
+                            >
+                              <div className="fm-empty-shell">
+                                <div className="fm-empty-card">
+                                  <div
+                                    className="fm-empty-art"
+                                    aria-hidden="true"
+                                  />
+                                  <div className="fm-empty-eyebrow">
+                                    Workspace ready
+                                  </div>
+                                  <h3 className="fm-empty-title">
+                                    This workspace is empty
+                                  </h3>
+                                  <p className="fm-empty-sub">
+                                    Upload the first set of files, create
+                                    folders, or drag and drop documents directly
+                                    into this view to start building your
+                                    evidence workspace.
+                                  </p>
 
-                            e.preventDefault();
-                            setEmptyBgMenu({ x: e.clientX, y: e.clientY });
-                          }}
-                          onMouseDown={() => setEmptyBgMenu(null)}
-                        >
-                          <div className="fm-empty-shell">
-                            <div className="fm-empty-card">
-                              <div
-                                className="fm-empty-art"
-                                aria-hidden="true"
-                              />
-                              <div className="fm-empty-eyebrow">
-                                Workspace ready
-                              </div>
-                              <h3 className="fm-empty-title">
-                                This workspace is empty
-                              </h3>
-                              <p className="fm-empty-sub">
-                                Upload the first set of files, create folders,
-                                or drag and drop documents directly into this
-                                view to start building your evidence workspace.
-                              </p>
+                                  {viewMode === "drive" && !virtualZip && (
+                                    <div className="fm-empty-actions">
+                                      <ToolbarButton
+                                        variant="outline"
+                                        onClick={handleNewFolder}
+                                      >
+                                        New folder
+                                      </ToolbarButton>
+                                      <ToolbarButton
+                                        variant="primary"
+                                        onClick={() => setShowUpload(true)}
+                                      >
+                                        Upload files
+                                      </ToolbarButton>
+                                    </div>
+                                  )}
 
-                              {viewMode === "drive" && !virtualZip && (
-                                <div className="fm-empty-actions">
-                                  <ToolbarButton
-                                    variant="outline"
-                                    onClick={handleNewFolder}
-                                  >
-                                    New folder
-                                  </ToolbarButton>
-                                  <ToolbarButton
-                                    variant="primary"
-                                    onClick={() => setShowUpload(true)}
-                                  >
-                                    Upload files
-                                  </ToolbarButton>
+                                  <p className="fm-empty-hint">
+                                    Use folders, favorites, and tags to keep
+                                    CAQM-ready evidence collections organised.
+                                  </p>
                                 </div>
-                              )}
-
-                              <p className="fm-empty-hint">
-                                Use folders, favorites, and tags to keep
-                                CAQM-ready evidence collections organised.
-                              </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-                      {emptyBgMenu && (
-                        <ContextMenu
-                          open
-                          x={emptyBgMenu.x}
-                          y={emptyBgMenu.y}
-                          items={buildEmptyBGMenu()}
-                          onClose={() => setEmptyBgMenu(null)}
-                        />
-                      )}
+                        )}
+                        {emptyBgMenu && (
+                          <ContextMenu
+                            open
+                            x={emptyBgMenu.x}
+                            y={emptyBgMenu.y}
+                            items={buildEmptyBGMenu()}
+                            onClose={() => setEmptyBgMenu(null)}
+                          />
+                        )}
 
-                      {clipboard && (
-                        <div className="mb-3 rounded-lg border bg-amber-50 dark:bg-amber-900/30 p-3 text-sm flex items-center justify-between">
-                          <span>
-                            {virtualZip || viewMode !== "drive"
-                              ? `Clipboard has ${clipboard.files.length} item(s). Open a Drive folder to paste.`
-                              : `${
-                                  clipboard.mode === "copy"
-                                    ? "Ready to paste copy"
-                                    : "Ready to move"
-                                } — ${clipboard.files.length} item(s)${
-                                  currentFolderId
-                                    ? " into this folder."
-                                    : ` into ${ROOT_BREADCRUMB_NAME}.`
-                                }`}
-                          </span>
-                          <div className="flex gap-2">
-                            <button
-                              className="btn disabled:opacity-50"
-                              onClick={handlePaste}
-                              disabled={!!virtualZip || viewMode !== "drive"}
-                              title={
-                                virtualZip || viewMode !== "drive"
-                                  ? "Open a Drive folder to paste"
-                                  : "Paste here"
-                              }
-                            >
-                              Paste here
-                            </button>
-                            <button
-                              className="btn-ghost"
-                              onClick={() => setClipboard(null)}
-                            >
-                              Clear
-                            </button>
+                        {clipboard && (
+                          <div className="mx-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm flex items-center justify-between dark:border-amber-800/70 dark:bg-amber-900/30">
+                            <span>
+                              {virtualZip || viewMode !== "drive"
+                                ? `Clipboard has ${clipboard.files.length} item(s). Open a Drive folder to paste.`
+                                : `${
+                                    clipboard.mode === "copy"
+                                      ? "Ready to paste copy"
+                                      : "Ready to move"
+                                  } — ${clipboard.files.length} item(s)${
+                                    currentFolderId
+                                      ? " into this folder."
+                                      : ` into ${ROOT_BREADCRUMB_NAME}.`
+                                  }`}
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                className="btn disabled:opacity-50"
+                                onClick={handlePaste}
+                                disabled={!!virtualZip || viewMode !== "drive"}
+                                title={
+                                  virtualZip || viewMode !== "drive"
+                                    ? "Open a Drive folder to paste"
+                                    : "Paste here"
+                                }
+                              >
+                                Paste here
+                              </button>
+                              <button
+                                className="btn-ghost"
+                                onClick={() => setClipboard(null)}
+                              >
+                                Clear
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Properties modal */}
-                      <PropertiesModal
-                        file={propertiesFile}
-                        isOpen={showProperties}
-                        onClose={() => {
-                          setShowProperties(false);
-                          setPropertiesFile(null);
-                        }}
-                        onRefreshMetadata={async (fileId) => {
-                          await refreshFileMetadata(fileId);
-                          const latest = await getFileById(fileId);
-                          applyLatestFileEverywhere(latest);
-                        }}
-                        onRetryAiTag={async (file) => {
-                          await handleRetryAiTag(file);
-                        }}
-                      />
+                        {/* Properties modal */}
+                        <PropertiesModal
+                          file={propertiesFile}
+                          isOpen={showProperties}
+                          onClose={() => {
+                            setShowProperties(false);
+                            setPropertiesFile(null);
+                          }}
+                          onRefreshMetadata={async (fileId) => {
+                            await refreshFileMetadata(fileId);
+                            const latest = await getFileById(fileId);
+                            applyLatestFileEverywhere(latest);
+                          }}
+                          onRetryAiTag={async (file) => {
+                            await handleRetryAiTag(file);
+                          }}
+                        />
 
-                      {!isLoading && !error && visibleFiles.length > 0 && (
-                        <div>
-                          {layout === "large" || layout === "icons" ? (
-                            <Large_IconView
-                              files={visibleFiles}
-                              variant={layout === "icons" ? "icons" : "large"}
-                              density={
-                                density === "compact" ? "compact" : "cozy"
-                              }
-                              onOpenVirtual={({ zipId, prefix }) => {
-                                const label =
-                                  visibleFiles.find(
-                                    (x) => String(x.id) === zipId,
-                                  )?.title ?? "Archive";
-                                void onZipSelect(zipId, label, prefix);
-                              }}
-                              onOpen={(f) => {
-                                const id = String((f as any).id);
-
-                                // Zip folder inside virtual archive
-                                if (isZipDirId(id)) {
-                                  const { zipId, path } = parseZipItemId(id);
-                                  const label =
-                                    virtualZip?.zipId === zipId
-                                      ? virtualZip.label
-                                      : "Archive";
-                                  void onZipSelect(zipId, label, path);
-                                  return;
-                                }
-
-                                // Zip file inside virtual archive
-                                if (isZipFileId(id)) {
-                                  const { zipId, path } = parseZipItemId(id);
-                                  window.open(
-                                    streamZipFile(zipId, path),
-                                    "_blank",
-                                    "noopener,noreferrer",
-                                  );
-                                  return;
-                                }
-
-                                // Normal folder/file behavior
-                                const isFolder =
-                                  String(id).startsWith("folder:");
-                                if (isFolder) {
-                                  if (viewMode === "trash") {
-                                    notify(
-                                      "Restore the folder to open it",
-                                      "info",
-                                    );
-                                    return;
+                        {!isLoading &&
+                          (!error || isStaleView) &&
+                          visibleFiles.length > 0 && (
+                            <div className="fm-panel-content">
+                              {layout === "large" || layout === "icons" ? (
+                                <Large_IconView
+                                  files={visibleFiles}
+                                  variant={
+                                    layout === "icons" ? "icons" : "large"
                                   }
-                                  const folderId = id.startsWith("folder:")
-                                    ? id.slice("folder:".length)
-                                    : String(id);
-                                  onFolderSelect(folderId, (f as any).title);
-                                } else {
-                                  handleOpenPreview(f as any);
-                                }
-                              }}
-                              selectedIds={selectedIds}
-                              onSelectionChange={handleSelectionChangeByIds}
-                              sortKey={sortKey}
-                              sortDir={sortDir}
-                              onShowProperties={(f: FileItem) => {
-                                void openProperties(f);
-                              }}
-                              onRetryAiTag={
-                                virtualZip || viewMode === "trash"
-                                  ? undefined
-                                  : (f: FileItem) => {
-                                      void handleRetryAiTag(f);
-                                    }
-                              }
-                              onDownload={(f) => {
-                                const id = String((f as any).id);
-                                if (isZipFileId(id)) {
-                                  const { zipId, path } = parseZipItemId(id);
-                                  window.open(
-                                    streamZipFile(zipId, path),
-                                    "_blank",
-                                    "noopener,noreferrer",
-                                  );
-                                  return;
-                                }
-                                handleDownloadItem(f);
-                              }}
-                              onDelete={
-                                virtualZip
-                                  ? undefined
-                                  : viewMode === "trash"
-                                    ? handlePermanentDelete
-                                    : handleDelete
-                              }
-                              onDeleteMany={
-                                virtualZip
-                                  ? undefined
-                                  : viewMode === "trash"
-                                    ? onPermanentDeleteSelected
-                                    : onDeleteSelected
-                              }
-                              onRestore={
-                                virtualZip || viewMode !== "trash"
-                                  ? undefined
-                                  : handleRestore
-                              }
-                              onRestoreMany={
-                                virtualZip || viewMode !== "trash"
-                                  ? undefined
-                                  : onRestoreSelected
-                              }
-                              onPaste={
-                                virtualZip || viewMode !== "drive"
-                                  ? undefined
-                                  : handlePaste
-                              }
-                              onRename={
-                                virtualZip || viewMode === "trash"
-                                  ? undefined
-                                  : handleRenameById
-                              }
-                              onCopy={
-                                virtualZip || viewMode === "trash"
-                                  ? undefined
-                                  : (ids: string[]) => handleCopy(byIds(ids))
-                              }
-                              onCut={
-                                virtualZip || viewMode === "trash"
-                                  ? undefined
-                                  : (ids: string[]) => handleCut(byIds(ids))
-                              }
-                              onDragStart={handleDragStart}
-                              onDragEnd={() => handleDragEnd([])}
-                              onDrop={(e) => {
-                                try {
-                                  const raw =
-                                    e.dataTransfer.getData("text/plain");
-                                  const ids = raw ? JSON.parse(raw) : [];
-                                  if (viewMode !== "drive") return;
-
-                                  void handleDrop(ids, currentFolderId ?? null);
-                                } catch (err) {
-                                  console.error(
-                                    "Drop payload parse error:",
-                                    err,
-                                  );
-                                }
-                              }}
-                              currentFolderId={currentFolderId}
-                              onSortChange={(key: any, dir: any) => {
-                                setSortKey(key as SortKey);
-                                setSortDir(dir as SortDir);
-                                setPage(1);
-                              }}
-                            />
-                          ) : (
-                            <Details_ListView
-                              {...({
-                                viewMode:
-                                  layout === "details" ? "details" : "list",
-                                files: visibleFiles,
-                                layout,
-                                selectable: true,
-                                selectedIds: selectedIds,
-
-                                onOpenVirtual: ({ zipId, prefix }: any) => {
-                                  const label =
-                                    visibleFiles.find(
-                                      (x) => String(x.id) === String(zipId),
-                                    )?.title ?? "Archive";
-                                  void onZipSelect(
-                                    String(zipId),
-                                    label,
-                                    String(prefix ?? ""),
-                                  );
-                                },
-
-                                onOpen: (f: any) => {
-                                  const id = String(f?.id ?? "");
-
-                                  // Zip folder inside virtual archive
-                                  if (isZipDirId(id)) {
-                                    const { zipId, path } = parseZipItemId(id);
+                                  density={
+                                    density === "compact" ? "compact" : "cozy"
+                                  }
+                                  onOpenVirtual={({ zipId, prefix }) => {
                                     const label =
-                                      virtualZip?.zipId === zipId
-                                        ? virtualZip.label
-                                        : "Archive";
-                                    void onZipSelect(zipId, label, path);
-                                    return;
-                                  }
+                                      visibleFiles.find(
+                                        (x) => String(x.id) === zipId,
+                                      )?.title ?? "Archive";
+                                    void onZipSelect(zipId, label, prefix);
+                                  }}
+                                  onOpen={(f) => {
+                                    const id = String((f as any).id);
 
-                                  // Zip file inside virtual archive
-                                  if (isZipFileId(id)) {
-                                    const { zipId, path } = parseZipItemId(id);
-                                    window.open(
-                                      streamZipFile(zipId, path),
-                                      "_blank",
-                                      "noopener,noreferrer",
-                                    );
-                                    return;
-                                  }
+                                    // Zip folder inside virtual archive
+                                    if (isZipDirId(id)) {
+                                      const { zipId, path } =
+                                        parseZipItemId(id);
+                                      const label =
+                                        virtualZip?.zipId === zipId
+                                          ? virtualZip.label
+                                          : "Archive";
+                                      void onZipSelect(zipId, label, path);
+                                      return;
+                                    }
 
-                                  if (f.mimeType === "folder") {
-                                    if (viewMode === "trash") {
-                                      notify(
-                                        "Restore the folder to open it",
-                                        "info",
+                                    // Zip file inside virtual archive
+                                    if (isZipFileId(id)) {
+                                      const { zipId, path } =
+                                        parseZipItemId(id);
+                                      window.open(
+                                        streamZipFile(zipId, path),
+                                        "_blank",
+                                        "noopener,noreferrer",
                                       );
                                       return;
                                     }
-                                    const folderId = id.startsWith("folder:")
-                                      ? id.slice("folder:".length)
-                                      : id;
-                                    onFolderSelect(folderId, f.title);
-                                  } else {
-                                    handleOpenPreview(f as any);
+
+                                    // Normal folder/file behavior
+                                    const isFolder =
+                                      String(id).startsWith("folder:");
+                                    if (isFolder) {
+                                      if (viewMode === "trash") {
+                                        notify(
+                                          "Restore the folder to open it",
+                                          "info",
+                                        );
+                                        return;
+                                      }
+                                      const folderId = id.startsWith("folder:")
+                                        ? id.slice("folder:".length)
+                                        : String(id);
+                                      onFolderSelect(
+                                        folderId,
+                                        (f as any).title,
+                                      );
+                                    } else {
+                                      handleOpenPreview(f as any);
+                                    }
+                                  }}
+                                  selectedIds={selectedIds}
+                                  onSelectionChange={handleSelectionChangeByIds}
+                                  sortKey={sortKey}
+                                  sortDir={sortDir}
+                                  onShowProperties={(f: FileItem) => {
+                                    void openProperties(f);
+                                  }}
+                                  onRetryAiTag={
+                                    virtualZip || viewMode === "trash"
+                                      ? undefined
+                                      : (f: FileItem) => {
+                                          void handleRetryAiTag(f);
+                                        }
                                   }
-                                },
-
-                                onShowProperties: (f: FileItem) => {
-                                  void openProperties(f);
-                                },
-
-                                onRetryAiTag:
-                                  virtualZip || viewMode === "trash"
-                                    ? undefined
-                                    : (f: FileItem) => {
-                                        void handleRetryAiTag(f);
-                                      },
-
-                                onDownload: (f: any) => {
-                                  const id = String(f?.id ?? "");
-                                  if (isZipFileId(id)) {
-                                    const { zipId, path } = parseZipItemId(id);
-                                    window.open(
-                                      streamZipFile(zipId, path),
-                                      "_blank",
-                                      "noopener,noreferrer",
-                                    );
-                                    return;
+                                  onDownload={(f) => {
+                                    const id = String((f as any).id);
+                                    if (isZipFileId(id)) {
+                                      const { zipId, path } =
+                                        parseZipItemId(id);
+                                      window.open(
+                                        streamZipFile(zipId, path),
+                                        "_blank",
+                                        "noopener,noreferrer",
+                                      );
+                                      return;
+                                    }
+                                    handleDownloadItem(f);
+                                  }}
+                                  onDelete={
+                                    virtualZip
+                                      ? undefined
+                                      : viewMode === "trash"
+                                        ? handlePermanentDelete
+                                        : handleDelete
                                   }
-                                  handleDownloadItem(f);
-                                },
+                                  onDeleteMany={
+                                    virtualZip
+                                      ? undefined
+                                      : viewMode === "trash"
+                                        ? onPermanentDeleteSelected
+                                        : onDeleteSelected
+                                  }
+                                  onRestore={
+                                    virtualZip || viewMode !== "trash"
+                                      ? undefined
+                                      : handleRestore
+                                  }
+                                  onRestoreMany={
+                                    virtualZip || viewMode !== "trash"
+                                      ? undefined
+                                      : onRestoreSelected
+                                  }
+                                  onPaste={
+                                    virtualZip || viewMode !== "drive"
+                                      ? undefined
+                                      : handlePaste
+                                  }
+                                  onRename={
+                                    virtualZip || viewMode === "trash"
+                                      ? undefined
+                                      : handleRenameById
+                                  }
+                                  onCopy={
+                                    virtualZip || viewMode === "trash"
+                                      ? undefined
+                                      : (ids: string[]) =>
+                                          handleCopy(byIds(ids))
+                                  }
+                                  onCut={
+                                    virtualZip || viewMode === "trash"
+                                      ? undefined
+                                      : (ids: string[]) => handleCut(byIds(ids))
+                                  }
+                                  onDragStart={handleDragStart}
+                                  onDragEnd={() => handleDragEnd([])}
+                                  onDrop={(e) => {
+                                    try {
+                                      const raw =
+                                        e.dataTransfer.getData("text/plain");
+                                      const ids = raw ? JSON.parse(raw) : [];
+                                      if (viewMode !== "drive") return;
 
-                                onDelete: virtualZip
-                                  ? undefined
-                                  : viewMode === "trash"
-                                    ? handlePermanentDelete
-                                    : handleDelete,
+                                      void handleDrop(
+                                        ids,
+                                        currentFolderId ?? null,
+                                      );
+                                    } catch (err) {
+                                      console.error(
+                                        "Drop payload parse error:",
+                                        err,
+                                      );
+                                    }
+                                  }}
+                                  currentFolderId={currentFolderId}
+                                  onSortChange={(key: any, dir: any) => {
+                                    setSortKey(key as SortKey);
+                                    setSortDir(dir as SortDir);
+                                    setPage(1);
+                                  }}
+                                />
+                              ) : (
+                                <Details_ListView
+                                  {...({
+                                    viewMode:
+                                      layout === "details" ? "details" : "list",
+                                    files: visibleFiles,
+                                    layout,
+                                    selectable: true,
+                                    selectedIds: selectedIds,
 
-                                onDeleteMany: virtualZip
-                                  ? undefined
-                                  : viewMode === "trash"
-                                    ? onPermanentDeleteSelected
-                                    : onDeleteSelected,
+                                    onOpenVirtual: ({ zipId, prefix }: any) => {
+                                      const label =
+                                        visibleFiles.find(
+                                          (x) => String(x.id) === String(zipId),
+                                        )?.title ?? "Archive";
+                                      void onZipSelect(
+                                        String(zipId),
+                                        label,
+                                        String(prefix ?? ""),
+                                      );
+                                    },
 
-                                onRestore:
-                                  virtualZip || viewMode !== "trash"
-                                    ? undefined
-                                    : handleRestore,
+                                    onOpen: (f: any) => {
+                                      const id = String(f?.id ?? "");
 
-                                onRestoreMany:
-                                  virtualZip || viewMode !== "trash"
-                                    ? undefined
-                                    : onRestoreSelected,
+                                      // Zip folder inside virtual archive
+                                      if (isZipDirId(id)) {
+                                        const { zipId, path } =
+                                          parseZipItemId(id);
+                                        const label =
+                                          virtualZip?.zipId === zipId
+                                            ? virtualZip.label
+                                            : "Archive";
+                                        void onZipSelect(zipId, label, path);
+                                        return;
+                                      }
 
-                                clipboard,
+                                      // Zip file inside virtual archive
+                                      if (isZipFileId(id)) {
+                                        const { zipId, path } =
+                                          parseZipItemId(id);
+                                        window.open(
+                                          streamZipFile(zipId, path),
+                                          "_blank",
+                                          "noopener,noreferrer",
+                                        );
+                                        return;
+                                      }
 
-                                onPaste:
-                                  virtualZip || viewMode !== "drive"
-                                    ? undefined
-                                    : handlePaste,
-                                onUpdateTags:
-                                  virtualZip || viewMode === "trash"
-                                    ? undefined
-                                    : handleUpdateTags,
-                                onEditTags:
-                                  virtualZip || viewMode === "trash"
-                                    ? undefined
-                                    : handleEditTagsInPreview,
-                                onSelectionChange: handleSelectionChangeByIds,
-                                onRename:
-                                  virtualZip || viewMode === "trash"
-                                    ? undefined
-                                    : handleRenameById,
-                                onCopy:
-                                  virtualZip || viewMode === "trash"
-                                    ? undefined
-                                    : (ids: string[]) => handleCopy(byIds(ids)),
-                                onCut:
-                                  virtualZip || viewMode === "trash"
-                                    ? undefined
-                                    : (ids: string[]) => handleCut(byIds(ids)),
-                                onDragStart: handleDragStart,
-                                onDragEnd: handleDragEnd,
-                                onDrop:
-                                  virtualZip || viewMode !== "drive"
-                                    ? undefined
-                                    : handleDrop,
+                                      if (f.mimeType === "folder") {
+                                        if (viewMode === "trash") {
+                                          notify(
+                                            "Restore the folder to open it",
+                                            "info",
+                                          );
+                                          return;
+                                        }
+                                        const folderId = id.startsWith(
+                                          "folder:",
+                                        )
+                                          ? id.slice("folder:".length)
+                                          : id;
+                                        onFolderSelect(folderId, f.title);
+                                      } else {
+                                        handleOpenPreview(f as any);
+                                      }
+                                    },
 
-                                currentFolderId,
-                                sortKey,
-                                sortDir,
-                                onSortChange: (key: any, dir: any) => {
-                                  setSortKey(key as SortKey);
-                                  setSortDir(dir as SortDir);
-                                  setPage(1);
-                                },
-                                density,
-                              } as any)}
-                            />
+                                    onShowProperties: (f: FileItem) => {
+                                      void openProperties(f);
+                                    },
+
+                                    onRetryAiTag:
+                                      virtualZip || viewMode === "trash"
+                                        ? undefined
+                                        : (f: FileItem) => {
+                                            void handleRetryAiTag(f);
+                                          },
+
+                                    onDownload: (f: any) => {
+                                      const id = String(f?.id ?? "");
+                                      if (isZipFileId(id)) {
+                                        const { zipId, path } =
+                                          parseZipItemId(id);
+                                        window.open(
+                                          streamZipFile(zipId, path),
+                                          "_blank",
+                                          "noopener,noreferrer",
+                                        );
+                                        return;
+                                      }
+                                      handleDownloadItem(f);
+                                    },
+
+                                    onDelete: virtualZip
+                                      ? undefined
+                                      : viewMode === "trash"
+                                        ? handlePermanentDelete
+                                        : handleDelete,
+
+                                    onDeleteMany: virtualZip
+                                      ? undefined
+                                      : viewMode === "trash"
+                                        ? onPermanentDeleteSelected
+                                        : onDeleteSelected,
+
+                                    onRestore:
+                                      virtualZip || viewMode !== "trash"
+                                        ? undefined
+                                        : handleRestore,
+
+                                    onRestoreMany:
+                                      virtualZip || viewMode !== "trash"
+                                        ? undefined
+                                        : onRestoreSelected,
+
+                                    clipboard,
+
+                                    onPaste:
+                                      virtualZip || viewMode !== "drive"
+                                        ? undefined
+                                        : handlePaste,
+                                    onUpdateTags:
+                                      virtualZip || viewMode === "trash"
+                                        ? undefined
+                                        : handleUpdateTags,
+                                    onEditTags:
+                                      virtualZip || viewMode === "trash"
+                                        ? undefined
+                                        : handleEditTagsInPreview,
+                                    onSelectionChange:
+                                      handleSelectionChangeByIds,
+                                    onRename:
+                                      virtualZip || viewMode === "trash"
+                                        ? undefined
+                                        : handleRenameById,
+                                    onCopy:
+                                      virtualZip || viewMode === "trash"
+                                        ? undefined
+                                        : (ids: string[]) =>
+                                            handleCopy(byIds(ids)),
+                                    onCut:
+                                      virtualZip || viewMode === "trash"
+                                        ? undefined
+                                        : (ids: string[]) =>
+                                            handleCut(byIds(ids)),
+                                    onDragStart: handleDragStart,
+                                    onDragEnd: handleDragEnd,
+                                    onDrop:
+                                      virtualZip || viewMode !== "drive"
+                                        ? undefined
+                                        : handleDrop,
+
+                                    currentFolderId,
+                                    sortKey,
+                                    sortDir,
+                                    onSortChange: (key: any, dir: any) => {
+                                      setSortKey(key as SortKey);
+                                      setSortDir(dir as SortDir);
+                                      setPage(1);
+                                    },
+                                    density,
+                                  } as any)}
+                                />
+                              )}
+                            </div>
                           )}
-                        </div>
-                      )}
+                      </div>
                     </motion.div>
 
                     {/* Status bar (Explorer-style) */}
