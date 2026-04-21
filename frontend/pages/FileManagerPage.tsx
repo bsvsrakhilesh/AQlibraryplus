@@ -985,19 +985,19 @@ export default function FileManagerPage() {
           : null,
       );
     } catch {
-      // keep the last value (don’t flash 0 / break UI)
+      // keep the last known global value; do not replace it with folder bytes
     }
   }, []);
 
   const refreshAll = useCallback(() => {
-    refresh(); // refresh listing
-    void fetchStorageUsage(); // refresh sidebar immediately
-  }, [refresh, fetchStorageUsage]);
+    refresh();
+  }, [refresh]);
 
-  // initial load for sidebar storage
+  // Single source of truth for sidebar storage:
+  // load on mount and whenever refreshToken changes.
   useEffect(() => {
     void fetchStorageUsage();
-  }, [fetchStorageUsage]);
+  }, [fetchStorageUsage, refreshToken]);
 
   // Drag state for UI feedback
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -2005,37 +2005,6 @@ export default function FileManagerPage() {
     refreshToken,
     virtualZip,
   ]);
-
-  // ------- Storage usage (sidebar) -------
-  // Sidebar should show *global* usage, not only the current folder's total bytes.
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const data = await getStorageUsage();
-        if (!cancelled) {
-          setStorageUsedBytes(Number(data?.usedBytes ?? 0));
-          setStorageCapacityBytes(
-            typeof data?.capacityBytes === "number" &&
-              Number.isFinite(data.capacityBytes)
-              ? data.capacityBytes
-              : null,
-          );
-        }
-      } catch {
-        // graceful fallback (won't be perfect, but avoids showing 0)
-        if (!cancelled) {
-          setStorageUsedBytes(totalBytes);
-          setStorageCapacityBytes(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshToken, totalBytes]);
 
   const reviewQueueScope = useMemo(() => {
     if (viewMode !== "drive" || virtualZip) return null;
