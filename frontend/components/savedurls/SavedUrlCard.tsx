@@ -194,8 +194,8 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
   );
 
   // Shared button shape: rectangular with rounded corners + consistent height
-  const rectBtn =
-    "rounded-lg h-10 w-full min-w-0 flex items-center justify-center text-sm font-medium";
+  const actionBtn =
+    "saved-url-card__action rounded-xl w-full min-w-0 flex items-center justify-center text-sm font-medium";
 
   const textBtn =
     "btn-ghost " +
@@ -216,7 +216,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
     <SmartCard
       as="article"
       className={[
-        "p-6 relative",
+        "saved-url-card relative h-full p-5 sm:p-6",
         selected ? "ring-2 ring-[var(--color-accent)]" : "ring-0",
       ].join(" ")}
     >
@@ -252,7 +252,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
               rel="noopener noreferrer"
               onClick={() => trackSavedUrlVisit(url.id)}
               title={url.title}
-              className="truncate text-lg font-semibold text-gray-900 hover:underline dark:text-white"
+              className="line-clamp-2 text-base sm:text-lg font-semibold leading-6 text-gray-900 hover:underline dark:text-white"
             >
               {url.title}
             </a>
@@ -261,7 +261,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
               <button
                 onClick={() => onFavoriteToggle(url)}
                 aria-label={url.isFavorited ? "Unfavorite" : "Favorite"}
-                className={`btn-ghost px-2 py-1 ${rectBtn}`}
+                className="btn-ghost inline-flex h-9 w-9 items-center justify-center rounded-xl px-0 py-0"
                 title={url.isFavorited ? "Unfavorite" : "Favorite"}
               >
                 <BookmarkIcon
@@ -282,7 +282,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
             </div>
           </div>
 
-          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
+          <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
             {url.domain}
           </div>
 
@@ -322,11 +322,11 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
           })()}
 
           {url.description ? (
-            <p className="mt-3 line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
+            <p className="mt-3 min-h-[4.5rem] line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
               {url.description}
             </p>
           ) : (
-            <p className="mt-3 text-sm text-gray-400 dark:text-gray-500 italic">
+            <p className="mt-3 min-h-[4.5rem] text-sm text-gray-400 dark:text-gray-500 italic">
               No description.
             </p>
           )}
@@ -353,11 +353,11 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
       )}
 
       {/* Actions: rectangular, colored buttons */}
-      <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+      <div className="mt-auto pt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
         {/* Open → brand primary (solid) */}
         <button
           onClick={() => openSavedUrlInNewTab(url)}
-          className={`btn-primary w-full ${rectBtn}`}
+          className={`btn-primary ${actionBtn}`}
           title="Open in new tab"
         >
           Open
@@ -374,7 +374,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
               disabled={isPdf}
               aria-disabled={isPdf}
               className={[
-                `${textBtn} w-full ${rectBtn}`,
+                `${textBtn} ${actionBtn}`,
                 isPdf ? "opacity-50 cursor-not-allowed" : "",
               ].join(" ")}
               title={
@@ -388,7 +388,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
 
             <button
               onClick={() => onCapture(url, "pdf")}
-              className={`${pdfBtn} w-full ${rectBtn}`}
+              className={`${pdfBtn} ${actionBtn}`}
               title={
                 isPdf ? "Download original PDF" : "Capture as PDF snapshot"
               }
@@ -398,15 +398,15 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
           </>
         ) : (
           <>
-            <div className={`invisible ${textBtn} w-full ${rectBtn}`}>Text</div>
-            <div className={`invisible ${pdfBtn} w-full ${rectBtn}`}>PDF</div>
+            <div className={`invisible ${textBtn} ${actionBtn}`}>Text</div>
+            <div className={`invisible ${pdfBtn} ${actionBtn}`}>PDF</div>
           </>
         )}
 
         {/* Details → neutral tinted button */}
         <button
           onClick={() => onOpenDetail(url)}
-          className={`${detailsBtn} w-full ${rectBtn}`}
+          className={`${detailsBtn} ${actionBtn}`}
           title="Show details"
         >
           Details

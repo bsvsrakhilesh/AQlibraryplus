@@ -28,7 +28,7 @@ const CollectionSidebar: React.FC<CollectionSidebarProps> = ({
   );
 
   const baseBtn =
-    "w-full text-left rounded-xl px-3 py-2.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40";
+    "w-full text-left rounded-xl px-3.5 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40";
   const active =
     "bg-green-100 text-green-900 shadow-sm dark:bg-green-900/30 dark:text-green-100";
   const hover =
@@ -41,19 +41,19 @@ const CollectionSidebar: React.FC<CollectionSidebarProps> = ({
     !!selectedCollection && selectedCollection.id !== "c_general";
 
   return (
-    <aside className="space-y-3">
-      <div className="flex items-center justify-between">
+    <aside className="space-y-4 min-w-0">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-semibold text-neutral-950 dark:text-neutral-100">
+          <h3 className="text-base font-semibold text-neutral-950 dark:text-neutral-100">
             Collections
           </h3>
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
             Organize saved URLs into reusable review buckets.
           </p>
         </div>
 
         <button
-          className="rounded-xl border px-3 py-2 text-sm font-medium transition hover:bg-neutral-50 dark:hover:bg-neutral-800"
+          className="shrink-0 rounded-xl border px-3 py-2 text-sm font-medium transition hover:bg-neutral-50 dark:hover:bg-neutral-800"
           onClick={onCreateClick}
           title="Create collection"
           type="button"
@@ -62,7 +62,7 @@ const CollectionSidebar: React.FC<CollectionSidebarProps> = ({
         </button>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-1.5 rounded-2xl border border-black/5 bg-white/45 p-2 dark:border-white/8 dark:bg-white/[0.03]">
         <button
           className={`${baseBtn} ${!selectedCollectionId ? active : hover}`}
           onClick={() => onSelect(undefined)}
@@ -96,13 +96,13 @@ const CollectionSidebar: React.FC<CollectionSidebarProps> = ({
       </div>
 
       {selectedCollection && (
-        <div className="rounded-2xl border border-black/10 bg-neutral-50/80 p-3 dark:border-white/10 dark:bg-neutral-900/60">
+        <div className="rounded-2xl border border-black/10 bg-neutral-50/80 p-4 dark:border-white/10 dark:bg-neutral-900/60">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                 {selectedCollection.name}
               </div>
-              <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              <div className="mt-1 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
                 {collectionCounts[selectedCollection.id] ?? 0} URL
                 {(collectionCounts[selectedCollection.id] ?? 0) === 1
                   ? ""

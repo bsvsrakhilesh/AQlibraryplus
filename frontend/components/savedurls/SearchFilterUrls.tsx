@@ -131,10 +131,10 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   const chipSelected = "ring-2 ring-brand-primary/40";
 
   return (
-    <div className="saved-urls-filter space-y-4" data-search-filter>
+    <div className="saved-urls-filter space-y-5 min-w-0" data-search-filter>
       {/* Search row */}
       <div className="space-y-2">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex-1 min-w-0 xl:min-w-[520px]">
             <label className="sr-only" htmlFor="saved-urls-query">
               Search saved URLs
@@ -156,10 +156,10 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
                   applyFiltersNow(state);
                 }
               }}
-              className="input w-full min-w-0 rounded-xl px-4 py-3 text-base shadow-sm focus:ring-2 focus:ring-brand-primary/40"
+              className="input w-full min-w-0 rounded-2xl px-4 py-3 text-sm md:text-base shadow-sm focus:ring-2 focus:ring-brand-primary/40"
             />
 
-            <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="mt-2 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
               Search matches title, URL, description, notes, and exact tags. Use
               Saved date for library ingestion time and Published date for
               source metadata. Filters update automatically. Press Enter to
@@ -167,7 +167,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
             </p>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+          <div className="flex shrink-0 flex-wrap items-center gap-2.5 xl:justify-end">
             <span className="rounded-full border border-black/10 dark:border-white/10 px-3 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
               {activeFilterCount === 0
                 ? "No active filters"
@@ -200,11 +200,13 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
       </div>
 
       {/* Filters grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(18rem,0.95fr)] gap-4 text-sm min-w-0">
         {/* Domains */}
-        <div className="saved-urls-section-card p-3">
-          <div className="font-semibold mb-2">Domains</div>
-          <div className="flex flex-wrap gap-2 min-w-0">
+        <div className="saved-urls-section-card min-h-[14rem] p-4">
+          <div className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            Domains
+          </div>
+          <div className="flex max-h-40 flex-wrap content-start gap-2 overflow-auto pr-1 min-w-0">
             {availableDomains.map((d) => {
               const selected = state.domains.includes(d);
               return (
@@ -231,9 +233,11 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
         </div>
 
         {/* Tags */}
-        <div className="saved-urls-section-card p-3">
-          <div className="font-semibold mb-2">Tags</div>
-          <div className="flex flex-wrap gap-2 min-w-0">
+        <div className="saved-urls-section-card min-h-[14rem] p-4">
+          <div className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            Tags
+          </div>
+          <div className="flex max-h-40 flex-wrap content-start gap-2 overflow-auto pr-1 min-w-0">
             {availableTags.map((t) => {
               const selected = state.tags.includes(t);
               return (
@@ -260,9 +264,11 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
         </div>
 
         {/* Dates & status */}
-        <div className="saved-urls-section-card p-3">
-          <div className="font-semibold mb-2">Dates & status</div>
-          <div className="flex flex-col gap-3">
+        <div className="saved-urls-section-card min-h-[14rem] p-4">
+          <div className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            Dates & status
+          </div>
+          <div className="flex flex-col gap-3.5">
             <div>
               <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
                 Saved date

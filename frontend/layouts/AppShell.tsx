@@ -44,11 +44,13 @@ export default function AppShell({
   return (
     <div className={shellClass} style={{ ["--sidebar-w" as any]: sidebarVar }}>
       <header className="fixed inset-x-0 top-0 z-50">
-        <Header
-          onToggleSidebar={onToggleSidebar}
-          onNavigateHome={onNavigateHome}
-          isSidebarOpen={sidebarOpen}
-        />
+        <div className="app-shell__offset">
+          <Header
+            onToggleSidebar={onToggleSidebar}
+            onNavigateHome={onNavigateHome}
+            isSidebarOpen={sidebarOpen}
+          />
+        </div>
       </header>
 
       {/* DESKTOP SIDEBAR */}
@@ -61,8 +63,8 @@ export default function AppShell({
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="min-h-screen pb-8 pt-[var(--header-h)]">
-        <div className="app-content app-shell__inner max-w-screen-2xl mx-auto w-full h-full">
+      <main className="app-shell__offset min-h-screen pb-8 pt-[var(--header-h)]">
+        <div className="app-content app-shell__inner max-w-screen-2xl mx-auto w-full h-full min-w-0">
           {children}
         </div>
       </main>

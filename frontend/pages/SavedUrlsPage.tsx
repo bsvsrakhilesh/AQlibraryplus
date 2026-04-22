@@ -2657,7 +2657,7 @@ const SavedUrlsPage: React.FC = () => {
   ]);
 
   return (
-    <main className="saved-urls-page space-y-6 px-4 md:px-6 lg:px-8 pt-6 md:pt-8">
+    <main className="saved-urls-page space-y-6 px-4 md:px-6 lg:px-8 pt-6 md:pt-8 min-w-0">
       <header className="page-header">
         <div className="page-header-main">
           <p className="page-header-kicker">Library</p>
@@ -3036,9 +3036,9 @@ const SavedUrlsPage: React.FC = () => {
       )}
 
       {/* Grid inside AppShell content */}
-      <section className="grid grid-cols-12 gap-4 sm:gap-6">
+      <section className="grid grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)] gap-5 xl:gap-6 items-start min-w-0">
         {/* Sidebar */}
-        <div className="col-span-12 md:col-span-4 lg:col-span-3">
+        <div className="saved-urls-grid-item min-w-0">
           <div className="md:sticky md:top-20 lg:top-[76px]">
             <div className="saved-urls-panel saved-urls-sidebar-panel h-full p-4 sm:p-5">
               <CollectionSidebar
@@ -3056,11 +3056,11 @@ const SavedUrlsPage: React.FC = () => {
         </div>
 
         {/* Main content */}
-        <div className="col-span-12 md:col-span-8 lg:col-span-9">
-          <div className="saved-urls-panel saved-urls-main-panel p-4 sm:p-5 space-y-4 md:space-y-5 mb-10">
+        <div className="saved-urls-grid-item min-w-0">
+          <div className="saved-urls-panel saved-urls-main-panel p-4 sm:p-5 lg:p-6 space-y-5 md:space-y-6 mb-10 min-w-0">
             {/* Toolbar: 2-row responsive grid to avoid collisions */}
             <header
-              className="saved-urls-toolbar relative grid grid-cols-12 gap-3 rounded-xl p-3 md:p-4"
+              className="saved-urls-toolbar relative grid grid-cols-12 gap-4 rounded-2xl p-4 md:p-5 min-w-0"
               role="toolbar"
               aria-label="Saved URLs controls"
             >
@@ -3077,14 +3077,15 @@ const SavedUrlsPage: React.FC = () => {
 
               {/* Row 2: ALL SELECTS IN ONE ROW */}
               <div className="col-span-12">
-                <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap md:whitespace-normal md:overflow-visible">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5 min-w-0">
                   {/* Saved year */}
                   <label className="sr-only" htmlFor="year-filter">
                     Filter by saved year
                   </label>
                   <select
                     id="year-filter"
-                    className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                    className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                     value={year}
                     onChange={(e) => setYear(e.target.value)}
                     title="Filter by saved year"
@@ -3103,7 +3104,7 @@ const SavedUrlsPage: React.FC = () => {
                   </label>
                   <select
                     id="sortKey"
-                    className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                    className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                     value={sortKey}
                     onChange={(e) => setSortKey(e.target.value as SortKey)}
                     title="Sort key"
@@ -3119,7 +3120,7 @@ const SavedUrlsPage: React.FC = () => {
                   </label>
                   <select
                     id="sortOrder"
-                    className="input-pill w-auto shrink-0 min-w-[7rem] text-sm py-2 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                    className="input-pill w-auto shrink-0 min-w-[7rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                     value={sortOrder}
                     onChange={(e) => setSortOrder(e.target.value as SortOrder)}
                     title="Sort order"
@@ -3127,8 +3128,9 @@ const SavedUrlsPage: React.FC = () => {
                     <option value="desc">Desc</option>
                     <option value="asc">Asc</option>
                   </select>
+                  </div>
 
-                  <div className="ml-auto inline-flex items-center rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/70 p-1 shadow-sm">
+                  <div className="inline-flex self-start xl:self-auto items-center rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/70 p-1 shadow-sm">
                     <button
                       type="button"
                       onClick={() => setViewMode("registry")}
@@ -3170,7 +3172,7 @@ const SavedUrlsPage: React.FC = () => {
                   type="text"
                   aria-label="Quick add URL"
                   placeholder="Paste a URL and press Enter"
-                  className="input h-11 w-full md:w-[min(100%,28rem)] rounded-lg shadow-sm transition focus:ring-2 focus:ring-brand-primary/40 focus:outline-none"
+                  className="input h-11 w-full md:w-[min(100%,30rem)] rounded-xl shadow-sm transition focus:ring-2 focus:ring-brand-primary/40 focus:outline-none"
                   onKeyDown={async (e) => {
                     if (e.key !== "Enter") return;
 
