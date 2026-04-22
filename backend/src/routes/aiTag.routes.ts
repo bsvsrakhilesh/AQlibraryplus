@@ -14,6 +14,10 @@ import {
   scheduleAiTagJobFinalizationForFile,
   scheduleAiTagJobFinalizationForUrl,
 } from "../services/aiTagJobFinalize.service";
+import {
+  startOrReuseAiTagJobForFile,
+  startOrReuseAiTagJobForUrl,
+} from "../services/aiTagJobStart.service";
 
 const r = Router();
 
@@ -57,20 +61,19 @@ r.post("/files/:id/auto-tags", async (req, res, next) => {
       });
     }
 
-    const { jobId } = await createJobFromFile(rec.storagePath, TOPK, USE_LLM);
-
-    await prisma.storedFile.update({
-      where: { id },
-      data: {
-        taggingStatus: "RUNNING",
-        taggingJobId: jobId,
-        taggingError: null,
-      },
+    const started = await startOrReuseAiTagJobForFile({
+      fileId: id,
+      startJob: () => createJobFromFile(rec.storagePath, TOPK, USE_LLM),
     });
 
-    scheduleAiTagJobFinalizationForFile(id, jobId);
+    if (started.mode === "started_new" || started.mode === "reused_terminal") {
+      scheduleAiTagJobFinalizationForFile(id, started.jobId);
+    }
 
-    return res.status(202).json({ jobId });
+    return res.status(202).json({
+      jobId: started.jobId,
+      reused: started.mode !== "started_new",
+    });
   } catch (e) {
     next(e);
   }
@@ -88,24 +91,22 @@ r.post("/urls/:id/auto-tags", async (req, res, next) => {
       select: { storagePath: true },
     });
 
-    const { jobId } = latestSnap?.storagePath
-      ? await createJobFromFile(latestSnap.storagePath, TOPK, USE_LLM)
-      : await createJobFromUrl(row.url, TOPK, USE_LLM);
-
-    await prisma.url.update({
-      where: { id },
-      data: {
-        taggingStatus: "RUNNING",
-        taggingJobId: jobId,
-        taggingError: null,
-      },
+    const started = await startOrReuseAiTagJobForUrl({
+      urlId: id,
+      startJob: () =>
+        latestSnap?.storagePath
+          ? createJobFromFile(latestSnap.storagePath, TOPK, USE_LLM)
+          : createJobFromUrl(row.url, TOPK, USE_LLM),
     });
 
-    scheduleAiTagJobFinalizationForUrl(id, jobId);
+    if (started.mode === "started_new" || started.mode === "reused_terminal") {
+      scheduleAiTagJobFinalizationForUrl(id, started.jobId);
+    }
 
     return res.status(202).json({
-      jobId,
+      jobId: started.jobId,
       source: latestSnap?.storagePath ? "snapshot" : "live-url",
+      reused: started.mode !== "started_new",
     });
   } catch (e) {
     next(e);

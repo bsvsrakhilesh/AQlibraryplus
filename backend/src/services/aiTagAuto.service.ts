@@ -1,6 +1,7 @@
 import { TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { createJobFromFile } from "./pyTaggerClient";
+import { startOrReuseAiTagJobForFile } from "./aiTagJobStart.service";
 import { finalizeAiTagJobForFile } from "./aiTagJobFinalize.service";
 import { persistAiTagFailureForFile } from "./aiTagPersistence.service";
 import {
@@ -64,16 +65,12 @@ export async function runAiTagForFile(
     };
   }
 
-  const { jobId } = await createJobFromFile(rec.storagePath, TOPK, USE_LLM);
-
-  await prisma.storedFile.update({
-    where: { id: String(fileId) },
-    data: {
-      taggingStatus: TaggingStatus.RUNNING,
-      taggingJobId: jobId,
-      taggingError: null,
-    },
+  const started = await startOrReuseAiTagJobForFile({
+    fileId: String(fileId),
+    startJob: () => createJobFromFile(rec.storagePath, TOPK, USE_LLM),
   });
+
+  const jobId = started.jobId;
 
   try {
     const data = await finalizeAiTagJobForFile(String(fileId), jobId);

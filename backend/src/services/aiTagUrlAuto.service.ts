@@ -2,6 +2,7 @@
 import { TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { createJobFromFile, createJobFromUrl } from "./pyTaggerClient";
+import { startOrReuseAiTagJobForUrl } from "./aiTagJobStart.service";
 import { finalizeAiTagJobForUrl } from "./aiTagJobFinalize.service";
 import { persistAiTagFailureForUrl } from "./aiTagPersistence.service";
 
@@ -41,28 +42,15 @@ export async function runAiTagForUrl(
     select: { storagePath: true, mimeType: true, captureType: true },
   });
 
-  let jobId: string;
-
-  if (latestSnapshot?.storagePath) {
-    const created = await createJobFromFile(
-      latestSnapshot.storagePath,
-      TOPK,
-      USE_LLM,
-    );
-    jobId = created.jobId;
-  } else {
-    const created = await createJobFromUrl(rec.url, TOPK, USE_LLM);
-    jobId = created.jobId;
-  }
-
-  await prisma.url.update({
-    where: { id: urlId },
-    data: {
-      taggingStatus: TaggingStatus.RUNNING,
-      taggingJobId: jobId,
-      taggingError: null,
-    },
+  const started = await startOrReuseAiTagJobForUrl({
+    urlId,
+    startJob: () =>
+      latestSnapshot?.storagePath
+        ? createJobFromFile(latestSnapshot.storagePath, TOPK, USE_LLM)
+        : createJobFromUrl(rec.url, TOPK, USE_LLM),
   });
+
+  const jobId = started.jobId;
 
   try {
     const data = await finalizeAiTagJobForUrl(urlId, jobId);
