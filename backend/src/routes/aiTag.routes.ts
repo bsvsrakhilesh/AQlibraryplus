@@ -10,6 +10,10 @@ import {
   getAiTaggingUnavailableMessage,
   getFileCapability,
 } from "../utils/fileCapabilities";
+import {
+  scheduleAiTagJobFinalizationForFile,
+  scheduleAiTagJobFinalizationForUrl,
+} from "../services/aiTagJobFinalize.service";
 
 const r = Router();
 
@@ -64,6 +68,8 @@ r.post("/files/:id/auto-tags", async (req, res, next) => {
       },
     });
 
+    scheduleAiTagJobFinalizationForFile(id, jobId);
+
     return res.status(202).json({ jobId });
   } catch (e) {
     next(e);
@@ -95,6 +101,8 @@ r.post("/urls/:id/auto-tags", async (req, res, next) => {
       },
     });
 
+    scheduleAiTagJobFinalizationForUrl(id, jobId);
+
     return res.status(202).json({
       jobId,
       source: latestSnap?.storagePath ? "snapshot" : "live-url",
@@ -104,133 +112,11 @@ r.post("/urls/:id/auto-tags", async (req, res, next) => {
   }
 });
 
-/** JOB STATUS: when SUCCESS, persist tags and return payload */
+/** JOB STATUS: read-only proxy for UI polling */
 r.get("/tag-jobs/:jobId", async (req, res, next) => {
   try {
     const { jobId } = req.params;
-    const fileId = req.query.fileId ? String(req.query.fileId) : null;
-    const urlId = req.query.urlId ? Number(req.query.urlId) : null;
-
     const data = await getJob(jobId);
-
-    if (data.state !== "SUCCESS") {
-      if (fileId && data.state === "FAILURE") {
-        const msg = String(
-          data?.error || data?.message || "Unknown ai-tagger failure",
-        ).slice(0, 500);
-
-        await prisma.storedFile.update({
-          where: { id: fileId },
-          data: {
-            taggingStatus: "FAILED",
-            taggingJobId: null,
-            taggingError: msg,
-          },
-        });
-      }
-
-      if (urlId && data.state === "FAILURE") {
-        const msg = String(
-          data?.error || data?.message || "Unknown ai-tagger failure",
-        ).slice(0, 500);
-        await prisma.url.update({
-          where: { id: urlId },
-          data: {
-            taggingStatus: "FAILED",
-            taggingJobId: null,
-            taggingError: msg,
-          },
-        });
-      }
-
-      return res.json(data);
-    }
-
-    const {
-      tags,
-      hash,
-      tagger_version,
-      phrases,
-      unigrams,
-      structured,
-      extraction,
-    } = data;
-
-    const buildNextTagsMeta = (prev: any) => {
-      const p = prev && typeof prev === "object" ? prev : {};
-      const prevTagger =
-        p.tagger && typeof p.tagger === "object" ? p.tagger : {};
-
-      return {
-        ...p,
-        tagger: {
-          ...prevTagger,
-          phrases: phrases || [],
-          unigrams: unigrams || [],
-          topk: TOPK,
-          use_llm: USE_LLM,
-          jobId,
-          updatedAt: new Date().toISOString(),
-          normalizedTextSha256: hash ?? null,
-          normalizedTextHashAlgorithm: hash ? "sha256" : null,
-          structured: structured || null,
-          extraction: extraction || null,
-        },
-      };
-    };
-
-    if (fileId) {
-      const rec = await prisma.storedFile.findUnique({ where: { id: fileId } });
-      if (rec) {
-        const merged = Array.from(
-          new Set([...(rec.tags || []), ...(tags || [])]),
-        );
-
-        await prisma.$transaction([
-          prisma.storedFile.update({
-            where: { id: fileId },
-            data: {
-              tags: { set: merged },
-              contentHash: hash ?? null,
-              taggerVersion: tagger_version ?? null,
-              tagsMeta: buildNextTagsMeta(rec.tagsMeta),
-              taggingStatus: "SUCCESS",
-              taggingJobId: null,
-              taggingError: null,
-            },
-          }),
-          prisma.documentRevision.updateMany({
-            where: { storedFileId: fileId },
-            data: {
-              contentHash: hash ?? null,
-            },
-          }),
-        ]);
-      }
-    }
-
-    if (urlId) {
-      const row = await prisma.url.findUnique({ where: { id: urlId } });
-      if (row) {
-        const merged = Array.from(
-          new Set([...(row.tags || []), ...(tags || [])]),
-        );
-
-        await prisma.url.update({
-          where: { id: urlId },
-          data: {
-            tags: { set: merged },
-            contentHash: hash ?? null,
-            taggerVersion: tagger_version ?? null,
-            tagsMeta: buildNextTagsMeta(row.tagsMeta),
-            taggingStatus: "SUCCESS",
-            taggingJobId: null,
-            taggingError: null,
-          },
-        });
-      }
-    }
-
     return res.json(data);
   } catch (e) {
     next(e);
