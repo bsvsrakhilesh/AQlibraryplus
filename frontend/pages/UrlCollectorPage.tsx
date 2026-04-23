@@ -62,6 +62,7 @@ type PersistShape = {
   lastRunAt?: string;
 
   lastQuery?: string;
+  lastSearchOpts?: SearchWebOptions;
   nextPage?: number | null;
   totalResults?: number | null;
 };
@@ -198,6 +199,9 @@ const UrlCollectorPage: React.FC = () => {
   const [nextPage, setNextPage] = useState<number | null>(null);
   const [totalResults, setTotalResults] = useState<number | null>(null);
   const [lastQuery, setLastQuery] = useState<string>("");
+  const [lastSearchOpts, setLastSearchOpts] = useState<SearchWebOptions | null>(
+    null,
+  );
 
   // Auto-prefetch progress (so the UI can say "Loading 30/50 results…")
   const [prefetchCount, setPrefetchCount] = useState<number>(0);
@@ -245,6 +249,9 @@ const UrlCollectorPage: React.FC = () => {
       if (p.selected) setSelectedUrls(new Set(p.selected));
       if (p.sortKey) setSortKey(p.sortKey);
       if (typeof p.lastQuery === "string") setLastQuery(p.lastQuery);
+      if (p.lastSearchOpts && typeof p.lastSearchOpts === "object") {
+        setLastSearchOpts(p.lastSearchOpts);
+      }
       if (typeof p.nextPage !== "undefined") setNextPage(p.nextPage ?? null);
       if (typeof p.totalResults !== "undefined")
         setTotalResults(p.totalResults ?? null);
@@ -258,7 +265,7 @@ const UrlCollectorPage: React.FC = () => {
 
   /* ---------- Persist state (quota-safe) ---------- */
   useEffect(() => {
-    // 1) Best-effort: store capped + minified results for a good UX on refresh
+    // store capped + minified results for a good UX on refresh
     const full: PersistShape = {
       website,
       keywords,
@@ -268,11 +275,12 @@ const UrlCollectorPage: React.FC = () => {
       sortKey,
       lastRunAt: hasSearched ? new Date().toISOString() : undefined,
       lastQuery,
+      lastSearchOpts: lastSearchOpts ?? undefined,
       nextPage,
       totalResults,
     };
 
-    // 2) Fallback: if quota exceeded, store everything except results
+    // Fallback: if quota exceeded, store everything except results
     const noResults: PersistShape = {
       website,
       keywords,
@@ -281,11 +289,12 @@ const UrlCollectorPage: React.FC = () => {
       sortKey,
       lastRunAt: hasSearched ? new Date().toISOString() : undefined,
       lastQuery,
+      lastSearchOpts: lastSearchOpts ?? undefined,
       nextPage,
       totalResults,
     };
 
-    // 3) Minimal fallback: just restore the user’s inputs and sort
+    // Minimal fallback: just restore the user’s inputs and sort
     const minimal: PersistShape = {
       website,
       keywords,
@@ -307,6 +316,7 @@ const UrlCollectorPage: React.FC = () => {
     sortKey,
     hasSearched,
     lastQuery,
+    lastSearchOpts,
     nextPage,
     totalResults,
   ]);
@@ -494,6 +504,7 @@ const UrlCollectorPage: React.FC = () => {
       try {
         const q = buildQuery(site, kws, scope);
         const searchOpts = buildRerankOpts(site, scope);
+        setLastSearchOpts(searchOpts);
 
         // Helper to fetch a specific page from the backend
         const fetchPage = async (page: number) => {
@@ -503,7 +514,7 @@ const UrlCollectorPage: React.FC = () => {
         setLastQuery(q);
         setPrefetchCount(0);
 
-        // 1) Fetch page 1 immediately
+        // Fetch page 1 immediately
         const p1 = await fetchPage(1);
         setSearchResults(p1.rows);
         setSelectedUrls(new Set());
@@ -526,7 +537,7 @@ const UrlCollectorPage: React.FC = () => {
           return;
         }
 
-        // 2) Auto-prefetch up to 50 results (5 pages x 10 results)
+        // Auto-prefetch up to 50 results (5 pages x 10 results)
         const seen = new Set(p1.rows.map((r) => r.url));
         let merged = [...p1.rows];
         let np = p1.nextPage;
@@ -668,7 +679,12 @@ const UrlCollectorPage: React.FC = () => {
         rows: newRows,
         nextPage: np,
         totalResults: tot,
-      } = await searchWeb(lastQuery, nextPage);
+      } = await searchWeb(
+        lastQuery,
+        nextPage,
+        undefined,
+        lastSearchOpts ?? undefined,
+      );
 
       const seen = new Set(searchResults.map((r) => r.url));
       const merged = [...searchResults];
@@ -714,7 +730,15 @@ const UrlCollectorPage: React.FC = () => {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [nextPage, lastQuery, searchResults, website, scope, applyMergedRerank]);
+  }, [
+    nextPage,
+    lastQuery,
+    lastSearchOpts,
+    searchResults,
+    website,
+    scope,
+    applyMergedRerank,
+  ]);
 
   /* ---------- Selection handlers ---------- */
   const onToggleRow = useCallback((url: string) => {
@@ -762,6 +786,7 @@ const UrlCollectorPage: React.FC = () => {
     setNextPage(null);
     setTotalResults(null);
     setLastQuery("");
+    setLastSearchOpts(null);
   }, []);
 
   // Full reset — wipes the form inputs, scope filters, URL params, and localStorage.
@@ -776,6 +801,7 @@ const UrlCollectorPage: React.FC = () => {
     setNextPage(null);
     setTotalResults(null);
     setLastQuery("");
+    setLastSearchOpts(null);
     setWebsite("");
     setKeywords("");
     setScope({
