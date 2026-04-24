@@ -36,7 +36,7 @@ interface ResultsTableProps {
   selectable?: boolean;
   selectedUrls?: Set<string>;
   onToggleRow?: (url: string) => void;
-  onToggleAll?: () => void;
+  onToggleFiltered?: (urls: string[], select: boolean) => void;
   onTogglePage?: (urls: string[], select: boolean) => void;
   onClearSelection?: () => void;
   onClear?: () => void;
@@ -250,7 +250,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   selectable = true,
   selectedUrls = new Set<string>(),
   onToggleRow,
-  onToggleAll,
+  onToggleFiltered,
   onTogglePage,
   onClearSelection,
   onClear,
@@ -259,7 +259,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 }) => {
   // local selection if parent doesn't control it
   const [localSelected, setLocalSelected] = useState<Set<string>>(selectedUrls);
-  const selected = onToggleRow || onToggleAll ? selectedUrls : localSelected;
+  const selected =
+    onToggleRow || onTogglePage || onToggleFiltered
+      ? selectedUrls
+      : localSelected;
 
   const [isSaving, setIsSaving] = useState(false);
   const [rowSaving, setRowSaving] = useState<string | null>(null);
@@ -547,6 +550,37 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     [filtered, pageStart],
   );
 
+  const pageUrls = useMemo(
+    () => pageRows.map((r) => r.url).filter(Boolean),
+    [pageRows],
+  );
+
+  const filteredUrls = useMemo(
+    () => filtered.map((r) => r.url).filter(Boolean),
+    [filtered],
+  );
+
+  const selectedFilteredRows = useMemo(
+    () => filtered.filter((r) => selected.has(r.url)),
+    [filtered, selected],
+  );
+
+  const selectedFilteredCount = selectedFilteredRows.length;
+
+  const selectedLoadedCount = useMemo(() => {
+    const loadedUrls = new Set(results.map((r) => r.url).filter(Boolean));
+    let count = 0;
+    selected.forEach((url) => {
+      if (loadedUrls.has(url)) count += 1;
+    });
+    return count;
+  }, [results, selected]);
+
+  const selectedHiddenCount = Math.max(
+    0,
+    selectedLoadedCount - selectedFilteredCount,
+  );
+
   // When filters/sort/dedupe change, jump back to page 1 so the user doesn't land on an empty page.
   useEffect(() => {
     setPage(1);
@@ -562,14 +596,20 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   ]);
 
   const allSelected = useMemo(() => {
-    if (pageRows.length === 0) return false;
-    for (const r of pageRows) if (!selected.has(r.url)) return false;
+    if (pageUrls.length === 0) return false;
+    for (const url of pageUrls) if (!selected.has(url)) return false;
     return true;
-  }, [pageRows, selected]);
+  }, [pageUrls, selected]);
+
+  const allFilteredSelected = useMemo(() => {
+    if (filteredUrls.length === 0) return false;
+    for (const url of filteredUrls) if (!selected.has(url)) return false;
+    return true;
+  }, [filteredUrls, selected]);
 
   const toggleAll = () => {
     // Option A: header checkbox toggles ONLY current page rows (never global).
-    const urls = pageRows.map((r) => r.url).filter(Boolean);
+    const urls = pageUrls;
     if (urls.length === 0) return;
 
     const wantSelect = !allSelected;
@@ -589,6 +629,23 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     }
   };
 
+  const toggleFilteredSelection = () => {
+    const urls = filteredUrls;
+    if (urls.length === 0) return;
+
+    const wantSelect = !allFilteredSelected;
+
+    if (onToggleFiltered) return onToggleFiltered(urls, wantSelect);
+
+    const next = new Set(localSelected);
+    if (wantSelect) {
+      urls.forEach((u) => next.add(u));
+    } else {
+      urls.forEach((u) => next.delete(u));
+    }
+    setLocalSelected(next);
+  };
+
   const toggleRow = (url: string) => {
     if (onToggleRow) return onToggleRow(url);
     const next = new Set(localSelected);
@@ -597,11 +654,9 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   };
 
   const saveSelected = async () => {
-    if (selected.size === 0) return;
+    if (selectedFilteredCount === 0) return;
 
-    const rows: SaveUrlsRequestRow[] = filtered
-      .filter((r) => selected.has(r.url))
-      .map((r) => ({
+    const rows: SaveUrlsRequestRow[] = selectedFilteredRows.map((r) => ({
         url: r.url,
         title: r.title ?? r.url,
         snippet: r.snippet ?? "",
@@ -683,12 +738,12 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
 
   const exportSelected = () => {
     const rows =
-      selected.size > 0
-        ? filtered.filter((r) => selected.has(r.url))
+      selectedFilteredCount > 0
+        ? selectedFilteredRows
         : filtered;
     exportToCsv(
       rows,
-      selected.size > 0 ? "results_selected" : "results_filtered",
+      selectedFilteredCount > 0 ? "results_selected" : "results_filtered",
     );
     pushNotice(
       "info",
@@ -986,9 +1041,16 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                     {duplicatesRemoved === 1 ? "" : "s"} hidden)
                   </span>
                 )}
-                {selectable && selected.size > 0 && (
+                {selectable && selectedLoadedCount > 0 && (
                   <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                    {selected.size} selected
+                    {selectedFilteredCount > 0
+                      ? `${selectedFilteredCount} selected in view`
+                      : "Selection outside current view"}
+                  </span>
+                )}
+                {selectable && selectedHiddenCount > 0 && (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                    {selectedHiddenCount} outside current filters
                   </span>
                 )}
               </>
@@ -1176,22 +1238,28 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                 </label>
 
                 <span className="text-xs text-gray-500">
-                  (page: {pageRows.length}, loaded: {filtered.length})
+                  (page: {pageRows.length}, filtered: {filtered.length}, loaded:{" "}
+                  {results.length})
                 </span>
 
-                {/* Explicit global action (safe): selects all currently loaded results */}
-                {onToggleAll && (
+                {(onToggleFiltered || !onToggleRow) && (
                   <button
                     type="button"
-                    onClick={onToggleAll}
+                    onClick={toggleFilteredSelection}
                     className="underline opacity-80 hover:opacity-100"
-                    title="Select all currently loaded results (not unloaded pages)"
+                    title={
+                      allFilteredSelected
+                        ? "Clear the selection for rows in the current filtered view"
+                        : "Select every row in the current filtered view"
+                    }
                   >
-                    Select all loaded ({filtered.length})
+                    {allFilteredSelected
+                      ? `Clear filtered selection (${filtered.length})`
+                      : `Select all filtered (${filtered.length})`}
                   </button>
                 )}
 
-                {onClearSelection && selected.size > 0 && (
+                {onClearSelection && selectedLoadedCount > 0 && (
                   <button
                     type="button"
                     onClick={onClearSelection}
@@ -1210,16 +1278,39 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           {selectable && (
             <button
               onClick={saveSelected}
-              disabled={selected.size === 0 || isSaving}
+              disabled={selectedFilteredCount === 0 || isSaving}
               className="btn-primary rounded-full px-4 py-2 disabled:opacity-60"
+              title={
+                selectedFilteredCount > 0
+                  ? `Save ${selectedFilteredCount} selected row${
+                      selectedFilteredCount === 1 ? "" : "s"
+                    } from the current view`
+                  : selectedHiddenCount > 0
+                    ? "Selected rows exist, but they are outside the current filters"
+                    : "Select rows to save"
+              }
             >
-              {isSaving ? "Saving…" : `Save selected (${selected.size || 0})`}
+              {isSaving
+                ? "Saving…"
+                : `Save selected (${selectedFilteredCount || 0})`}
             </button>
           )}
 
-          <button onClick={exportSelected} className="btn-ghost px-4 py-2">
+          <button
+            onClick={exportSelected}
+            className="btn-ghost px-4 py-2"
+            title={
+              selectedFilteredCount > 0
+                ? `Export ${selectedFilteredCount} selected row${
+                    selectedFilteredCount === 1 ? "" : "s"
+                  } from the current view`
+                : "Export the current filtered results as CSV"
+            }
+          >
             <DownloadIcon className="h-5 w-5" />
-            <span className="hidden sm:inline">Export CSV</span>
+            <span className="hidden sm:inline">
+              {selectedFilteredCount > 0 ? "Export selected CSV" : "Export filtered CSV"}
+            </span>
           </button>
         </div>
       </div>

@@ -768,15 +768,6 @@ const UrlCollectorPage: React.FC = () => {
     setSelectedUrls(new Set());
   }, []);
 
-  // ResultsTable expects () => void
-  const onToggleAll = useCallback(() => {
-    setSelectedUrls((prev) => {
-      if (searchResults.length === 0) return new Set();
-      const allSelected = prev.size === searchResults.length;
-      return allSelected ? new Set() : new Set(searchResults.map((r) => r.url));
-    });
-  }, [searchResults]);
-
   // Clears only results and selection — keeps website, keywords, and scope
   // intact so the researcher can tweak the query and re-run without retyping.
   const handleClearResults = useCallback(() => {
@@ -1111,7 +1102,7 @@ const UrlCollectorPage: React.FC = () => {
                   selectedUrls={selectedUrls}
                   onToggleRow={onToggleRow}
                   onTogglePage={onTogglePage}
-                  onToggleAll={onToggleAll}
+                  onToggleFiltered={onTogglePage}
                   onClearSelection={onClearSelection}
                   onClear={handleClearResults}
                   sortKey={sortKey}
