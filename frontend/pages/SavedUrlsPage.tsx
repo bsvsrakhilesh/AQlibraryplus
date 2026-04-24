@@ -2765,7 +2765,7 @@ const SavedUrlsPage: React.FC = () => {
       {(snapshotHealth.missingCount > 0 || snapshotHealth.staleCount > 0) && (
         <div className="saved-urls-panel saved-urls-banner p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-sky-200 bg-sky-50/60 dark:border-sky-900/40 dark:bg-sky-900/10">
           <div className="text-sm text-sky-950 dark:text-sky-100">
-            <span className="font-semibold">Snapshots</span>
+            <span className="font-semibold">Snapshots on this page</span>
             <span className="ml-2">
               Missing{" "}
               <span className="font-semibold">
@@ -2781,6 +2781,10 @@ const SavedUrlsPage: React.FC = () => {
                 (Running: {bulkDone}/{bulkTotal}, Failed: {bulkFailed})
               </span>
             )}
+            <p className="mt-1 text-xs text-sky-800/80 dark:text-sky-200/75">
+              Counts and capture actions apply only to the URLs currently loaded
+              on this page.
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2 items-center">
@@ -2790,7 +2794,7 @@ const SavedUrlsPage: React.FC = () => {
                 setFilter((f: any) => ({ ...f, snapshotStatus: "missing" }))
               }
               disabled={bulkRunning}
-              title="Show only URLs that have no snapshots"
+              title="Filter the full result set to URLs with no active snapshots"
             >
               Show missing
             </button>
@@ -2801,7 +2805,7 @@ const SavedUrlsPage: React.FC = () => {
                 setFilter((f: any) => ({ ...f, snapshotStatus: "stale" }))
               }
               disabled={bulkRunning}
-              title="Show only URLs with stale snapshots"
+              title={`Filter the full result set to URLs with snapshots older than ${SNAPSHOT_STALE_DAYS} days`}
             >
               Show stale
             </button>
@@ -2816,7 +2820,7 @@ const SavedUrlsPage: React.FC = () => {
                     setBulkPickerOpen(true);
                   }}
                   disabled={bulkRunning}
-                  title="Capture TEXT snapshots for all missing URLs"
+                  title="Capture TEXT snapshots for missing URLs currently loaded on this page"
                 >
                   Snapshot missing (Text)
                 </button>
@@ -2829,7 +2833,7 @@ const SavedUrlsPage: React.FC = () => {
                     setBulkPickerOpen(true);
                   }}
                   disabled={bulkRunning}
-                  title="Capture PDF snapshots for all missing URLs"
+                  title="Capture PDF snapshots for missing URLs currently loaded on this page"
                 >
                   Snapshot missing (PDF)
                 </button>
@@ -2846,7 +2850,7 @@ const SavedUrlsPage: React.FC = () => {
                     setBulkPickerOpen(true);
                   }}
                   disabled={bulkRunning}
-                  title="Refresh TEXT snapshots for all stale URLs"
+                  title="Refresh TEXT snapshots for stale URLs currently loaded on this page"
                 >
                   Refresh stale (Text)
                 </button>
@@ -2859,7 +2863,7 @@ const SavedUrlsPage: React.FC = () => {
                     setBulkPickerOpen(true);
                   }}
                   disabled={bulkRunning}
-                  title="Refresh PDF snapshots for all stale URLs"
+                  title="Refresh PDF snapshots for stale URLs currently loaded on this page"
                 >
                   Refresh stale (PDF)
                 </button>
@@ -3117,55 +3121,57 @@ const SavedUrlsPage: React.FC = () => {
               <div className="col-span-12">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between min-w-0">
                   <div className="flex flex-wrap items-center gap-2.5 min-w-0">
-                  {/* Saved year */}
-                  <label className="sr-only" htmlFor="year-filter">
-                    Filter by saved year
-                  </label>
-                  <select
-                    id="year-filter"
-                    className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
-                    value={year}
-                    onChange={(e) => setYear(e.target.value)}
-                    title="Filter by saved year"
-                    aria-label="Filter by saved year"
-                  >
-                    {availableYears.map((y) => (
-                      <option key={y} value={y}>
-                        {y === "all" ? "All saved years" : y}
-                      </option>
-                    ))}
-                  </select>
+                    {/* Saved year */}
+                    <label className="sr-only" htmlFor="year-filter">
+                      Filter by saved year
+                    </label>
+                    <select
+                      id="year-filter"
+                      className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      value={year}
+                      onChange={(e) => setYear(e.target.value)}
+                      title="Filter by saved year"
+                      aria-label="Filter by saved year"
+                    >
+                      {availableYears.map((y) => (
+                        <option key={y} value={y}>
+                          {y === "all" ? "All saved years" : y}
+                        </option>
+                      ))}
+                    </select>
 
-                  {/* Sort key */}
-                  <label className="sr-only" htmlFor="sortKey">
-                    Sort key
-                  </label>
-                  <select
-                    id="sortKey"
-                    className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
-                    value={sortKey}
-                    onChange={(e) => setSortKey(e.target.value as SortKey)}
-                    title="Sort key"
-                  >
-                    <option value="createdAt">Sort: Saved date</option>
-                    <option value="updatedAt">Sort: Updated</option>
-                    <option value="title">Sort: Title</option>
-                  </select>
+                    {/* Sort key */}
+                    <label className="sr-only" htmlFor="sortKey">
+                      Sort key
+                    </label>
+                    <select
+                      id="sortKey"
+                      className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      value={sortKey}
+                      onChange={(e) => setSortKey(e.target.value as SortKey)}
+                      title="Sort key"
+                    >
+                      <option value="createdAt">Sort: Saved date</option>
+                      <option value="updatedAt">Sort: Updated</option>
+                      <option value="title">Sort: Title</option>
+                    </select>
 
-                  {/* Sort order */}
-                  <label className="sr-only" htmlFor="sortOrder">
-                    Sort order
-                  </label>
-                  <select
-                    id="sortOrder"
-                    className="input-pill w-auto shrink-0 min-w-[7rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
-                    value={sortOrder}
-                    onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                    title="Sort order"
-                  >
-                    <option value="desc">Desc</option>
-                    <option value="asc">Asc</option>
-                  </select>
+                    {/* Sort order */}
+                    <label className="sr-only" htmlFor="sortOrder">
+                      Sort order
+                    </label>
+                    <select
+                      id="sortOrder"
+                      className="input-pill w-auto shrink-0 min-w-[7rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      value={sortOrder}
+                      onChange={(e) =>
+                        setSortOrder(e.target.value as SortOrder)
+                      }
+                      title="Sort order"
+                    >
+                      <option value="desc">Desc</option>
+                      <option value="asc">Asc</option>
+                    </select>
                   </div>
 
                   <div className="inline-flex self-start xl:self-auto items-center rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/70 p-1 shadow-sm">
