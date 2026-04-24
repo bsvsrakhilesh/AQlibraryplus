@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { SavedUrl } from "../../lib/types";
 import { createPortal } from "react-dom";
 import { formatDate } from "../../utils/fileHelpers";
@@ -421,15 +421,10 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   };
 
   const sourceHost = getUrlSourceHost(url);
-  const readableCollections = useMemo(
-    () =>
-      (url.collections || [])
-        .map(
-          (collectionId) => collectionNamesById[collectionId] || collectionId,
-        )
-        .filter(Boolean),
-    [url.collections, collectionNamesById],
-  );
+  const readableCollections = (url.collections || [])
+    .map((collectionId) => collectionNamesById[collectionId] || collectionId)
+    .filter(Boolean);
+
   const latestRevision = revisions[0] ?? null;
   const latestSnapshot = snapshots[0] ?? url.latestSnapshot ?? null;
   const notebookFileId =
@@ -617,21 +612,17 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
       ? url.taggingError || "Retry tagging from this record."
       : null;
 
-  const modalHeaderPills = useMemo(
-    () =>
-      evidencePills.map((pill, idx) => (
-        <span
-          key={`${pill.label}-${idx}`}
-          className={[
-            "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium",
-            evidencePillClass(pill.tone),
-          ].join(" ")}
-        >
-          {pill.label}
-        </span>
-      )),
-    [evidencePills],
-  );
+  const modalHeaderPills = evidencePills.map((pill, idx) => (
+    <span
+      key={`${pill.label}-${idx}`}
+      className={[
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium",
+        evidencePillClass(pill.tone),
+      ].join(" ")}
+    >
+      {pill.label}
+    </span>
+  ));
 
   const evidenceProvenanceRows = [
     { label: "URL ID", value: url.id, mono: true },
