@@ -1868,11 +1868,12 @@ const SavedUrlsPage: React.FC = () => {
       if (shouldRefetchAfterNotesMutation) {
         await refreshUrlsFromServer();
       }
-    } catch {
+    } catch (e) {
       setUrls((prev) =>
         prev.map((x) => (x.id === id ? { ...x, notes: before } : x)),
       );
       notify({ text: "Failed to save notes.", kind: "error" });
+      throw e;
     }
   };
 
