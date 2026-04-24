@@ -148,17 +148,31 @@ function buildListWhere(opts: GetAllOpts): Prisma.UrlWhereInput {
 
   if (opts.q && String(opts.q).trim()) {
     const term = String(opts.q).trim();
-    const normalizedTagTerm = term.toLowerCase();
+    const normalizedTerm = term.toLowerCase();
+    const normalizedDomainTerm = normalizedDomainFromUrl(term);
 
-    and.push({
-      OR: [
-        { title: { contains: term, mode: "insensitive" } },
-        { url: { contains: term, mode: "insensitive" } },
-        { snippet: { contains: term, mode: "insensitive" } },
-        { notes: { contains: term, mode: "insensitive" } },
-        { tags: { has: normalizedTagTerm } },
-      ],
-    });
+    const searchOr: Prisma.UrlWhereInput[] = [
+      { title: { contains: term, mode: "insensitive" } },
+      { url: { contains: term, mode: "insensitive" } },
+      { snippet: { contains: term, mode: "insensitive" } },
+      { notes: { contains: term, mode: "insensitive" } },
+      { tags: { has: normalizedTerm } },
+
+      // Allow free-text search to match the stored normalized domain,
+      // e.g. "nature.com", "www.nature.com", or "https://www.nature.com/article".
+      { normalizedDomain: { contains: normalizedTerm, mode: "insensitive" } },
+    ];
+
+    if (normalizedDomainTerm && normalizedDomainTerm !== normalizedTerm) {
+      searchOr.push({
+        normalizedDomain: {
+          contains: normalizedDomainTerm,
+          mode: "insensitive",
+        },
+      });
+    }
+
+    and.push({ OR: searchOr });
   }
 
   if (opts.collectionId) {

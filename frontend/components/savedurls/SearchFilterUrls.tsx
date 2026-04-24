@@ -145,7 +145,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
               name="saved_urls_query"
               aria-label="Search saved URLs"
               type="text"
-              placeholder="Search title, URL, description, notes, exact tag, or domain text"
+              placeholder="Search title, URL, domain, notes, description, or exact tag"
               value={state.query}
               onChange={(e) =>
                 setState((s) => ({ ...s, query: e.target.value }))
@@ -160,10 +160,10 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
             />
 
             <p className="mt-2 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
-              Search matches title, URL, description, notes, and exact tags. Use
-              Saved date for library ingestion time and Published date for
-              source metadata. Filters update automatically. Press Enter to
-              apply immediately.
+              Search matches title, URL, normalized domain, description, notes,
+              and exact user tags. Use Saved date for library ingestion time and
+              Published date for source metadata. Filters update automatically.
+              Press Enter to apply immediately.
             </p>
           </div>
 
