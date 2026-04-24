@@ -11,8 +11,6 @@ import {
   recordUrlVisit,
   refreshUrlMetadata,
   getFileExtractedText,
-  crawlSaveText,
-  crawlSavePdf,
   apiUrl,
   type BackendDocumentRevision,
 } from "../../lib/api";
@@ -33,6 +31,9 @@ interface SavedUrlDetailModalProps {
   onTagUpdate?: (urlId: string, newTags: string[]) => void;
   onNotesChange?: (urlId: string, notes: string) => void | Promise<void>;
   onUrlHydrate?: (fresh: any) => void | Promise<void>;
+  onRequestCapture?: (url: SavedUrl, mode: "text" | "pdf") => void;
+  captureRefreshKey?: number;
+  isCapturePickerOpen?: boolean;
   collectionNamesById?: Record<string, string>;
 }
 
@@ -168,11 +169,15 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   onTagUpdate,
   onNotesChange,
   onUrlHydrate,
+  onRequestCapture,
+  captureRefreshKey = 0,
+  isCapturePickerOpen = false,
   collectionNamesById = {},
 }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogTitleId = useId();
+  const lastCaptureRefreshKeyRef = useRef(captureRefreshKey);
 
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
@@ -221,7 +226,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   const { notify } = useToast();
 
   useDialogA11y({
-    isOpen,
+    isOpen: isOpen && !isCapturePickerOpen,
     onClose,
     dialogRef,
     initialFocusRef: closeButtonRef,
@@ -251,7 +256,6 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   }, [url.id]);
 
   const [recaptureMode, setRecaptureMode] = useState<"text" | "pdf">("text");
-  const [recaptureLoading, setRecaptureLoading] = useState(false);
 
   const isPdf = isPdfUrlLike(url.url);
 
@@ -363,47 +367,53 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
     }
   }
 
-  // Re-capture live URL into a new canonical revision
-  async function recaptureNow() {
-    try {
-      setRecaptureLoading(true);
+  useEffect(() => {
+    if (!isOpen) return;
+    if (captureRefreshKey === lastCaptureRefreshKeyRef.current) return;
 
-      if (recaptureMode === "pdf") {
-        await crawlSavePdf(
-          url.url,
-          undefined,
-          undefined,
-          false, // fullPage
-          true, // reader mode
-          Number(url.id),
-        );
-      } else {
-        // "text" mode is already PDF-aware on the backend.
-        await crawlSaveText(url.url, undefined, undefined, Number(url.id));
-      }
+    lastCaptureRefreshKeyRef.current = captureRefreshKey;
 
-      notify({ text: "Re-captured. New revision created.", kind: "success" });
+    let cancelled = false;
 
-      // Reload + auto-compare newest vs previous (best UX for amendments)
-      const nextRevs = await refreshRevisions();
-      await refreshSnapshots();
+    (async () => {
+      const [nextRevs] = await Promise.all([
+        refreshRevisions(),
+        refreshSnapshots(),
+      ]);
+
+      if (cancelled) return;
 
       const newestId = nextRevs[0]?.storedFile?.id ?? null;
-      const prevId = nextRevs[1]?.storedFile?.id ?? null;
+      const previousId = nextRevs[1]?.storedFile?.id ?? null;
 
-      if (newestId && prevId) {
-        setLeftSnapId(prevId);
+      if (newestId && previousId) {
+        setLeftSnapId(previousId);
         setRightSnapId(newestId);
-        await runCompare(prevId, newestId);
+        await runCompare(previousId, newestId);
       }
-    } catch (e: any) {
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+
+    // refreshRevisions, refreshSnapshots, and runCompare are intentionally excluded
+    // because this effect should run only when the parent confirms a new capture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureRefreshKey, isOpen]);
+
+  // Re-capture live URL through the same page-level capture workflow.
+  // This keeps folder, filename, PDF/Text, access route, refresh, and notices consistent.
+  function requestRecapture() {
+    if (!onRequestCapture) {
       notify({
-        text: e?.response?.data?.message ?? e?.message ?? "Re-capture failed",
+        text: "Capture workflow is not available from this view.",
         kind: "error",
       });
-    } finally {
-      setRecaptureLoading(false);
+      return;
     }
+
+    onRequestCapture(url, isPdf ? "pdf" : recaptureMode);
   }
 
   // Use any revision inside Notebook (handoff)
@@ -1168,7 +1178,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                         Re-capture
                       </div>
                       <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                        Create a new revision from the current live URL.
+                        Create a new revision using the same capture workflow as the Saved URLs table.
                       </div>
                     </div>
 
@@ -1178,7 +1188,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       onChange={(e) =>
                         setRecaptureMode(e.target.value as "text" | "pdf")
                       }
-                      disabled={recaptureLoading || isPdf}
+                      disabled={!onRequestCapture || isPdf}
                     >
                       <option value="text" disabled={isPdf}>
                         Text
@@ -1189,11 +1199,11 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
 
                   <button
                     className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2 text-sm font-medium disabled:opacity-50 dark:border-white/10"
-                    onClick={recaptureNow}
-                    disabled={recaptureLoading}
+                    onClick={requestRecapture}
+                    disabled={!onRequestCapture}
                     type="button"
                   >
-                    {recaptureLoading ? "Re-capturing…" : "Re-capture now"}
+                    Choose capture destination
                   </button>
                 </div>
 

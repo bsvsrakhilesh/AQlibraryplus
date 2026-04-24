@@ -725,6 +725,7 @@ const SavedUrlsPage: React.FC = () => {
   const [pickerTarget, setPickerTarget] = useState<UISavedUrl | null>(null);
 
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
+  const [detailCaptureRefreshKey, setDetailCaptureRefreshKey] = useState(0);
 
   // Bulk snapshot enforcement
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
@@ -3784,6 +3785,8 @@ const SavedUrlsPage: React.FC = () => {
               }) => {
                 if (!pickerTarget) return;
 
+                const openedFromDetailModal = detailId === pickerTarget.id;
+
                 const parsedUrlId = Number(pickerTarget.id);
                 const urlId = Number.isFinite(parsedUrlId)
                   ? parsedUrlId
@@ -3809,8 +3812,12 @@ const SavedUrlsPage: React.FC = () => {
                           accessMode,
                         );
 
-                  // refresh list so latestSnapshot appears immediately
+                  // Refresh list so latestSnapshot appears immediately.
                   await refreshUrlsFromServer();
+
+                  if (openedFromDetailModal) {
+                    setDetailCaptureRefreshKey((key) => key + 1);
+                  }
 
                   const method = captured?.captureMeta?.method
                     ? `via ${captured.captureMeta.method}`
@@ -3884,6 +3891,9 @@ const SavedUrlsPage: React.FC = () => {
                 onTagUpdate={updateTags}
                 onNotesChange={handleNotesChange}
                 collectionNamesById={collectionNamesById}
+                onRequestCapture={openCapturePicker}
+                captureRefreshKey={detailCaptureRefreshKey}
+                isCapturePickerOpen={pickerOpen}
                 onUrlHydrate={async (fresh) => {
                   const next = toUISaved(fresh);
                   setUrls((prev) =>
