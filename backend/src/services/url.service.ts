@@ -1,5 +1,5 @@
 // backend/src/services/url.service.ts
-import { Prisma, TaggingStatus } from "../generated/prisma/client";
+import { CaptureType, Prisma, TaggingStatus } from "../generated/prisma/client";
 import prisma from "../config/database";
 import { scheduleAiTagForUrl } from "./aiTagUrlAuto.service";
 import {
@@ -100,6 +100,23 @@ function toValidDate(value?: string): Date | undefined {
   return Number.isFinite(dt.getTime()) ? dt : undefined;
 }
 
+const ACTIVE_URL_SNAPSHOT_WHERE: Prisma.StoredFileWhereInput = {
+  deletedAt: null,
+  captureType: { in: [CaptureType.URL_TEXT, CaptureType.URL_PDF] },
+};
+
+function activeUrlSnapshotWhere(
+  extra?: Prisma.StoredFileWhereInput,
+): Prisma.StoredFileWhereInput {
+  if (!extra || Object.keys(extra).length === 0) {
+    return ACTIVE_URL_SNAPSHOT_WHERE;
+  }
+
+  return {
+    AND: [ACTIVE_URL_SNAPSHOT_WHERE, extra],
+  };
+}
+
 function buildListWhere(opts: GetAllOpts): Prisma.UrlWhereInput {
   const and: Prisma.UrlWhereInput[] = [];
 
@@ -176,15 +193,32 @@ function buildListWhere(opts: GetAllOpts): Prisma.UrlWhereInput {
     const staleCutoff = new Date(Date.now() - SNAPSHOT_STALE_DAYS * DAY_MS);
 
     if (opts.snapshotStatus === "missing") {
-      and.push({ snapshots: { none: {} } });
+      and.push({
+        snapshots: {
+          none: activeUrlSnapshotWhere(),
+        },
+      });
     } else if (opts.snapshotStatus === "fresh") {
       and.push({
-        snapshots: { some: { createdAt: { gte: staleCutoff } } },
+        snapshots: {
+          some: activeUrlSnapshotWhere({
+            createdAt: { gte: staleCutoff },
+          }),
+        },
       });
     } else if (opts.snapshotStatus === "stale") {
-      and.push({ snapshots: { some: {} } });
       and.push({
-        snapshots: { none: { createdAt: { gte: staleCutoff } } },
+        snapshots: {
+          some: activeUrlSnapshotWhere(),
+        },
+      });
+
+      and.push({
+        snapshots: {
+          none: activeUrlSnapshotWhere({
+            createdAt: { gte: staleCutoff },
+          }),
+        },
       });
     }
   }
@@ -305,8 +339,18 @@ export async function getUrlReviewQueueSummary(
 
   const staleCaptureWhere: Prisma.UrlWhereInput = {
     AND: [
-      { snapshots: { some: {} } },
-      { snapshots: { none: { createdAt: { gte: staleCutoff } } } },
+      {
+        snapshots: {
+          some: activeUrlSnapshotWhere(),
+        },
+      },
+      {
+        snapshots: {
+          none: activeUrlSnapshotWhere({
+            createdAt: { gte: staleCutoff },
+          }),
+        },
+      },
     ],
   };
 
@@ -314,7 +358,11 @@ export async function getUrlReviewQueueSummary(
     await Promise.all([
       prisma.url.count({ where: baseWhere }),
       prisma.url.count({
-        where: andWhere(baseWhere, { snapshots: { none: {} } }),
+        where: andWhere(baseWhere, {
+          snapshots: {
+            none: activeUrlSnapshotWhere(),
+          },
+        }),
       }),
       prisma.url.count({
         where: andWhere(baseWhere, staleCaptureWhere),
@@ -380,8 +428,7 @@ async function getLatestSnapshotsByUrlId(
   const snapshots = await prisma.storedFile.findMany({
     where: {
       urlId: { in: uniqueIds },
-      deletedAt: null,
-      captureType: { in: ["URL_TEXT", "URL_PDF"] },
+      ...ACTIVE_URL_SNAPSHOT_WHERE,
     },
     select: {
       id: true,
