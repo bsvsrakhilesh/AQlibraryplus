@@ -318,6 +318,55 @@ function getDomain(u: string): string {
   }
 }
 
+function shortQueueTitle(
+  item?: { title?: string | null; url?: string | null },
+  max = 88,
+): string {
+  const raw = String(item?.title || item?.url || "Untitled URL").trim();
+  if (raw.length <= max) return raw;
+  return `${raw.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
+function queueDomain(item?: {
+  normalizedDomain?: string | null;
+  url?: string | null;
+}): string {
+  if (item?.normalizedDomain) return item.normalizedDomain;
+  if (!item?.url) return "";
+  return getDomain(item.url);
+}
+
+function relativeQueueAge(iso?: string | null): string {
+  if (!iso) return "";
+
+  const ms = new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return "";
+
+  const diffMs = Math.max(0, Date.now() - ms);
+  const sec = Math.floor(diffMs / 1000);
+
+  if (sec < 10) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function queueHealthLabel(
+  health?: "idle" | "processing" | "waiting_for_worker" | "attention_required",
+): string {
+  if (health === "processing") return "Processing now";
+  if (health === "waiting_for_worker") return "Waiting for worker";
+  if (health === "attention_required") return "Needs attention";
+  return "Idle";
+}
+
 function faviconFor(u: string): string {
   const d = getDomain(u) || "example.com";
   return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(d)}`;
@@ -2789,35 +2838,124 @@ const SavedUrlsPage: React.FC = () => {
       </header>
 
       {tagSummary && (tagSummary.inProgress > 0 || tagSummary.failed > 0) && (
-        <div className="saved-urls-panel saved-urls-banner p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10">
-          <div className="text-sm text-amber-950 dark:text-amber-100">
-            <span className="font-semibold">AI Tagging</span>
-            <span className="ml-2">
-              Pending{" "}
-              <span className="font-semibold">
-                {tagSummary.byStatus?.PENDING ?? 0}
-              </span>
-              , Running{" "}
-              <span className="font-semibold">
-                {tagSummary.byStatus?.RUNNING ?? 0}
-              </span>
-              , Failed{" "}
-              <span className="font-semibold">{tagSummary.failed}</span>
-            </span>
-            {tagSummaryError && (
-              <span className="ml-2 opacity-70">({tagSummaryError})</span>
+        <div className="saved-urls-panel saved-urls-banner p-3 sm:p-4 flex flex-col gap-3 border border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="text-sm text-amber-950 dark:text-amber-100">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold">AI Tagging</span>
+
+                <span className="rounded-full border border-amber-300/70 bg-white/60 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                  {tagSummary.queueMode === "sequential"
+                    ? "Sequential queue"
+                    : "Queue"}
+                </span>
+
+                <span className="text-xs opacity-80">
+                  {queueHealthLabel(tagSummary.queueHealth)}
+                </span>
+              </div>
+
+              <div className="mt-1 text-xs sm:text-sm">
+                Pending{" "}
+                <span className="font-semibold">
+                  {tagSummary.byStatus?.PENDING ?? 0}
+                </span>
+                {" · "}
+                Running{" "}
+                <span className="font-semibold">
+                  {tagSummary.byStatus?.RUNNING ?? 0}
+                </span>
+                {" · "}
+                Failed{" "}
+                <span className="font-semibold">{tagSummary.failed}</span>
+                {tagSummary.oldestPendingAt && (
+                  <>
+                    {" · "}
+                    Oldest pending{" "}
+                    <span className="font-semibold">
+                      {relativeQueueAge(tagSummary.oldestPendingAt)}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {tagSummaryError && (
+                <div className="mt-1 text-xs opacity-70">{tagSummaryError}</div>
+              )}
+            </div>
+
+            {tagSummary.failed > 0 && (
+              <button
+                className="btn-primary px-4 py-2 rounded-lg disabled:opacity-60"
+                onClick={handleRetryFailedTagging}
+                disabled={tagSummaryLoading}
+                title="Re-run auto-tagging for failed URLs"
+              >
+                {tagSummaryLoading ? "Retrying…" : "Retry failed"}
+              </button>
             )}
           </div>
 
-          {tagSummary.failed > 0 && (
-            <button
-              className="btn-primary px-4 py-2 rounded-lg disabled:opacity-60"
-              onClick={handleRetryFailedTagging}
-              disabled={tagSummaryLoading}
-              title="Re-run auto-tagging for failed URLs"
-            >
-              {tagSummaryLoading ? "Retrying…" : "Retry failed"}
-            </button>
+          {(tagSummary.currentRunning ||
+            (tagSummary.nextPending?.length ?? 0) > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs text-amber-950 dark:text-amber-100">
+              <div className="rounded-xl border border-amber-200/80 bg-white/60 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <div className="font-semibold uppercase tracking-wide text-[11px] opacity-70">
+                  Now tagging
+                </div>
+
+                {tagSummary.currentRunning ? (
+                  <div className="mt-1">
+                    <div className="font-semibold leading-snug">
+                      {shortQueueTitle(tagSummary.currentRunning)}
+                    </div>
+                    <div className="mt-1 opacity-75">
+                      {queueDomain(tagSummary.currentRunning)}
+                      {tagSummary.currentRunning.updatedAt && (
+                        <>
+                          {" · "}
+                          started{" "}
+                          {relativeQueueAge(
+                            tagSummary.currentRunning.updatedAt,
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-1 opacity-75">
+                    No URL is running right now. Waiting for the worker to pick
+                    the next queued item.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-amber-200/80 bg-white/60 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <div className="font-semibold uppercase tracking-wide text-[11px] opacity-70">
+                  Next in queue
+                </div>
+
+                {(tagSummary.nextPending?.length ?? 0) > 0 ? (
+                  <ol className="mt-1 space-y-1">
+                    {tagSummary.nextPending?.map((item, idx) => (
+                      <li key={item.id} className="flex gap-2">
+                        <span className="opacity-60">{idx + 1}.</span>
+                        <span className="min-w-0">
+                          <span className="font-medium">
+                            {shortQueueTitle(item, 72)}
+                          </span>
+                          <span className="ml-1 opacity-70">
+                            {queueDomain(item)}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div className="mt-1 opacity-75">No waiting URLs.</div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}

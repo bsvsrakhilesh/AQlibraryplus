@@ -844,6 +844,29 @@ export async function deleteUrlsBulk(ids: number[]) {
 }
 
 /* -------------------------- tagging health -------------------------- */
+export type UrlTaggingSummaryItem = {
+  id: number;
+  url: string;
+  title: string | null;
+  normalizedDomain: string | null;
+  taggingStatus: TaggingStatus;
+  taggingJobId: string | null;
+  taggingError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const TAGGING_SUMMARY_ITEM_SELECT = {
+  id: true,
+  url: true,
+  title: true,
+  normalizedDomain: true,
+  taggingStatus: true,
+  taggingJobId: true,
+  taggingError: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.UrlSelect;
 
 export type UrlTaggingSummary = {
   total: number;
@@ -851,6 +874,18 @@ export type UrlTaggingSummary = {
   byStatus: Record<string, number>;
   inProgress: number;
   failed: number;
+
+  queueMode: "sequential";
+  queueHealth:
+    | "idle"
+    | "processing"
+    | "waiting_for_worker"
+    | "attention_required";
+
+  currentRunning: UrlTaggingSummaryItem | null;
+  nextPending: UrlTaggingSummaryItem[];
+  oldestPendingAt: Date | null;
+
   failedSample: Array<{
     id: number;
     url: string;
@@ -861,13 +896,26 @@ export type UrlTaggingSummary = {
 };
 
 export async function getUrlTaggingSummary(): Promise<UrlTaggingSummary> {
-  const [total, untagged, grouped, failedSample] = await Promise.all([
+  const [
+    total,
+    untagged,
+    grouped,
+    failedSample,
+    currentRunning,
+    nextPending,
+    oldestPending,
+  ] = await Promise.all([
     prisma.url.count(),
-    prisma.url.count({ where: { tags: { isEmpty: true } } }),
+
+    prisma.url.count({
+      where: { tags: { isEmpty: true } },
+    }),
+
     prisma.url.groupBy({
       by: ["taggingStatus"],
       _count: { _all: true },
     }),
+
     prisma.url.findMany({
       where: { taggingStatus: TaggingStatus.FAILED },
       select: {
@@ -879,6 +927,25 @@ export async function getUrlTaggingSummary(): Promise<UrlTaggingSummary> {
       },
       orderBy: { updatedAt: "desc" },
       take: 5,
+    }),
+
+    prisma.url.findFirst({
+      where: { taggingStatus: TaggingStatus.RUNNING },
+      select: TAGGING_SUMMARY_ITEM_SELECT,
+      orderBy: { updatedAt: "desc" },
+    }),
+
+    prisma.url.findMany({
+      where: { taggingStatus: TaggingStatus.PENDING },
+      select: TAGGING_SUMMARY_ITEM_SELECT,
+      orderBy: { updatedAt: "asc" },
+      take: 3,
+    }),
+
+    prisma.url.findFirst({
+      where: { taggingStatus: TaggingStatus.PENDING },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: "asc" },
     }),
   ]);
 
@@ -895,12 +962,35 @@ export async function getUrlTaggingSummary(): Promise<UrlTaggingSummary> {
     byStatus[key] = g._count._all;
   }
 
-  const inProgress =
-    (byStatus[TaggingStatus.PENDING] || 0) +
-    (byStatus[TaggingStatus.RUNNING] || 0);
+  const pending = byStatus[TaggingStatus.PENDING] || 0;
+  const running = byStatus[TaggingStatus.RUNNING] || 0;
+  const inProgress = pending + running;
   const failed = byStatus[TaggingStatus.FAILED] || 0;
 
-  return { total, untagged, byStatus, inProgress, failed, failedSample };
+  const queueHealth: UrlTaggingSummary["queueHealth"] =
+    running > 0
+      ? "processing"
+      : pending > 0
+        ? "waiting_for_worker"
+        : failed > 0
+          ? "attention_required"
+          : "idle";
+
+  return {
+    total,
+    untagged,
+    byStatus,
+    inProgress,
+    failed,
+
+    queueMode: "sequential",
+    queueHealth,
+    currentRunning,
+    nextPending,
+    oldestPendingAt: oldestPending?.updatedAt ?? null,
+
+    failedSample,
+  };
 }
 
 export async function retryFailedUrlTagging(

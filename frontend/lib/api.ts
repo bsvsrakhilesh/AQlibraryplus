@@ -946,12 +946,36 @@ export async function deleteSavedUrlSearchPreset(id: string): Promise<void> {
   await api.delete(`/api/saved-url-searches/${id}`);
 }
 
+export type UrlTaggingSummaryItem = {
+  id: number;
+  url: string;
+  title: string | null;
+  normalizedDomain: string | null;
+  taggingStatus: string;
+  taggingJobId: string | null;
+  taggingError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type UrlTaggingSummary = {
   total: number;
   untagged: number;
   byStatus: Record<string, number>;
   inProgress: number;
   failed: number;
+
+  queueMode?: "sequential";
+  queueHealth?:
+    | "idle"
+    | "processing"
+    | "waiting_for_worker"
+    | "attention_required";
+
+  currentRunning?: UrlTaggingSummaryItem | null;
+  nextPending?: UrlTaggingSummaryItem[];
+  oldestPendingAt?: string | null;
+
   failedSample: Array<{
     id: number;
     url: string;
