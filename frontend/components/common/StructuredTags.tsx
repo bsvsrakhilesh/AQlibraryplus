@@ -19,6 +19,46 @@ type AiTagDetail = {
   rank?: number | null;
 };
 
+type SmartTagEvidence = {
+  quote?: string | null;
+  page?: number | null;
+  section?: string | null;
+};
+
+type SmartTag = {
+  value?: string | null;
+  category?: string | null;
+  type?: string | null;
+  source?: string | null;
+  confidence?: number | null;
+  confidenceBand?: string | null;
+  matchedTaxonomy?: string | null;
+  status?: string | null;
+  evidence?: SmartTagEvidence[] | string | null;
+};
+
+type SmartTags = {
+  profile?: string;
+  version?: number;
+  taxonomyTags?: SmartTag[];
+  aiDiscoveredTags?: SmartTag[];
+  topics?: SmartTag[];
+  entities?: {
+    agencies?: SmartTag[];
+    organizations?: SmartTag[];
+    locations?: SmartTag[];
+    people?: SmartTag[];
+    legalReferences?: SmartTag[];
+    schemesPrograms?: SmartTag[];
+    datesDeadlines?: SmartTag[];
+  };
+  documentType?: SmartTag[];
+  actionsDecisions?: SmartTag[];
+  userTags?: SmartTag[];
+  taxonomySuggestions?: SmartTag[];
+  items?: SmartTag[];
+};
+
 type Structured = {
   profile?: string;
   version?: number;
@@ -46,6 +86,7 @@ type Structured = {
 type Props = {
   structured: Structured | null | undefined;
   tagDetails?: AiTagDetail[] | null;
+  smartTags?: SmartTags | null;
   compact?: boolean;
   className?: string;
 };
@@ -132,6 +173,113 @@ function cleanTagDetails(input?: AiTagDetail[] | null) {
   return out.slice(0, 30);
 }
 
+function cleanSmartEvidence(input: SmartTag["evidence"]): SmartTagEvidence[] {
+  const arr = Array.isArray(input) ? input : input ? [{ quote: String(input) }] : [];
+  return arr
+    .map((raw) => {
+      if (!raw || typeof raw !== "object") {
+        const quote = String(raw ?? "").trim();
+        return quote ? { quote, page: null, section: null } : null;
+      }
+
+      const quote = String(raw.quote ?? "").trim();
+      if (!quote) return null;
+      const page =
+        typeof raw.page === "number" && Number.isFinite(raw.page)
+          ? raw.page
+          : null;
+      const section = raw.section ? String(raw.section).trim() : null;
+      return { quote, page, section };
+    })
+    .filter(Boolean) as SmartTagEvidence[];
+}
+
+function cleanSmartTagArray(input?: SmartTag[] | null, fallbackCategory = "") {
+  if (!Array.isArray(input)) return [];
+  const out: SmartTag[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of input) {
+    const value = String(raw?.value ?? "").trim();
+    if (!value) continue;
+
+    const category = String(raw?.category ?? fallbackCategory).trim();
+    const type = String(raw?.type ?? "keyword").trim() || "keyword";
+    const key = `${category}:${type}:${value.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    out.push({
+      ...raw,
+      value,
+      category,
+      type,
+      source: String(raw?.source ?? "tagger").trim() || "tagger",
+      status: String(raw?.status ?? "suggested").trim() || "suggested",
+      confidence:
+        typeof raw?.confidence === "number"
+          ? Math.max(0, Math.min(1, raw.confidence))
+          : null,
+      confidenceBand: raw?.confidenceBand
+        ? String(raw.confidenceBand).trim()
+        : null,
+      matchedTaxonomy: raw?.matchedTaxonomy
+        ? String(raw.matchedTaxonomy).trim()
+        : null,
+      evidence: cleanSmartEvidence(raw?.evidence),
+    });
+  }
+
+  return out.slice(0, 80);
+}
+
+function cleanSmartTags(input?: SmartTags | null): SmartTags | null {
+  if (!input || typeof input !== "object") return null;
+  const entities = input.entities ?? {};
+
+  const out: SmartTags = {
+    profile: input.profile ?? "smart_tags",
+    version: input.version ?? 1,
+    taxonomyTags: cleanSmartTagArray(input.taxonomyTags, "Taxonomy Tags"),
+    aiDiscoveredTags: cleanSmartTagArray(input.aiDiscoveredTags, "AI-Discovered Tags"),
+    topics: cleanSmartTagArray(input.topics, "Topics"),
+    entities: {
+      agencies: cleanSmartTagArray(entities.agencies, "Entities"),
+      organizations: cleanSmartTagArray(entities.organizations, "Entities"),
+      locations: cleanSmartTagArray(entities.locations, "Entities"),
+      people: cleanSmartTagArray(entities.people, "Entities"),
+      legalReferences: cleanSmartTagArray(entities.legalReferences, "Entities"),
+      schemesPrograms: cleanSmartTagArray(entities.schemesPrograms, "Entities"),
+      datesDeadlines: cleanSmartTagArray(entities.datesDeadlines, "Entities"),
+    },
+    documentType: cleanSmartTagArray(input.documentType, "Document Type"),
+    actionsDecisions: cleanSmartTagArray(input.actionsDecisions, "Actions / Decisions"),
+    userTags: cleanSmartTagArray(input.userTags, "User Tags"),
+    taxonomySuggestions: cleanSmartTagArray(
+      input.taxonomySuggestions,
+      "AI-Discovered Tags",
+    ),
+  };
+
+  out.items = [
+    ...(out.taxonomyTags ?? []),
+    ...(out.aiDiscoveredTags ?? []),
+    ...(out.topics ?? []),
+    ...(out.entities?.agencies ?? []),
+    ...(out.entities?.organizations ?? []),
+    ...(out.entities?.locations ?? []),
+    ...(out.entities?.people ?? []),
+    ...(out.entities?.legalReferences ?? []),
+    ...(out.entities?.schemesPrograms ?? []),
+    ...(out.entities?.datesDeadlines ?? []),
+    ...(out.documentType ?? []),
+    ...(out.actionsDecisions ?? []),
+    ...(out.userTags ?? []),
+  ];
+
+  return out.items.length ? out : null;
+}
+
 function TagDetailRow({
   tag,
   showEvidence,
@@ -177,6 +325,88 @@ function TagDetailRow({
           {evidence}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SmartTagRow({
+  tag,
+  showEvidence,
+}: {
+  tag: SmartTag;
+  showEvidence: boolean;
+}) {
+  const evidence = cleanSmartEvidence(tag.evidence);
+  const first = evidence[0];
+  const type = (tag.type || "tag").replaceAll("_", " ");
+  const source = (tag.source || "tagger").replaceAll("_", " ");
+
+  return (
+    <div className="rounded-lg border border-[hsl(var(--border))] bg-white px-3 py-2">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-[12px] font-semibold text-slate-900">
+            {tag.value}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]">
+            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 capitalize text-slate-700">
+              {type}
+            </span>
+            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 capitalize text-slate-700">
+              {source}
+            </span>
+            {tag.status ? <span className="capitalize">{tag.status}</span> : null}
+          </div>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold capitalize",
+            scoreClasses(tag.confidence),
+          )}
+          title={`Confidence ${confidencePct(tag.confidence)}`}
+        >
+          {tag.confidenceBand ?? scoreBadge(tag.confidence)}
+        </span>
+      </div>
+
+      {showEvidence && first?.quote ? (
+        <div className="mt-2 line-clamp-3 text-[11px] leading-snug text-[hsl(var(--muted-foreground))]">
+          {first.page ? `Page ${first.page}: ` : ""}
+          {first.quote}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SmartTagSection({
+  title,
+  items,
+  showEvidence,
+}: {
+  title: string;
+  items: SmartTag[];
+  showEvidence: boolean;
+}) {
+  if (!items.length) return null;
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-semibold text-slate-900">{title}</div>
+        <div className="text-[11px] text-[hsl(var(--muted-foreground))]">
+          {items.length}
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-2">
+        {items.slice(0, 12).map((tag, idx) => (
+          <SmartTagRow
+            key={`${title}-${tag.value ?? idx}-${idx}`}
+            tag={tag}
+            showEvidence={showEvidence}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -257,6 +487,7 @@ function Section({
 export default function StructuredTags({
   structured,
   tagDetails,
+  smartTags,
   compact = false,
   className,
 }: Props) {
@@ -277,6 +508,8 @@ export default function StructuredTags({
 
   const entities = structured?.entities ?? {};
   const safeTagDetails = useMemo(() => cleanTagDetails(tagDetails), [tagDetails]);
+  const safeSmartTags = useMemo(() => cleanSmartTags(smartTags), [smartTags]);
+  const smartCount = safeSmartTags?.items?.length ?? 0;
   const entityLines = useMemo(() => {
     const out: { k: string; v: string }[] = [];
     const push = (k: string, arr?: string[]) => {
@@ -305,6 +538,7 @@ export default function StructuredTags({
       grap?.mentioned ||
       entityLines.length);
   const hasAnything = hasStructuredSignals || safeTagDetails.length > 0;
+  const hasRenderableContent = hasAnything || smartCount > 0;
 
   const headerRight = (
     <div className="flex items-center gap-2">
@@ -317,9 +551,13 @@ export default function StructuredTags({
           )}
           onClick={async (e) => {
             e.stopPropagation();
-            if (!structured && !safeTagDetails.length) return;
+            if (!structured && !safeTagDetails.length && !safeSmartTags) return;
             const ok = await copyToClipboard(
-              JSON.stringify({ structured, tagDetails: safeTagDetails }, null, 2),
+              JSON.stringify(
+                { smartTags: safeSmartTags, structured, tagDetails: safeTagDetails },
+                null,
+                2,
+              ),
             );
             if (ok) {
               setCopied(true);
@@ -376,7 +614,7 @@ export default function StructuredTags({
         {headerRight}
       </div>
 
-      {!hasAnything ? (
+      {!hasRenderableContent ? (
         <div className="px-1 pb-3 text-[12px] text-[hsl(var(--muted-foreground))]">
           No structured tags yet. Run the tagger (or re-tag) to populate CAQM
           labels like doc type, sector, GRAP stage, agencies, and geography.
@@ -392,7 +630,9 @@ export default function StructuredTags({
             </span>
           ) : (
             <span>
-              {safeTagDetails.length
+              {smartCount
+                ? `${smartCount} structured smart tags`
+                : safeTagDetails.length
                 ? `${safeTagDetails.length} evidence-backed tags`
                 : sectors.length
                   ? `${sectors.length} sector labels`
@@ -415,6 +655,92 @@ export default function StructuredTags({
                 />
                 Show evidence
               </label>
+            </div>
+          ) : null}
+
+          {safeSmartTags ? (
+            <div className="mt-2 rounded-lg border border-[hsl(var(--border))] bg-slate-50/60 px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-900">
+                    Smart tag intelligence
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">
+                    Taxonomy matches, AI discoveries, entities, and actions.
+                  </div>
+                </div>
+                <div className="rounded-md border border-[hsl(var(--border))] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">
+                  {smartCount}
+                </div>
+              </div>
+
+              <div className="mt-3 divide-y divide-[hsl(var(--border))]">
+                <SmartTagSection
+                  title="Taxonomy Tags"
+                  items={safeSmartTags.taxonomyTags ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="AI-Discovered Tags"
+                  items={safeSmartTags.aiDiscoveredTags ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Topics"
+                  items={safeSmartTags.topics ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Document Type"
+                  items={safeSmartTags.documentType ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Actions / Decisions"
+                  items={safeSmartTags.actionsDecisions ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Agencies"
+                  items={safeSmartTags.entities?.agencies ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Organizations"
+                  items={safeSmartTags.entities?.organizations ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Locations"
+                  items={safeSmartTags.entities?.locations ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="People"
+                  items={safeSmartTags.entities?.people ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Legal References"
+                  items={safeSmartTags.entities?.legalReferences ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Schemes / Programs"
+                  items={safeSmartTags.entities?.schemesPrograms ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="Dates / Deadlines"
+                  items={safeSmartTags.entities?.datesDeadlines ?? []}
+                  showEvidence={showEvidence}
+                />
+                <SmartTagSection
+                  title="User Tags"
+                  items={safeSmartTags.userTags ?? []}
+                  showEvidence={showEvidence}
+                />
+              </div>
             </div>
           ) : null}
 

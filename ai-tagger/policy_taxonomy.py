@@ -146,11 +146,12 @@ class PolicyTaxonomy:
         for kw in rule.keywords:
             if not kw:
                 continue
-            i = t_low.find(kw)
-            if i >= 0:
+            pattern = r"(?<![a-z0-9])" + re.escape(kw).replace(r"\ ", r"\s+") + r"(?![a-z0-9])"
+            m = re.search(pattern, t_low, flags=re.IGNORECASE)
+            if m:
                 hits += 1
-                if best_idx is None or i < best_idx:
-                    best_idx = i
+                if best_idx is None or m.start() < best_idx:
+                    best_idx = m.start()
 
         if hits <= 0:
             return 0.0, None

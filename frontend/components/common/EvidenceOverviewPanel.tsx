@@ -47,6 +47,7 @@ type Props = {
   timelineItems?: EvidenceTimelineItem[];
   structured?: any;
   tagDetails?: any[] | null;
+  smartTags?: any | null;
   intelligenceRows?: EvidenceFactRow[];
   provenanceRows?: EvidenceFactRow[];
 };
@@ -105,6 +106,7 @@ export default function EvidenceOverviewPanel({
   timelineItems = [],
   structured = null,
   tagDetails = null,
+  smartTags = null,
   intelligenceRows = [],
   provenanceRows = [],
 }: Props) {
@@ -202,8 +204,12 @@ export default function EvidenceOverviewPanel({
         </div>
       ) : null}
 
-      {structured || tagDetails?.length ? (
-        <StructuredTags structured={structured} tagDetails={tagDetails} />
+      {structured || tagDetails?.length || smartTags ? (
+        <StructuredTags
+          structured={structured}
+          tagDetails={tagDetails}
+          smartTags={smartTags}
+        />
       ) : null}
 
       {intelligenceRows.length > 0 ? (

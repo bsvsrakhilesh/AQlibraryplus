@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover
 
 
 log = logging.getLogger("pipeline")
-TAGGER_VERSION = os.getenv("TAGGER_VERSION", "0.4.0")
+TAGGER_VERSION = os.getenv("TAGGER_VERSION", "0.5.0")
 
 # Optional advanced candidate generator (KeyBERT/YAKE/spaCy).
 try:
@@ -820,6 +820,15 @@ def _classify_structured_combined(
 def _tag_display(value: Any) -> str:
     raw = _clean_text(value, 120) or ""
     display_map = {
+        "caqm": "CAQM",
+        "cpcb": "CPCB",
+        "dpcc": "DPCC",
+        "spcb": "SPCB",
+        "imd": "IMD",
+        "iit": "IIT",
+        "ncr": "NCR",
+        "delhi": "Delhi",
+        "uttar_pradesh": "Uttar Pradesh",
         "construction_demolition": "C&D",
         "waste_burning": "Waste burning",
         "biomass_burning": "Biomass burning",
@@ -827,6 +836,7 @@ def _tag_display(value: Any) -> str:
         "dg_sets": "DG sets",
         "office_memorandum": "Office memorandum",
         "sop_guideline": "SOP / Guideline",
+        "pm2.5": "PM2.5",
         "pm25": "PM2.5",
         "pm10": "PM10",
         "no2": "NO2",
@@ -1067,6 +1077,1019 @@ def _build_ai_tag_details(
     return out[:80]
 
 
+_SMART_CATEGORY_TAXONOMY = "Taxonomy Tags"
+_SMART_CATEGORY_DISCOVERED = "AI-Discovered Tags"
+_SMART_CATEGORY_TOPICS = "Topics"
+_SMART_CATEGORY_ENTITIES = "Entities"
+_SMART_CATEGORY_DOC_TYPE = "Document Type"
+_SMART_CATEGORY_ACTIONS = "Actions / Decisions"
+_SMART_CATEGORY_USER = "User Tags"
+
+_SMART_ENTITY_BUCKETS = {
+    "agency": "agencies",
+    "organization": "organizations",
+    "location": "locations",
+    "person": "people",
+    "legal_reference": "legalReferences",
+    "scheme_program": "schemesPrograms",
+    "date_deadline": "datesDeadlines",
+}
+
+_SMART_BAD_TAGS = {
+    "document",
+    "report",
+    "information",
+    "data",
+    "important",
+    "introduction",
+    "background",
+    "order",
+    "page",
+    "section",
+    "content",
+    "official",
+    "government",
+    "matter",
+    "details",
+}
+
+_SMART_DOC_TYPE_DISPLAY = {
+    "direction": "Government Direction",
+    "order": "Government Order",
+    "office_memorandum": "Office Memorandum",
+    "notice": "Notification / Notice",
+    "minutes": "Meeting Minutes",
+    "sop_guideline": "Guideline / SOP",
+}
+
+_SMART_TAXONOMY_VALUES = {
+    "caqm",
+    "commission for air quality management",
+    "cpcb",
+    "central pollution control board",
+    "dpcc",
+    "delhi pollution control committee",
+    "spcb",
+    "state pollution control board",
+    "imd",
+    "india meteorological department",
+    "iit",
+    "grap",
+    "graded response action plan",
+    "pm2.5",
+    "pm25",
+    "pm10",
+    "no2",
+    "o3",
+    "co",
+    "delhi",
+    "ncr",
+    "national capital region",
+    "haryana",
+    "uttar pradesh",
+    "rajasthan",
+    "construction_demolition",
+    "waste_burning",
+    "biomass_burning",
+    "industry_power",
+    "dg_sets",
+    "transport",
+}
+
+_SMART_LOCATOR_PREFIX_RE = re.compile(
+    r"^\[(?:page\s+(\d+)|document|image(?:\s+frame)?(?:\s+\d+)?)\]\s*",
+    re.IGNORECASE,
+)
+
+_SMART_DISCOVERY_RULES: Sequence[Tuple[str, str, Sequence[re.Pattern], float]] = [
+    (
+        "Construction Dust Control",
+        "control_measure",
+        [
+            re.compile(r"\bconstruction\b.{0,90}\bdust\b", re.IGNORECASE | re.DOTALL),
+            re.compile(r"\bC\s*&\s*D\b.{0,90}\bdust\b", re.IGNORECASE | re.DOTALL),
+            re.compile(
+                r"\bconstruction\s+and\s+demolition\b.{0,90}\b(debris|waste|dust)\b",
+                re.IGNORECASE | re.DOTALL,
+            ),
+        ],
+        0.86,
+    ),
+    (
+        "Diesel Generator Restrictions",
+        "restriction",
+        [
+            re.compile(
+                r"\b(?:DG\s*sets?|diesel\s+generators?|gensets?)\b.{0,100}\b"
+                r"(?:ban|banned|restrict|restricted|prohibit|not\s+permitted|regulated)\b",
+                re.IGNORECASE | re.DOTALL,
+            ),
+            re.compile(
+                r"\b(?:ban|restrict|prohibit|not\s+permitted)\b.{0,100}\b"
+                r"(?:DG\s*sets?|diesel\s+generators?|gensets?)\b",
+                re.IGNORECASE | re.DOTALL,
+            ),
+        ],
+        0.88,
+    ),
+    (
+        "Road Dust Mitigation",
+        "control_measure",
+        [
+            re.compile(
+                r"\broad\s+dust\b.{0,100}\b(?:mitigation|control|suppression|sweeping|sprinkling)\b",
+                re.IGNORECASE | re.DOTALL,
+            ),
+            re.compile(
+                r"\b(?:mechanized\s+)?road\s+sweeping\b|\bwater\s+sprinkling\b",
+                re.IGNORECASE,
+            ),
+        ],
+        0.82,
+    ),
+    (
+        "Emergency Air Quality Response",
+        "emergency_response",
+        [
+            re.compile(
+                r"\b(?:emergency|severe|very\s+poor)\b.{0,100}\b(?:air\s+quality|pollution|response|measures)\b",
+                re.IGNORECASE | re.DOTALL,
+            ),
+            re.compile(r"\bGRAP\s+Stage\s*(?:I|II|III|IV|1|2|3|4)\b", re.IGNORECASE),
+        ],
+        0.84,
+    ),
+    (
+        "Industrial Emissions Inspection",
+        "inspection",
+        [
+            re.compile(
+                r"\b(?:industrial|industry|stack)\b.{0,100}\b(?:emissions?|inspection|inspect|compliance)\b",
+                re.IGNORECASE | re.DOTALL,
+            )
+        ],
+        0.82,
+    ),
+    (
+        "Winter Pollution Episode",
+        "seasonal_episode",
+        [
+            re.compile(
+                r"\bwinter\b.{0,100}\b(?:pollution|episode|air\s+quality|smog)\b",
+                re.IGNORECASE | re.DOTALL,
+            )
+        ],
+        0.78,
+    ),
+    (
+        "Open Waste Burning",
+        "emission_source",
+        [
+            re.compile(r"\bopen\s+burning\b|\bgarbage\s+burning\b|\bwaste\s+burning\b", re.IGNORECASE)
+        ],
+        0.8,
+    ),
+    (
+        "Stubble Burning",
+        "emission_source",
+        [
+            re.compile(r"\bstubble\s+burning\b|\bcrop\s+residue\b|\bpaddy\s+straw\b|\bparali\b", re.IGNORECASE)
+        ],
+        0.8,
+    ),
+]
+
+_SMART_TOPIC_RULES: Sequence[Tuple[str, str, Sequence[re.Pattern], float]] = [
+    (
+        "Air Pollution Control",
+        "environmental_topic",
+        [
+            re.compile(r"\bair\s+pollution\b|\bair\s+quality\b|\bAQI\b|\bPM\s*2\.?5\b|\bPM\s*10\b", re.IGNORECASE)
+        ],
+        0.76,
+    ),
+    (
+        "Urban Governance",
+        "governance_topic",
+        [
+            re.compile(
+                r"\b(?:municipal|urban|local\s+bod(?:y|ies)|implementation\s+agency|district\s+administration)\b",
+                re.IGNORECASE,
+            )
+        ],
+        0.7,
+    ),
+    (
+        "Public Health",
+        "health_topic",
+        [
+            re.compile(r"\bpublic\s+health\b|\bhealth\s+advisory\b|\brespiratory\b|\bvulnerable\s+groups\b", re.IGNORECASE)
+        ],
+        0.7,
+    ),
+    (
+        "Industrial Regulation",
+        "regulatory_topic",
+        [
+            re.compile(r"\bindustr(?:y|ial)\b.{0,90}\b(?:emissions?|compliance|inspection|fuel)\b", re.IGNORECASE | re.DOTALL)
+        ],
+        0.72,
+    ),
+    (
+        "Environmental Compliance",
+        "compliance_topic",
+        [
+            re.compile(r"\bcompliance\b|\benvironment(?:al)?\s+compensation\b|\bviolation\b|\benforcement\b", re.IGNORECASE)
+        ],
+        0.72,
+    ),
+]
+
+_SMART_ACTION_RULES: Sequence[Tuple[str, str, Sequence[re.Pattern], float]] = [
+    (
+        "Restriction",
+        "restriction",
+        [
+            re.compile(r"\b(?:restrict|restriction|restricted|suspend|suspended|curb|curbs)\b", re.IGNORECASE)
+        ],
+        0.78,
+    ),
+    (
+        "Ban",
+        "ban",
+        [
+            re.compile(r"\b(?:ban|banned|prohibit|prohibited|not\s+permitted)\b", re.IGNORECASE)
+        ],
+        0.82,
+    ),
+    (
+        "Compliance Required",
+        "compliance_required",
+        [
+            re.compile(r"\b(?:shall\s+ensure|directed\s+to|comply|compliance\s+required|submit\s+compliance)\b", re.IGNORECASE)
+        ],
+        0.8,
+    ),
+    (
+        "Inspection Required",
+        "inspection_required",
+        [
+            re.compile(r"\b(?:inspection|inspect|inspected|inspection\s+drive)\b", re.IGNORECASE)
+        ],
+        0.76,
+    ),
+    (
+        "Monitoring Required",
+        "monitoring_required",
+        [
+            re.compile(r"\b(?:monitor|monitoring|surveillance|real[-\s]?time\s+monitoring)\b", re.IGNORECASE)
+        ],
+        0.74,
+    ),
+    (
+        "Deadline",
+        "deadline",
+        [
+            re.compile(r"\b(?:by|before|within|not\s+later\s+than)\s+(?:\d{1,2}\s+\w+\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d+\s+days?)\b", re.IGNORECASE)
+        ],
+        0.74,
+    ),
+    (
+        "Implementation Plan",
+        "implementation_plan",
+        [
+            re.compile(r"\b(?:implementation\s+plan|action\s+plan|roadmap|time[-\s]?bound\s+plan)\b", re.IGNORECASE)
+        ],
+        0.76,
+    ),
+    (
+        "Advisory",
+        "advisory",
+        [
+            re.compile(r"\b(?:advisory|advised|advises|citizens\s+are\s+advised)\b", re.IGNORECASE)
+        ],
+        0.72,
+    ),
+]
+
+_SMART_ORG_RULES: Sequence[Tuple[str, str, Sequence[re.Pattern], float]] = [
+    (
+        "National Green Tribunal",
+        "organization",
+        [
+            re.compile(r"\bNational\s+Green\s+Tribunal\b|\bNGT\b", re.IGNORECASE)
+        ],
+        0.84,
+    ),
+    (
+        "Supreme Court of India",
+        "organization",
+        [
+            re.compile(r"\bSupreme\s+Court(?:\s+of\s+India)?\b", re.IGNORECASE)
+        ],
+        0.82,
+    ),
+    (
+        "Delhi High Court",
+        "organization",
+        [
+            re.compile(r"\bDelhi\s+High\s+Court\b", re.IGNORECASE)
+        ],
+        0.82,
+    ),
+]
+
+_SMART_LEGAL_RULES: Sequence[Tuple[str, str, Sequence[re.Pattern], float]] = [
+    (
+        "Environment Protection Act",
+        "statute",
+        [
+            re.compile(r"\bEnvironment\s*\(Protection\)\s*Act\b|\bEnvironment\s+Protection\s+Act\b", re.IGNORECASE)
+        ],
+        0.86,
+    ),
+    (
+        "Air Act",
+        "statute",
+        [
+            re.compile(r"\bAir\s*\(Prevention\s+and\s+Control\s+of\s+Pollution\)\s*Act\b|\bAir\s+Act\b", re.IGNORECASE)
+        ],
+        0.86,
+    ),
+    (
+        "CAQM Act",
+        "statute",
+        [
+            re.compile(r"\bCAQM\s+Act\b|\bCommission\s+for\s+Air\s+Quality\s+Management\s+Act\b", re.IGNORECASE)
+        ],
+        0.86,
+    ),
+]
+
+_SMART_PROGRAM_RULES: Sequence[Tuple[str, str, Sequence[re.Pattern], float]] = [
+    (
+        "National Clean Air Programme",
+        "scheme_program",
+        [
+            re.compile(r"\bNational\s+Clean\s+Air\s+Programme\b|\bNCAP\b", re.IGNORECASE)
+        ],
+        0.82,
+    ),
+    (
+        "Graded Response Action Plan",
+        "scheme_program",
+        [
+            re.compile(r"\bGraded\s+Response\s+Action\s+Plan\b|\bGRAP\b", re.IGNORECASE)
+        ],
+        0.86,
+    ),
+]
+
+_SMART_PERSON_RE = re.compile(
+    r"\b(?:Shri|Smt|Ms|Mrs|Mr|Dr|Justice)\.?\s+[A-Z][A-Za-z.]+(?:\s+[A-Z][A-Za-z.]+){0,3}\b"
+)
+
+_SMART_LOCATION_PATTERNS: Sequence[Tuple[str, Sequence[re.Pattern], float]] = [
+    ("Delhi-NCR", [re.compile(r"\bDelhi[-\s]?NCR\b", re.IGNORECASE)], 0.86),
+    ("National Capital Region", [re.compile(r"\bNational\s+Capital\s+Region\b|\bNCR\b", re.IGNORECASE)], 0.82),
+    ("NCT of Delhi", [re.compile(r"\bNCT\s+of\s+Delhi\b", re.IGNORECASE)], 0.82),
+]
+
+
+def _confidence_band(value: Any) -> str:
+    score = _clean_confidence(value)
+    if score is None:
+        return "low"
+    if score >= 0.85:
+        return "high"
+    if score >= 0.6:
+        return "medium"
+    return "low"
+
+
+def _smart_key(value: Any) -> str:
+    raw = _clean_text(value, 160) or ""
+    raw = raw.lower().replace("&", " and ")
+    raw = re.sub(r"[^a-z0-9.]+", " ", raw)
+    raw = re.sub(r"\b(?:the|and|of|for|under)\b", " ", raw)
+    return " ".join(raw.split()).strip()
+
+
+def _smart_display(value: Any, category: str) -> str:
+    raw = _clean_text(value, 120) or ""
+    if category == _SMART_CATEGORY_DOC_TYPE:
+        mapped = _SMART_DOC_TYPE_DISPLAY.get(raw)
+        if mapped:
+            return mapped
+
+    display = _tag_display(raw)
+    if "_" in raw and display == raw.replace("_", " "):
+        return display.title()
+    if display == raw and raw.islower() and " " in raw:
+        return display.title()
+    return display
+
+
+def _smart_quote_and_page(
+    evidence: Any,
+    locator: Optional[Dict[str, Any]],
+) -> Tuple[Optional[str], Optional[int]]:
+    raw = _clean_text(evidence, 700)
+    if not raw:
+        return None, None
+
+    page: Optional[int] = None
+    m = _SMART_LOCATOR_PREFIX_RE.match(raw)
+    if m:
+        if m.group(1):
+            try:
+                page = int(m.group(1))
+            except ValueError:
+                page = None
+        raw = raw[m.end() :].strip()
+
+    loc = locator if isinstance(locator, dict) else {}
+    if page is None and loc.get("pageNumber") is not None:
+        try:
+            page = int(loc.get("pageNumber"))
+        except (TypeError, ValueError):
+            page = None
+
+    return raw, page
+
+
+def _smart_evidence_list(
+    evidence: Any,
+    locator: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    quote, page = _smart_quote_and_page(evidence, locator)
+    if not quote:
+        return []
+
+    item: Dict[str, Any] = {"quote": quote}
+    if page is not None:
+        item["page"] = page
+
+    loc = locator if isinstance(locator, dict) else {}
+    section = loc.get("section") or loc.get("heading")
+    if section:
+        item["section"] = _clean_text(section, 160)
+    if loc:
+        item["locator"] = loc
+
+    return [item]
+
+
+def _smart_quality_ok(
+    value: str,
+    *,
+    category: str,
+    tag_type: str,
+    evidence: Sequence[Dict[str, Any]],
+) -> bool:
+    raw = _clean_text(value, 120) or ""
+    if not raw:
+        return False
+
+    key = _smart_key(raw)
+    if category in (_SMART_CATEGORY_DISCOVERED, _SMART_CATEGORY_TOPICS) and key in _SMART_BAD_TAGS:
+        return False
+
+    if category != _SMART_CATEGORY_USER and not evidence:
+        return False
+
+    if len(raw) < 3 and not raw.isupper():
+        return False
+
+    words = [w for w in re.split(r"\s+", raw) if w]
+    if category == _SMART_CATEGORY_DISCOVERED:
+        if len(words) == 1 and not raw.isupper() and not re.search(r"\d", raw):
+            return False
+        if len(words) > 8 or len(raw) > 90:
+            return False
+
+    if tag_type == "keyword" and key in _SMART_BAD_TAGS:
+        return False
+
+    return True
+
+
+def _smart_snippet_from_span(
+    text: str,
+    start: int,
+    end: int,
+    *,
+    window: int = 130,
+) -> str:
+    a = max(0, start - window)
+    b = min(len(text), end + window)
+    snippet = " ".join((text or "")[a:b].split()).strip()
+    if a > 0:
+        snippet = "... " + snippet
+    if b < len(text):
+        snippet = snippet + " ..."
+    return snippet
+
+
+def _smart_candidate_units(
+    content: str,
+    grounding_units: Sequence[Dict[str, Any]],
+    *,
+    max_chars: int = 3600,
+    overlap: int = 280,
+) -> List[Dict[str, Any]]:
+    base_units = list(grounding_units or [])
+    if not base_units and (content or "").strip():
+        base_units = [{"text": content, "locator": {"kind": "document"}}]
+
+    out: List[Dict[str, Any]] = []
+    for unit in base_units:
+        text = str(unit.get("text") or "").strip()
+        if not text:
+            continue
+
+        locator = unit.get("locator") if isinstance(unit.get("locator"), dict) else {}
+        if len(text) <= max_chars:
+            out.append({"text": text, "locator": dict(locator)})
+            continue
+
+        start = 0
+        idx = 1
+        while start < len(text):
+            end = min(len(text), start + max_chars)
+            if end < len(text):
+                split_at = text.rfind("\n", start + int(max_chars * 0.55), end)
+                if split_at > start:
+                    end = split_at
+
+            chunk = text[start:end].strip()
+            if chunk:
+                loc = dict(locator)
+                loc["chunkIndex"] = idx
+                out.append({"text": chunk, "locator": loc})
+                idx += 1
+
+            if end >= len(text):
+                break
+            start = max(end - overlap, start + 1)
+
+    return out[:160]
+
+
+def _first_rule_match(
+    units: Sequence[Dict[str, Any]],
+    patterns: Sequence[re.Pattern],
+) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    for unit in units:
+        text = str(unit.get("text") or "")
+        if not text:
+            continue
+        for pat in patterns:
+            m = pat.search(text)
+            if not m:
+                continue
+            return _smart_snippet_from_span(text, m.start(), m.end()), unit.get("locator")
+    return None, None
+
+
+def _add_rule_tags(
+    *,
+    add,
+    units: Sequence[Dict[str, Any]],
+    rules: Sequence[Tuple[str, str, Sequence[re.Pattern], float]],
+    category: str,
+    source: str,
+) -> None:
+    for value, tag_type, patterns, confidence in rules:
+        evidence, locator = _first_rule_match(units, patterns)
+        if evidence:
+            add(
+                value,
+                category=category,
+                tag_type=tag_type,
+                source=source,
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+            )
+
+
+def _is_known_taxonomy_tag(value: Any) -> bool:
+    raw = _clean_text(value, 120)
+    if not raw:
+        return False
+
+    keys = {_smart_key(raw), raw.strip().casefold()}
+    mapped = apply_taxonomy([raw])
+    for item in mapped:
+        keys.add(_smart_key(item))
+        keys.add(str(item).strip().casefold())
+
+    return any(k in _SMART_TAXONOMY_VALUES for k in keys if k)
+
+
+def _build_smart_tags(
+    *,
+    tags: Sequence[str],
+    tag_details: Sequence[Dict[str, Any]],
+    structured: Any,
+    content: str,
+    grounding_units: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    units = _smart_candidate_units(content, grounding_units)
+    items_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def add(
+        value: Any,
+        *,
+        category: str,
+        tag_type: str,
+        source: str,
+        confidence: Any,
+        evidence: Any = None,
+        locator: Optional[Dict[str, Any]] = None,
+        matched_taxonomy: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> None:
+        display = _smart_display(value, category)
+        ev = _smart_evidence_list(evidence, locator)
+        if not ev and category != _SMART_CATEGORY_USER:
+            found_ev, found_loc = _snippet_for_term(str(value), content, grounding_units)
+            ev = _smart_evidence_list(found_ev, found_loc)
+
+        if not _smart_quality_ok(display, category=category, tag_type=tag_type, evidence=ev):
+            return
+
+        clean_conf = _clean_confidence(confidence)
+        if clean_conf is None:
+            clean_conf = 0.55
+
+        key = (category, _smart_key(display))
+        existing = items_by_key.get(key)
+        if existing:
+            if clean_conf > float(existing.get("confidence") or 0):
+                existing["confidence"] = round(clean_conf, 3)
+                existing["confidenceBand"] = _confidence_band(clean_conf)
+            seen_quotes = {
+                _smart_key(item.get("quote"))
+                for item in existing.get("evidence", [])
+                if isinstance(item, dict)
+            }
+            for ev_item in ev:
+                ev_key = _smart_key(ev_item.get("quote"))
+                if ev_key and ev_key not in seen_quotes:
+                    existing.setdefault("evidence", []).append(ev_item)
+                    seen_quotes.add(ev_key)
+            return
+
+        items_by_key[key] = {
+            "value": display,
+            "category": category,
+            "type": tag_type,
+            "source": source,
+            "confidence": round(clean_conf, 3),
+            "confidenceBand": _confidence_band(clean_conf),
+            "matchedTaxonomy": matched_taxonomy,
+            "status": status
+            or ("matched" if category == _SMART_CATEGORY_TAXONOMY else "suggested"),
+            "evidence": ev[:3],
+        }
+
+    for tag_type, value, item in _iter_structured_tag_items(structured):
+        evidence = item.get("evidence") if isinstance(item, dict) else None
+        locator = item.get("locator") if isinstance(item, dict) else None
+        confidence = item.get("score") if isinstance(item, dict) else 0.7
+
+        if tag_type == "document_type":
+            add(
+                value,
+                category=_SMART_CATEGORY_DOC_TYPE,
+                tag_type="document_type",
+                source="taxonomy",
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+                matched_taxonomy=str(value),
+                status="matched",
+            )
+            continue
+
+        add(
+            value,
+            category=_SMART_CATEGORY_TAXONOMY,
+            tag_type=tag_type,
+            source="taxonomy",
+            confidence=confidence,
+            evidence=evidence,
+            locator=locator,
+            matched_taxonomy=str(value),
+            status="matched",
+        )
+
+        if tag_type == "agency":
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="agency",
+                source="taxonomy",
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+                matched_taxonomy=str(value),
+                status="matched",
+            )
+        elif tag_type == "geography":
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="location",
+                source="taxonomy",
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+                matched_taxonomy=str(value),
+                status="matched",
+            )
+        elif tag_type in ("program", "program_stage"):
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="scheme_program",
+                source="taxonomy",
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+                matched_taxonomy=str(value),
+                status="matched",
+            )
+
+    structured_entities = (
+        structured.get("entities") if isinstance(structured, dict) else {}
+    )
+    if isinstance(structured_entities, dict):
+        for raw in structured_entities.get("directionNumbers") or []:
+            label = str(raw).strip()
+            if not label:
+                continue
+            value = label if label.lower().startswith("direction") else f"Direction No. {label}"
+            evidence, locator = _snippet_for_term(label, content, grounding_units)
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="legal_reference",
+                source="deterministic",
+                confidence=0.78,
+                evidence=evidence,
+                locator=locator,
+            )
+
+        for raw in structured_entities.get("orderNumbers") or []:
+            label = str(raw).strip()
+            if not label:
+                continue
+            value = label if label.lower().startswith("order") else f"Order No. {label}"
+            evidence, locator = _snippet_for_term(label, content, grounding_units)
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="legal_reference",
+                source="deterministic",
+                confidence=0.76,
+                evidence=evidence,
+                locator=locator,
+            )
+
+        for raw in structured_entities.get("referenceNumbers") or []:
+            label = str(raw).strip()
+            if not label:
+                continue
+            evidence, locator = _snippet_for_term(label, content, grounding_units)
+            add(
+                f"Reference No. {label}",
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="legal_reference",
+                source="deterministic",
+                confidence=0.72,
+                evidence=evidence,
+                locator=locator,
+            )
+
+        for raw in structured_entities.get("dates") or []:
+            label = str(raw).strip()
+            if not label:
+                continue
+            evidence, locator = _snippet_for_term(label, content, grounding_units)
+            add(
+                label,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="date_deadline",
+                source="deterministic",
+                confidence=0.68,
+                evidence=evidence,
+                locator=locator,
+            )
+
+    for detail in tag_details or []:
+        if not isinstance(detail, dict):
+            continue
+        value = _clean_text(detail.get("value"), 120)
+        if not value:
+            continue
+        tag_type = _clean_text(detail.get("type"), 80) or "keyword"
+        source = _clean_text(detail.get("source"), 80) or "tagger"
+        evidence = detail.get("evidence")
+        locator = detail.get("locator") if isinstance(detail.get("locator"), dict) else None
+        confidence = detail.get("confidence")
+        detail_confidence = _clean_confidence(confidence) or 0.0
+
+        if source == "structured" or tag_type in {"agency", "program", "pollutant", "sector", "geography", "program_stage"}:
+            continue
+
+        if _is_known_taxonomy_tag(value):
+            add(
+                value,
+                category=_SMART_CATEGORY_TAXONOMY,
+                tag_type=tag_type,
+                source="taxonomy",
+                confidence=confidence or 0.68,
+                evidence=evidence,
+                locator=locator,
+                matched_taxonomy=value,
+                status="matched",
+            )
+        else:
+            if tag_type == "keyword" and source != "semantic_candidate" and detail_confidence < 0.7:
+                continue
+            add(
+                value,
+                category=_SMART_CATEGORY_DISCOVERED,
+                tag_type=tag_type,
+                source="ai_discovered",
+                confidence=confidence or 0.58,
+                evidence=evidence,
+                locator=locator,
+            )
+
+    for tag in tags or []:
+        if not _is_known_taxonomy_tag(tag):
+            continue
+        evidence, locator = _snippet_for_term(str(tag), content, grounding_units)
+        add(
+            tag,
+            category=_SMART_CATEGORY_TAXONOMY,
+            tag_type="keyword",
+            source="taxonomy",
+            confidence=0.64,
+            evidence=evidence,
+            locator=locator,
+            matched_taxonomy=str(tag),
+            status="matched",
+        )
+
+    _add_rule_tags(
+        add=add,
+        units=units,
+        rules=_SMART_DISCOVERY_RULES,
+        category=_SMART_CATEGORY_DISCOVERED,
+        source="ai_discovered",
+    )
+    _add_rule_tags(
+        add=add,
+        units=units,
+        rules=_SMART_TOPIC_RULES,
+        category=_SMART_CATEGORY_TOPICS,
+        source="deterministic",
+    )
+    _add_rule_tags(
+        add=add,
+        units=units,
+        rules=_SMART_ACTION_RULES,
+        category=_SMART_CATEGORY_ACTIONS,
+        source="deterministic",
+    )
+    _add_rule_tags(
+        add=add,
+        units=units,
+        rules=_SMART_ORG_RULES,
+        category=_SMART_CATEGORY_ENTITIES,
+        source="deterministic",
+    )
+    for value, tag_type, patterns, confidence in _SMART_LEGAL_RULES:
+        evidence, locator = _first_rule_match(units, patterns)
+        if evidence:
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="legal_reference",
+                source="deterministic",
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+            )
+    for value, tag_type, patterns, confidence in _SMART_PROGRAM_RULES:
+        evidence, locator = _first_rule_match(units, patterns)
+        if evidence:
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="scheme_program",
+                source="deterministic",
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+            )
+    for value, patterns, confidence in _SMART_LOCATION_PATTERNS:
+        evidence, locator = _first_rule_match(units, patterns)
+        if evidence:
+            add(
+                value,
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="location",
+                source="deterministic",
+                confidence=confidence,
+                evidence=evidence,
+                locator=locator,
+            )
+
+    for unit in units:
+        text = str(unit.get("text") or "")
+        for m in _SMART_PERSON_RE.finditer(text):
+            evidence = _smart_snippet_from_span(text, m.start(), m.end(), window=70)
+            add(
+                m.group(0),
+                category=_SMART_CATEGORY_ENTITIES,
+                tag_type="person",
+                source="deterministic",
+                confidence=0.68,
+                evidence=evidence,
+                locator=unit.get("locator"),
+            )
+
+    all_items = sorted(
+        items_by_key.values(),
+        key=lambda item: (
+            [
+                _SMART_CATEGORY_TAXONOMY,
+                _SMART_CATEGORY_DISCOVERED,
+                _SMART_CATEGORY_TOPICS,
+                _SMART_CATEGORY_ENTITIES,
+                _SMART_CATEGORY_DOC_TYPE,
+                _SMART_CATEGORY_ACTIONS,
+                _SMART_CATEGORY_USER,
+            ].index(str(item.get("category")))
+            if item.get("category")
+            in {
+                _SMART_CATEGORY_TAXONOMY,
+                _SMART_CATEGORY_DISCOVERED,
+                _SMART_CATEGORY_TOPICS,
+                _SMART_CATEGORY_ENTITIES,
+                _SMART_CATEGORY_DOC_TYPE,
+                _SMART_CATEGORY_ACTIONS,
+                _SMART_CATEGORY_USER,
+            }
+            else 99,
+            -float(item.get("confidence") or 0),
+            str(item.get("value") or ""),
+        ),
+    )
+
+    def by_category(category: str, limit: int) -> List[Dict[str, Any]]:
+        return [item for item in all_items if item.get("category") == category][:limit]
+
+    entities: Dict[str, List[Dict[str, Any]]] = {
+        bucket: [] for bucket in _SMART_ENTITY_BUCKETS.values()
+    }
+    for item in by_category(_SMART_CATEGORY_ENTITIES, 80):
+        bucket = _SMART_ENTITY_BUCKETS.get(str(item.get("type") or ""))
+        if bucket:
+            entities[bucket].append(item)
+
+    ai_discovered = by_category(_SMART_CATEGORY_DISCOVERED, 30)
+    taxonomy_suggestions = [
+        {
+            **item,
+            "status": "candidate_taxonomy_addition",
+            "source": "ai_discovered",
+        }
+        for item in ai_discovered
+        if float(item.get("confidence") or 0) >= 0.7
+    ][:12]
+
+    return {
+        "profile": "smart_tags",
+        "version": 1,
+        "taxonomyTags": by_category(_SMART_CATEGORY_TAXONOMY, 40),
+        "aiDiscoveredTags": ai_discovered,
+        "topics": by_category(_SMART_CATEGORY_TOPICS, 16),
+        "entities": entities,
+        "documentType": by_category(_SMART_CATEGORY_DOC_TYPE, 4),
+        "actionsDecisions": by_category(_SMART_CATEGORY_ACTIONS, 24),
+        "userTags": [],
+        "taxonomySuggestions": taxonomy_suggestions,
+        "items": all_items[:140],
+    }
+
+
 def extract_and_tag_sync(
     *,
     text: Optional[str] = None,
@@ -1125,9 +2148,17 @@ def extract_and_tag_sync(
             content=content,
             grounding_units=grounding_units,
         )
+        smart_tags = _build_smart_tags(
+            tags=[],
+            tag_details=tag_details,
+            structured=structured,
+            content=content,
+            grounding_units=grounding_units,
+        )
         return {
             "tags": [],
             "tag_details": tag_details,
+            "smart_tags": smart_tags,
             "phrases": [],
             "unigrams": [],
             "length": len(content),
@@ -1304,6 +2335,13 @@ def extract_and_tag_sync(
         content=content,
         grounding_units=grounding_units,
     )
+    smart_tags = _build_smart_tags(
+        tags=tags,
+        tag_details=tag_details,
+        structured=structured,
+        content=content,
+        grounding_units=grounding_units,
+    )
 
     # Canonical semantic hash for normalized extracted text.
     # This must stay distinct from the immutable binary SHA-256
@@ -1313,6 +2351,7 @@ def extract_and_tag_sync(
     return {
         "tags": tags,
         "tag_details": tag_details,
+        "smart_tags": smart_tags,
         "phrases": phrases[:200],
         "unigrams": unigrams[:200],
         "length": len(content),

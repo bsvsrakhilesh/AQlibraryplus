@@ -642,6 +642,11 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
                       (file as any)?.tagsMetaRaw?.aiTagger?.tagObjects ??
                       null
                     }
+                    smartTags={
+                      (file as any)?.tagsMetaRaw?.tagger?.smartTags ??
+                      (file as any)?.tagsMetaRaw?.aiTagger?.smartTags ??
+                      null
+                    }
                   />
                 </div>
               </section>

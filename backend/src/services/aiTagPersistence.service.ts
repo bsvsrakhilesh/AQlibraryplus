@@ -26,6 +26,25 @@ type AiTagObject = {
   rank?: number;
 };
 
+const SMART_TAG_ARRAY_KEYS = [
+  "taxonomyTags",
+  "aiDiscoveredTags",
+  "topics",
+  "documentType",
+  "actionsDecisions",
+  "taxonomySuggestions",
+] as const;
+
+const SMART_TAG_ENTITY_KEYS = [
+  "agencies",
+  "organizations",
+  "locations",
+  "people",
+  "legalReferences",
+  "schemesPrograms",
+  "datesDeadlines",
+] as const;
+
 function cleanString(value: unknown, max = 500): string | null {
   const text = String(value ?? "")
     .replace(/\s+/g, " ")
@@ -115,6 +134,148 @@ function normalizeAiTagObjects(data: any, aiTags: string[]): AiTagObject[] {
   return out.slice(0, 100);
 }
 
+function confidenceBand(value: unknown): "high" | "medium" | "low" {
+  const score = cleanConfidence(value) ?? 0;
+  if (score >= 0.85) return "high";
+  if (score >= 0.6) return "medium";
+  return "low";
+}
+
+function normalizeSmartTagEvidence(value: unknown): any[] {
+  const arr = Array.isArray(value) ? value : value ? [value] : [];
+
+  return arr
+    .map((raw) => {
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const quote = cleanString((raw as any).quote ?? (raw as any).evidence, 1200);
+        if (!quote) return null;
+
+        const pageRaw = Number((raw as any).page);
+        return {
+          quote,
+          ...(Number.isFinite(pageRaw) ? { page: pageRaw } : {}),
+          ...((raw as any).section
+            ? { section: cleanString((raw as any).section, 180) }
+            : {}),
+          ...((raw as any).locator && typeof (raw as any).locator === "object"
+            ? { locator: (raw as any).locator }
+            : {}),
+        };
+      }
+
+      const quote = cleanString(raw, 1200);
+      return quote ? { quote } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function normalizeSmartTagItem(raw: any, fallbackCategory?: string) {
+  const value = cleanString(raw?.value ?? raw?.tag ?? raw, 160);
+  if (!value) return null;
+
+  const category = cleanString(raw?.category ?? fallbackCategory, 80) ?? "AI-Discovered Tags";
+  const type = cleanString(raw?.type, 80) ?? "keyword";
+  const source = cleanString(raw?.source, 120) ?? "tagger";
+  const confidence = cleanConfidence(raw?.confidence ?? raw?.score);
+
+  return {
+    value,
+    category,
+    type,
+    source,
+    confidence,
+    confidenceBand: cleanString(raw?.confidenceBand, 20) ?? confidenceBand(confidence),
+    matchedTaxonomy: cleanString(raw?.matchedTaxonomy, 160),
+    status: cleanString(raw?.status, 80) ?? "suggested",
+    evidence: normalizeSmartTagEvidence(raw?.evidence),
+  };
+}
+
+function normalizeSmartTagArray(value: unknown, fallbackCategory: string) {
+  if (!Array.isArray(value)) return [];
+
+  const out: any[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of value) {
+    const item = normalizeSmartTagItem(raw, fallbackCategory);
+    if (!item) continue;
+
+    const key = `${item.category}:${item.type}:${item.value.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+
+  return out.slice(0, 80);
+}
+
+function normalizeSmartTags(data: any, userTags: string[]) {
+  const raw = data?.smart_tags ?? data?.smartTags ?? null;
+  const hasRaw = raw && typeof raw === "object" && !Array.isArray(raw);
+
+  if (!hasRaw && userTags.length === 0) return null;
+
+  const src = hasRaw ? raw : {};
+  const out: Record<string, any> = {
+    profile: "smart_tags",
+    version: Number(src.version ?? 1) || 1,
+  };
+
+  for (const key of SMART_TAG_ARRAY_KEYS) {
+    const fallbackCategory =
+      key === "taxonomyTags"
+        ? "Taxonomy Tags"
+        : key === "aiDiscoveredTags" || key === "taxonomySuggestions"
+          ? "AI-Discovered Tags"
+          : key === "topics"
+            ? "Topics"
+            : key === "documentType"
+              ? "Document Type"
+              : "Actions / Decisions";
+    out[key] = normalizeSmartTagArray(src[key], fallbackCategory);
+  }
+
+  out.entities = {};
+  const rawEntities =
+    src.entities && typeof src.entities === "object" && !Array.isArray(src.entities)
+      ? src.entities
+      : {};
+
+  for (const key of SMART_TAG_ENTITY_KEYS) {
+    out.entities[key] = normalizeSmartTagArray(rawEntities[key], "Entities");
+  }
+
+  out.userTags = userTags.map((tag) => ({
+    value: tag,
+    category: "User Tags",
+    type: "manual",
+    source: "user",
+    confidence: null,
+    confidenceBand: "high",
+    matchedTaxonomy: null,
+    status: "user_added",
+    evidence: [],
+  }));
+
+  const fromItems = normalizeSmartTagArray(src.items, "AI-Discovered Tags");
+  const flattened = [
+    ...out.taxonomyTags,
+    ...out.aiDiscoveredTags,
+    ...out.topics,
+    ...Object.values(out.entities).flatMap((items: any) =>
+      Array.isArray(items) ? items : [],
+    ),
+    ...out.documentType,
+    ...out.actionsDecisions,
+    ...out.userTags,
+  ];
+
+  out.items = (fromItems.length ? fromItems : flattened).slice(0, 160);
+  return out;
+}
+
 function parseStructuredDate(value: unknown): Date | null {
   const raw = String(value || "").trim();
   if (!raw) return null;
@@ -185,6 +346,7 @@ function buildUnifiedTagsMeta(
   const extraction = data?.extraction ?? null;
   const hash = data?.hash ?? null;
   const aiTagObjects = normalizeAiTagObjects(data, args.aiTags);
+  const smartTags = normalizeSmartTags(data, args.userTags);
 
   return {
     ...p,
@@ -195,6 +357,7 @@ function buildUnifiedTagsMeta(
       unigrams,
       aiTags: args.aiTags,
       aiTagObjects,
+      smartTags,
       structured,
       governance,
       extraction,
@@ -214,6 +377,7 @@ function buildUnifiedTagsMeta(
       schemaVersion: 2,
       tags: args.aiTags,
       tagObjects: aiTagObjects,
+      smartTags,
       phrases,
       unigrams,
       structured,

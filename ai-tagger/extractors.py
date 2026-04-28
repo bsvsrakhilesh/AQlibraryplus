@@ -14,7 +14,7 @@ except Exception:
 
 import requests
 import trafilatura
-from pdfminer.high_level import extract_text as pdfminer_extract
+from pdfminer.high_level import extract_pages, extract_text as pdfminer_extract
 
 OCR_ENABLED = os.getenv("OCR_ENABLED", "false").lower() == "true"
 OCR_LANGS = os.getenv("OCR_LANGS", "eng")
@@ -284,15 +284,43 @@ def _ocr_pil_image(image, *, locator: Dict[str, Any], source: str) -> Optional[D
         return None
 
 
-def _from_pdf_bytes_bundle(data: bytes) -> Dict[str, Any]:
-    native_text = ""
+def _extract_pdf_native_units(data: bytes) -> List[Dict[str, Any]]:
+    units: List[Dict[str, Any]] = []
     try:
-        native_text = _normalize_text(pdfminer_extract(io.BytesIO(data)) or "")
-    except Exception:
-        native_text = ""
+        from pdfminer.layout import LTTextContainer  # type: ignore
 
-    native_units: List[Dict[str, Any]] = []
-    if native_text:
+        for page_idx, page_layout in enumerate(extract_pages(io.BytesIO(data)), start=1):
+            parts: List[str] = []
+            for element in page_layout:
+                if isinstance(element, LTTextContainer):
+                    parts.append(element.get_text())
+
+            unit = _unit(
+                "\n".join(parts),
+                _locator(kind="page", pageNumber=page_idx),
+                source="pdfminer",
+                ocr_used=False,
+            )
+            if unit:
+                units.append(unit)
+    except Exception:
+        units = []
+
+    return units
+
+
+def _from_pdf_bytes_bundle(data: bytes) -> Dict[str, Any]:
+    native_units = _extract_pdf_native_units(data)
+    native_text = _join_units(native_units)
+
+    try:
+        if not native_text:
+            native_text = _normalize_text(pdfminer_extract(io.BytesIO(data)) or "")
+    except Exception:
+        if not native_text:
+            native_text = ""
+
+    if native_text and not native_units:
         u = _unit(
             native_text,
             _locator(kind="document"),
