@@ -111,6 +111,18 @@ function getSavedUrlTagState(saved: SavedUrl): {
   };
 }
 
+function getSavedUrlPublishedAtMeta(saved: SavedUrl) {
+  return (
+    (saved as any)?.tagsMetaRaw?.publishedAtMeta ??
+    (saved as any)?.tagsMeta?.publishedAtMeta ??
+    null
+  );
+}
+
+function getSavedUrlAuthors(saved: SavedUrl) {
+  return Array.isArray((saved as any).authors) ? (saved as any).authors : [];
+}
+
 function getUrlTaggingSummary(saved: SavedUrl): {
   tone: "green" | "blue" | "slate";
   label: string;
@@ -284,23 +296,17 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
     (url as any).publishedAt ?? null,
   );
   const [publishedAtMeta, setPublishedAtMeta] = useState<any | null>(
-    (url as any)?.tagsMetaRaw?.publishedAtMeta ??
-      (url as any)?.tagsMeta?.publishedAtMeta ??
-      null,
+    () => getSavedUrlPublishedAtMeta(url),
   );
-  const [authors, setAuthors] = useState<string[]>(
-    Array.isArray((url as any).authors) ? (url as any).authors : [],
+  const [authors, setAuthors] = useState<string[]>(() =>
+    getSavedUrlAuthors(url),
   );
 
   useEffect(() => {
     setPublishedAt((url as any).publishedAt ?? null);
-    setPublishedAtMeta(
-      (url as any)?.tagsMetaRaw?.publishedAtMeta ??
-        (url as any)?.tagsMeta?.publishedAtMeta ??
-        null,
-    );
-    setAuthors(Array.isArray((url as any).authors) ? (url as any).authors : []);
-  }, [url.id]);
+    setPublishedAtMeta(getSavedUrlPublishedAtMeta(url));
+    setAuthors(getSavedUrlAuthors(url));
+  }, [url]);
 
   const [recaptureMode, setRecaptureMode] = useState<"text" | "pdf">("text");
 
@@ -1011,6 +1017,9 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                         }
                         onMerge={async () => {
                           try {
+                            await refreshUrlMetadata(Number(url.id)).catch(
+                              () => null,
+                            );
                             const fresh = await getUrlById(Number(url.id));
                             const freshTags = (fresh as any)?.tags ?? [];
                             const next = deriveSeparatedTags(
@@ -1023,6 +1032,17 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                             setLocalAiTags(next.aiTags);
                             setLocalDisplayTags(
                               mergeUniqueTags(freshTags, next.effectiveTags),
+                            );
+                            setPublishedAt((fresh as any).publishedAt ?? null);
+                            setPublishedAtMeta(
+                              (fresh as any)?.tagsMeta?.publishedAtMeta ??
+                                (fresh as any)?.tagsMetaRaw?.publishedAtMeta ??
+                                null,
+                            );
+                            setAuthors(
+                              Array.isArray((fresh as any).authors)
+                                ? (fresh as any).authors
+                                : [],
                             );
                             await onUrlHydrate?.(fresh);
                           } catch (e) {

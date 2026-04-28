@@ -32,6 +32,7 @@ import {
   getUrlTagJob,
   startUrlTagJob,
   getUrlById,
+  refreshUrlMetadata,
   fetchSavedUrlSearchPresets,
   createSavedUrlSearchPreset,
   updateSavedUrlSearchPreset,
@@ -1251,6 +1252,7 @@ const SavedUrlsPage: React.FC = () => {
               );
 
               try {
+                await refreshUrlMetadata(idNum).catch(() => null);
                 const fresh = await getUrlById(idNum);
                 const next = toUISaved(fresh);
                 setUrls((prev) =>
@@ -2141,6 +2143,19 @@ const SavedUrlsPage: React.FC = () => {
                   };
                 }),
               );
+
+              try {
+                await refreshUrlMetadata(idNum).catch(() => null);
+                const fresh = await getUrlById(idNum);
+                const next = toUISaved(fresh);
+                setUrls((prev) =>
+                  prev.map((row) =>
+                    row.id === next.id ? { ...row, ...next } : row,
+                  ),
+                );
+              } catch {
+                // optimistic tags are already visible
+              }
 
               success = true;
               break;

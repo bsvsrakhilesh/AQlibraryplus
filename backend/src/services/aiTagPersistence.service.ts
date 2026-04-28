@@ -10,6 +10,7 @@ import {
   normalizeTagList,
   withSeparatedTagsMeta,
 } from "../utils/tagBuckets";
+import { extractUrlMetadata } from "./extract.service";
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "true").toLowerCase() === "true";
@@ -353,8 +354,11 @@ export async function persistAiTagSuccessForUrl(
     },
     select: {
       id: true,
+      url: true,
       tags: true,
       tagsMeta: true,
+      publishedAt: true,
+      authors: true,
     },
   });
 
@@ -373,6 +377,40 @@ export async function persistAiTagSuccessForUrl(
   const effectiveTags = mergeUniqueTags(userTags, aiTags);
 
   const governance = data?.governance ?? null;
+  const structuredPublishedAt = derivePublishedAtFromAiTaggerPayload(data);
+  let extractedMeta: Awaited<ReturnType<typeof extractUrlMetadata>> | null =
+    null;
+
+  if (!latest.publishedAt || latest.authors.length === 0) {
+    try {
+      extractedMeta = await extractUrlMetadata(latest.url);
+    } catch {
+      extractedMeta = null;
+    }
+  }
+
+  const extractedPublishedAt = extractedMeta?.publishedAt ?? null;
+  const nextPublishedAt =
+    latest.publishedAt ?? extractedPublishedAt ?? structuredPublishedAt ?? null;
+  const nextAuthors = latest.authors.length
+    ? latest.authors
+    : (extractedMeta?.authors ?? []);
+
+  const nextTagsMeta: any = buildUnifiedTagsMeta(latest.tagsMeta, {
+    jobId,
+    data,
+    userTags,
+    aiTags,
+  });
+
+  if (!latest.publishedAt && extractedPublishedAt && extractedMeta) {
+    nextTagsMeta.publishedAtMeta = extractedMeta.publishedAtMeta;
+  } else if (!latest.publishedAt && structuredPublishedAt) {
+    nextTagsMeta.publishedAtMeta = {
+      source: "ai_tagger_structured",
+      confidence: 0.5,
+    };
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.url.update({
@@ -381,12 +419,9 @@ export async function persistAiTagSuccessForUrl(
         tags: { set: effectiveTags },
         contentHash: data?.hash ?? null,
         taggerVersion: data?.tagger_version ?? null,
-        tagsMeta: buildUnifiedTagsMeta(latest.tagsMeta, {
-          jobId,
-          data,
-          userTags,
-          aiTags,
-        }) as any,
+        ...(nextPublishedAt ? { publishedAt: nextPublishedAt } : {}),
+        authors: nextAuthors,
+        tagsMeta: nextTagsMeta as any,
         taggingStatus: TaggingStatus.SUCCESS,
         taggingJobId: null,
         taggingError: null,
