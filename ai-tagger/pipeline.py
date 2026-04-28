@@ -1168,20 +1168,113 @@ def extract_and_tag_sync(
     llm_model: Optional[str] = None
     tagger_version = TAGGER_VERSION
 
-    # Existing tag rerank path (optional)
+    # World-class LLM rerank path:
+    # Send rich deterministic candidates, not only phrases + unigrams.
+    # This prevents the LLM from dropping rare but important signals.
     if use_llm:
         try:
             from reranker import has_llm_key, get_llm_model, rerank_with_llm  # type: ignore
 
             if has_llm_key():
-                candidates = list(phrases[:120]) + list(unigrams[:120])
-                llm_tags = rerank_with_llm(candidates, topk=topk, context_text=content)
+                rich_candidates: List[Dict[str, Any]] = []
+                seen_candidate_keys = set()
+
+                def add_candidate_items(
+                    items: Sequence[str],
+                    *,
+                    source: str,
+                    confidence: float,
+                    limit: int,
+                    reason: str,
+                ) -> None:
+                    for item in list(items or [])[:limit]:
+                        raw = _clean_text(item, 120)
+                        if not raw:
+                            continue
+
+                        mapped = apply_taxonomy([raw])
+                        value = mapped[0] if mapped else raw
+                        if not value:
+                            continue
+
+                        key = str(value).casefold()
+                        if key in seen_candidate_keys:
+                            continue
+
+                        seen_candidate_keys.add(key)
+                        rich_candidates.append(
+                            {
+                                "value": value,
+                                "source": source,
+                                "confidence": confidence,
+                                "reason": reason,
+                            }
+                        )
+
+                # Filename can contain high-value identifiers that may not appear often in body text.
+                if file_name:
+                    filename_text = (
+                        str(file_name)
+                        .replace("_", " ")
+                        .replace("-", " ")
+                        .replace(".", " ")
+                    )
+                    filename_signals = _extract_signal_terms(filename_text, limit=500)
+                    add_candidate_items(
+                        filename_signals,
+                        source="filename",
+                        confidence=0.76,
+                        limit=12,
+                        reason="High-signal term found in the file name.",
+                    )
+
+                add_candidate_items(
+                    signals,
+                    source="signal",
+                    confidence=0.82,
+                    limit=80,
+                    reason="High-signal deterministic term from acronym/entity/pattern extraction.",
+                )
+
+                add_candidate_items(
+                    adv,
+                    source="semantic_candidate",
+                    confidence=0.74,
+                    limit=120,
+                    reason="Semantic/keyphrase candidate from advanced candidate generator.",
+                )
+
+                add_candidate_items(
+                    phrases,
+                    source="phrase_candidate",
+                    confidence=0.62,
+                    limit=120,
+                    reason="Frequent phrase candidate from deterministic phrase extraction.",
+                )
+
+                add_candidate_items(
+                    unigrams,
+                    source="keyword_candidate",
+                    confidence=0.55,
+                    limit=120,
+                    reason="Frequent keyword candidate from deterministic unigram extraction.",
+                )
+
+                llm_tags = rerank_with_llm(
+                    rich_candidates,
+                    topk=topk,
+                    context_text=content,
+                    file_name=file_name,
+                    url=url,
+                )
                 llm_tags = apply_taxonomy(llm_tags)
+
                 if llm_tags:
                     tags = llm_tags
                     llm_used = True
                     llm_model = get_llm_model()
                     tagger_version = f"{TAGGER_VERSION}+llm:{llm_model}"
+
         except Exception as e:
             log.warning("LLM rerank failed: %s", e)
 
