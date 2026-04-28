@@ -36,6 +36,14 @@ dotenv.config();
 
 const app = express();
 
+if (process.env.TRUST_PROXY) {
+  const rawTrustProxy = process.env.TRUST_PROXY.trim().toLowerCase();
+  app.set(
+    "trust proxy",
+    rawTrustProxy === "true" ? 1 : Number(process.env.TRUST_PROXY) || false,
+  );
+}
+
 log.info("startup_config", {
   nodeEnv: process.env.NODE_ENV,
   openaiEnabled: env.OPENAI_ENABLED,

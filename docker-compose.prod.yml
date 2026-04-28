@@ -1,136 +1,117 @@
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: smartscrape_db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: SmartScrape
-    env_file:
-      - ./backend/.env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a root .env file or shell before production deploy}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d SmartScrape"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: smartscrape_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 10
 
   backend:
-    image: smartscrape-backend:dev
+    image: smartscrape-backend:prod
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: base
-    container_name: smartscrape_backend
+      target: prod
+    restart: unless-stopped
     init: true
-    command: sh ./docker-dev-entrypoint.sh api
-    working_dir: /app
     env_file:
       - ./backend/.env
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 4000
       FILE_STORAGE_DIR: /data
       CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium
       TAGGER_PY_URL: http://ai-tagger:7071
       REDIS_URL: redis://redis:6379/0
-      EXTRACT_URL_TIMEOUT_MS: 30000
-      ICN_ENABLED: "true"
-      ICN_BASE_URL: http://host.docker.internal:7081
-      ICN_TIMEOUT_MS: 120000
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4000/health',res=>process.exit(res.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS to your production origin, for example https://example.com}
+      DEV_AUTH_ENABLED: "false"
+      TRUST_PROXY: "1"
+    expose:
+      - "4000"
     volumes:
-      - ./backend:/app
-      - backend_node_modules:/app/node_modules
       - backend_storage:/data
-      - ./backend/.env:/app/.env:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "127.0.0.1:4000:4000"
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ai-tagger:
         condition: service_healthy
 
   backend-worker:
-    image: smartscrape-backend-worker:dev
+    image: smartscrape-backend:prod
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: base
-    container_name: smartscrape_backend_worker
+      target: prod
+    restart: unless-stopped
     init: true
-    working_dir: /app
-    command: sh ./docker-dev-entrypoint.sh worker
+    command: node dist/worker.js
     env_file:
       - ./backend/.env
     environment:
-      NODE_ENV: development
-      REDIS_URL: redis://redis:6379/0
-      TAGGER_PY_URL: http://ai-tagger:7071
+      NODE_ENV: production
       FILE_STORAGE_DIR: /data
       CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium
-      EXTRACT_URL_TIMEOUT_MS: 30000
+      TAGGER_PY_URL: http://ai-tagger:7071
+      REDIS_URL: redis://redis:6379/0
+      DEV_AUTH_ENABLED: "false"
       INGESTION_QUEUE_CONCURRENCY: 2
       AI_TAG_URL_QUEUE_CONCURRENCY: 1
     volumes:
-      - ./backend:/app
-      - backend_node_modules:/app/node_modules
       - backend_storage:/data
-      - ./backend/.env:/app/.env:ro
     depends_on:
+      backend:
+        condition: service_healthy
       redis:
         condition: service_healthy
       db:
         condition: service_healthy
-      backend:
+      ai-tagger:
         condition: service_healthy
 
   frontend:
-    image: smartscrape-frontend:dev
+    image: smartscrape-frontend:prod
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: dev
-    container_name: smartscrape_frontend
+      target: prod
+      args:
+        VITE_API_URL: /api
+    restart: unless-stopped
     init: true
-    working_dir: /app
-    command: sh ./docker-dev-entrypoint.sh
-    environment:
-      CHOKIDAR_USEPOLLING: "1"
-      VITE_WATCH_INTERVAL: "300"
-      API_PROXY_TARGET: http://backend:4000
-    volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
     ports:
-      - "127.0.0.1:3000:3000"
+      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
 
   ai-tagger:
-    image: smartscrape-ai-tagger:dev
+    image: smartscrape-ai-tagger:prod
     build:
       context: ./ai-tagger
       dockerfile: Dockerfile
-    container_name: smartscrape_ai_tagger
+    restart: unless-stopped
     init: true
     environment:
       PORT: 7071
@@ -144,22 +125,22 @@ services:
       TAGGER_INGRESS_DIR: /ingress
     env_file:
       - ./ai-tagger/.env
+    expose:
+      - "7071"
     volumes:
       - backend_storage:/data:ro
       - ai_tagger_ingress:/ingress
-    ports:
-      - "127.0.0.1:7071:7071"
     depends_on:
       redis:
         condition: service_healthy
     command: uvicorn app:app --host 0.0.0.0 --port 7071
 
   ai-tagger-worker:
-    image: smartscrape-ai-tagger:dev
+    image: smartscrape-ai-tagger:prod
     build:
       context: ./ai-tagger
       dockerfile: Dockerfile
-    container_name: smartscrape_ai_tagger_worker
+    restart: unless-stopped
     init: true
     environment:
       REDIS_URL: redis://redis:6379/0
@@ -182,7 +163,6 @@ services:
 
 volumes:
   db_data:
-  backend_node_modules:
-  frontend_node_modules:
+  redis_data:
   backend_storage:
   ai_tagger_ingress:
