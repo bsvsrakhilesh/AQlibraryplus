@@ -5555,7 +5555,7 @@ export default function FileManagerPage() {
                   </div>
 
                   {!focusMode && inspectorOpen && (
-                    <div className="hidden xl:block w-[360px] shrink-0 sticky top-4">
+                    <div className="hidden xl:block w-[360px] min-w-0 shrink-0 sticky top-4">
                       <EvidenceInspector file={selectedSingle} />
                     </div>
                   )}

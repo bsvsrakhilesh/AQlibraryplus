@@ -1244,8 +1244,8 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
               </div>
 
               {/* Right: evidence and revision tools */}
-              <div className="space-y-4 xl:max-h-[calc(100vh-14rem)] xl:overflow-y-auto xl:pr-1">
-                <div className="rounded-2xl border border-[hsl(var(--border))] bg-white/80 p-4 shadow-sm backdrop-blur dark:bg-neutral-950/20">
+              <div className="min-w-0 space-y-4 xl:max-h-[calc(100vh-14rem)] xl:overflow-y-auto xl:pr-1">
+                <div className="min-w-0 rounded-2xl border border-[hsl(var(--border))] bg-white/80 p-4 shadow-sm backdrop-blur dark:bg-neutral-950/20">
                   <EvidenceOverviewPanel
                     eyebrow="Source evidence"
                     title={url.title}

@@ -421,7 +421,7 @@ export default function EvidenceInspector({ file }: Props) {
     : [];
 
   return (
-    <aside className="rounded-2xl border border-[hsl(var(--border))] bg-white/80 shadow-sm backdrop-blur">
+    <aside className="min-w-0 rounded-2xl border border-[hsl(var(--border))] bg-white/80 shadow-sm backdrop-blur">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]">
         <div className="flex items-center gap-2">
           <Info className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
@@ -477,7 +477,7 @@ export default function EvidenceInspector({ file }: Props) {
           </div>
         </div>
       ) : (
-        <div className="px-4 py-4">
+        <div className="min-w-0 px-4 py-4">
           <EvidenceOverviewPanel
             eyebrow="Selected evidence"
             title={file.title}

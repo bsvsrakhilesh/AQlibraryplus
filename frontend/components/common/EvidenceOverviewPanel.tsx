@@ -62,21 +62,13 @@ function Row({
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-2">
-      <div className="text-[11px] uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))]">
-        {label}
-      </div>
-      <div
-        className={`min-w-0 text-right text-[12px] text-slate-900 dark:text-slate-100 ${
-          mono ? "font-mono" : ""
-        }`}
-      >
+    <div className="ei-fact-row">
+      <div className="ei-fact-row__label">{label}</div>
+      <div className={`ei-fact-row__value ${mono ? "font-mono" : ""}`}>
         <div
           className={[
-            "max-w-[320px]",
-            mono
-              ? "break-all whitespace-pre-wrap"
-              : "break-words whitespace-pre-wrap",
+            "ei-fact-row__valueInner",
+            mono ? "break-all" : "",
           ].join(" ")}
         >
           {value}
@@ -111,7 +103,10 @@ export default function EvidenceOverviewPanel({
   provenanceRows = [],
 }: Props) {
   return (
-    <div className="ei-shell">
+    <div
+      className="ei-shell"
+      style={{ inlineSize: "100%", maxInlineSize: "100%", minInlineSize: 0 }}
+    >
       <div className="ei-hero">
         {eyebrow ? <div className="ei-hero__eyebrow">{eyebrow}</div> : null}
         <h3 className="ei-hero__title">{title}</h3>
