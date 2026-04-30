@@ -145,9 +145,23 @@ const EMPTY_BULK_AI_TAG_RUN: BulkAiTagRunState = {
 };
 
 const SAVED_URLS_VIEW_KEY = "saved-urls:view-mode";
+const SAVED_URLS_REGISTRY_VIEW_QUERY = "(min-width: 1024px)";
 
 const SNAPSHOT_STALE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function canUseSavedUrlsRegistryView(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.matchMedia(SAVED_URLS_REGISTRY_VIEW_QUERY).matches;
+}
+
+function getInitialSavedUrlsViewMode(): SavedUrlsViewMode {
+  if (typeof window === "undefined") return "registry";
+  if (!canUseSavedUrlsRegistryView()) return "cards";
+
+  const stored = localStorage.getItem(SAVED_URLS_VIEW_KEY);
+  return stored === "cards" ? "cards" : "registry";
+}
 
 function isAbortLikeError(error: any) {
   return (
@@ -709,16 +723,38 @@ const SavedUrlsPage: React.FC = () => {
     setTextDialogValue(textDialog?.value ?? "");
   }, [textDialog]);
 
-  const [viewMode, setViewMode] = useState<SavedUrlsViewMode>(() => {
-    if (typeof window === "undefined") return "registry";
-    const stored = localStorage.getItem(SAVED_URLS_VIEW_KEY);
-    return stored === "cards" ? "cards" : "registry";
-  });
+  const [canUseRegistryView, setCanUseRegistryView] = useState(
+    canUseSavedUrlsRegistryView,
+  );
+  const [viewMode, setViewMode] = useState<SavedUrlsViewMode>(
+    getInitialSavedUrlsViewMode,
+  );
+  const effectiveViewMode: SavedUrlsViewMode = canUseRegistryView
+    ? viewMode
+    : "cards";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    const media = window.matchMedia(SAVED_URLS_REGISTRY_VIEW_QUERY);
+    const apply = () => setCanUseRegistryView(media.matches);
+
+    apply();
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", apply);
+      return () => media.removeEventListener("change", apply);
+    }
+
+    media.addListener(apply);
+    return () => media.removeListener(apply);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!canUseRegistryView) return;
     localStorage.setItem(SAVED_URLS_VIEW_KEY, viewMode);
-  }, [viewMode]);
+  }, [canUseRegistryView, viewMode]);
 
   // Selection + detail
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -2853,6 +2889,34 @@ const SavedUrlsPage: React.FC = () => {
       ? localReviewQueue
       : reviewQueues.find((queue) => queue.id === activeQueueId);
 
+  const openBulkSnapshotPicker = (
+    targets: UISavedUrl[],
+    mode: "text" | "pdf",
+  ) => {
+    setBulkTargets(targets);
+    setBulkPickerMode(mode);
+    setBulkPickerOpen(true);
+  };
+
+  const snapshotPrimaryAction =
+    snapshotHealth.missingCount > 0
+      ? {
+          label: "Capture missing text",
+          title:
+            "Capture text snapshots for missing URLs currently loaded on this page",
+          targets: snapshotHealth.missing,
+          mode: "text" as const,
+        }
+      : snapshotHealth.staleCount > 0
+        ? {
+            label: "Refresh stale text",
+            title:
+              "Refresh text snapshots for stale URLs currently loaded on this page",
+            targets: snapshotHealth.stale,
+            mode: "text" as const,
+          }
+        : null;
+
   return (
     <main className="saved-urls-page space-y-6 px-4 md:px-6 lg:px-8 pt-6 md:pt-8 min-w-0">
       <header className="page-header">
@@ -2893,191 +2957,268 @@ const SavedUrlsPage: React.FC = () => {
         <div className="saved-urls-status-stack">
           {tagSummary &&
             (tagSummary.inProgress > 0 || tagSummary.failed > 0) && (
-              <section className="saved-urls-status-strip saved-urls-status-strip--warning">
-                <div className="saved-urls-status-main">
-                  <span className="saved-urls-status-label">AI Tagging</span>
-                  <span className="saved-urls-status-badge">
-                    {tagSummary.queueMode === "sequential"
-                      ? "Sequential queue"
-                      : "Queue"}
-                  </span>
-                  <span>{queueHealthLabel(tagSummary.queueHealth)}</span>
-                  <span>
-                    Pending{" "}
-                    <strong>{tagSummary.byStatus?.PENDING ?? 0}</strong>
-                  </span>
-                  <span>
-                    Running{" "}
-                    <strong>{tagSummary.byStatus?.RUNNING ?? 0}</strong>
-                  </span>
-                  <span>
-                    Failed <strong>{tagSummary.failed}</strong>
-                  </span>
-                  {tagSummary.oldestPendingAt && (
-                    <span>
-                      Oldest pending{" "}
-                      <strong>
-                        {relativeQueueAge(tagSummary.oldestPendingAt)}
-                      </strong>
-                    </span>
-                  )}
-                  {tagSummary.currentRunning && (
-                    <span className="truncate">
-                      Now: {shortQueueTitle(tagSummary.currentRunning, 64)}
-                      {queueDomain(tagSummary.currentRunning)
-                        ? ` - ${queueDomain(tagSummary.currentRunning)}`
-                        : ""}
-                    </span>
-                  )}
-                  {(tagSummary.nextPending?.length ?? 0) > 0 && (
-                    <span>Next {tagSummary.nextPending?.length}</span>
-                  )}
-                  {tagSummaryError && (
-                    <span className="opacity-70">{tagSummaryError}</span>
-                  )}
+              <section
+                className="saved-urls-status-card saved-urls-status-card--warning"
+                aria-label="AI tagging queue status"
+              >
+                <div className="saved-urls-status-card__main">
+                  <div className="saved-urls-status-card__headline">
+                    <span className="saved-urls-status-card__dot" />
+                    <div className="min-w-0">
+                      <div className="saved-urls-status-card__title-row">
+                        <h2 className="saved-urls-status-card__title">
+                          AI tagging queue
+                        </h2>
+                        <span className="saved-urls-status-badge">
+                          {tagSummary.queueMode === "sequential"
+                            ? "Sequential"
+                            : "Queue"}
+                        </span>
+                      </div>
+                      <p className="saved-urls-status-card__copy">
+                        {tagSummary.currentRunning ? (
+                          <>
+                            Processing{" "}
+                            {shortQueueTitle(tagSummary.currentRunning, 72)}
+                            {queueDomain(tagSummary.currentRunning)
+                              ? ` from ${queueDomain(tagSummary.currentRunning)}`
+                              : ""}
+                          </>
+                        ) : (
+                          queueHealthLabel(tagSummary.queueHealth)
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="saved-urls-status-metrics">
+                    <div className="saved-urls-status-metric">
+                      <span>Pending</span>
+                      <strong>{tagSummary.byStatus?.PENDING ?? 0}</strong>
+                    </div>
+                    <div className="saved-urls-status-metric">
+                      <span>Running</span>
+                      <strong>{tagSummary.byStatus?.RUNNING ?? 0}</strong>
+                    </div>
+                    <div className="saved-urls-status-metric saved-urls-status-metric--danger">
+                      <span>Failed</span>
+                      <strong>{tagSummary.failed}</strong>
+                    </div>
+                    {tagSummary.oldestPendingAt && (
+                      <div className="saved-urls-status-metric">
+                        <span>Oldest</span>
+                        <strong>
+                          {relativeQueueAge(tagSummary.oldestPendingAt)}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {tagSummary.failed > 0 && (
-                  <button
-                    className="saved-urls-strip-action"
-                    onClick={handleRetryFailedTagging}
-                    disabled={tagSummaryLoading}
-                    title="Re-run auto-tagging for failed URLs"
-                  >
-                    {tagSummaryLoading ? "Retrying..." : "Retry failed"}
-                  </button>
-                )}
+                <div className="saved-urls-status-card__actions">
+                  {tagSummary.failed > 0 && (
+                    <button
+                      type="button"
+                      className="saved-urls-status-action saved-urls-status-action--primary"
+                      onClick={handleRetryFailedTagging}
+                      disabled={tagSummaryLoading}
+                      title="Re-run auto-tagging for failed URLs"
+                    >
+                      {tagSummaryLoading ? "Retrying..." : "Retry failed"}
+                    </button>
+                  )}
+
+                  <details className="saved-urls-status-more">
+                    <summary>More actions</summary>
+                    <div className="saved-urls-status-more__panel">
+                      <button
+                        type="button"
+                        className="saved-urls-status-action"
+                        onClick={() => setActiveQueueId("ai-failed")}
+                        disabled={tagSummary.failed === 0}
+                      >
+                        Show failed queue
+                      </button>
+                      <div className="saved-urls-status-more__note">
+                        {queueHealthLabel(tagSummary.queueHealth)}
+                        {(tagSummary.nextPending?.length ?? 0) > 0
+                          ? ` · ${tagSummary.nextPending?.length} next`
+                          : ""}
+                        {tagSummaryError ? ` · ${tagSummaryError}` : ""}
+                      </div>
+                    </div>
+                  </details>
+                </div>
               </section>
             )}
 
           {(snapshotHealth.missingCount > 0 ||
             snapshotHealth.staleCount > 0) && (
-            <section className="saved-urls-status-strip saved-urls-status-strip--info">
-              <div className="saved-urls-status-main">
-                <span className="saved-urls-status-label">
-                  Snapshots on this page
-                </span>
-                <span>
-                  Missing <strong>{snapshotHealth.missingCount}</strong>
-                </span>
-                <span>
-                  Stale (&gt;{SNAPSHOT_STALE_DAYS}d){" "}
-                  <strong>{snapshotHealth.staleCount}</strong>
-                </span>
-                {bulkRunning && (
-                  <span>
-                    Running{" "}
-                    <strong>
-                      {bulkDone}/{bulkTotal}
-                    </strong>
-                    , Failed <strong>{bulkFailed}</strong>
-                  </span>
-                )}
-                <span className="opacity-75">
-                  Actions apply to the currently loaded page.
-                </span>
+            <section
+              className="saved-urls-status-card saved-urls-status-card--info"
+              aria-label="Snapshot coverage status"
+            >
+              <div className="saved-urls-status-card__main">
+                <div className="saved-urls-status-card__headline">
+                  <span className="saved-urls-status-card__dot" />
+                  <div className="min-w-0">
+                    <div className="saved-urls-status-card__title-row">
+                      <h2 className="saved-urls-status-card__title">
+                        Snapshot coverage
+                      </h2>
+                      <span className="saved-urls-status-badge">
+                        Current page
+                      </span>
+                    </div>
+                    <p className="saved-urls-status-card__copy">
+                      Keep source captures evidence-ready before review,
+                      Notebook use, or governance tracing.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="saved-urls-status-metrics">
+                  <div className="saved-urls-status-metric saved-urls-status-metric--warning">
+                    <span>Missing</span>
+                    <strong>{snapshotHealth.missingCount}</strong>
+                  </div>
+                  <div className="saved-urls-status-metric">
+                    <span>Stale</span>
+                    <strong>{snapshotHealth.staleCount}</strong>
+                  </div>
+                  {bulkRunning && (
+                    <>
+                      <div className="saved-urls-status-metric">
+                        <span>Running</span>
+                        <strong>
+                          {bulkDone}/{bulkTotal}
+                        </strong>
+                      </div>
+                      <div className="saved-urls-status-metric saved-urls-status-metric--danger">
+                        <span>Failed</span>
+                        <strong>{bulkFailed}</strong>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div className="saved-urls-strip-actions">
-                <button
-                  className="saved-urls-strip-action"
-                  onClick={() =>
-                    setFilter((f: any) => ({
-                      ...f,
-                      snapshotStatus: "missing",
-                    }))
-                  }
-                  disabled={bulkRunning}
-                  title="Filter the full result set to URLs with no active snapshots"
-                >
-                  Show missing
-                </button>
-
-                <button
-                  className="saved-urls-strip-action"
-                  onClick={() =>
-                    setFilter((f: any) => ({
-                      ...f,
-                      snapshotStatus: "stale",
-                    }))
-                  }
-                  disabled={bulkRunning}
-                  title={`Filter the full result set to URLs with snapshots older than ${SNAPSHOT_STALE_DAYS} days`}
-                >
-                  Show stale
-                </button>
-
-                {snapshotHealth.missingCount > 0 && (
-                  <>
-                    <button
-                      className="saved-urls-strip-action saved-urls-strip-action--primary"
-                      onClick={() => {
-                        setBulkTargets(snapshotHealth.missing);
-                        setBulkPickerMode("text");
-                        setBulkPickerOpen(true);
-                      }}
-                      disabled={bulkRunning}
-                      title="Capture TEXT snapshots for missing URLs currently loaded on this page"
-                    >
-                      Snapshot missing (Text)
-                    </button>
-
-                    <button
-                      className="saved-urls-strip-action saved-urls-strip-action--primary"
-                      onClick={() => {
-                        setBulkTargets(snapshotHealth.missing);
-                        setBulkPickerMode("pdf");
-                        setBulkPickerOpen(true);
-                      }}
-                      disabled={bulkRunning}
-                      title="Capture PDF snapshots for missing URLs currently loaded on this page"
-                    >
-                      Snapshot missing (PDF)
-                    </button>
-                  </>
-                )}
-
-                {snapshotHealth.staleCount > 0 && (
-                  <>
-                    <button
-                      className="saved-urls-strip-action saved-urls-strip-action--primary"
-                      onClick={() => {
-                        setBulkTargets(snapshotHealth.stale);
-                        setBulkPickerMode("text");
-                        setBulkPickerOpen(true);
-                      }}
-                      disabled={bulkRunning}
-                      title="Refresh TEXT snapshots for stale URLs currently loaded on this page"
-                    >
-                      Refresh stale (Text)
-                    </button>
-
-                    <button
-                      className="saved-urls-strip-action saved-urls-strip-action--primary"
-                      onClick={() => {
-                        setBulkTargets(snapshotHealth.stale);
-                        setBulkPickerMode("pdf");
-                        setBulkPickerOpen(true);
-                      }}
-                      disabled={bulkRunning}
-                      title="Refresh PDF snapshots for stale URLs currently loaded on this page"
-                    >
-                      Refresh stale (PDF)
-                    </button>
-                  </>
-                )}
-
-                {bulkRunning && (
+              <div className="saved-urls-status-card__actions">
+                {bulkRunning ? (
                   <button
-                    className="saved-urls-strip-action"
+                    type="button"
+                    className="saved-urls-status-action saved-urls-status-action--primary"
                     onClick={() => {
                       bulkAbortRef.current = true;
                     }}
                     title="Stop after current in-flight captures finish"
                   >
-                    Stop
+                    Stop after current
                   </button>
-                )}
+                ) : snapshotPrimaryAction ? (
+                  <button
+                    type="button"
+                    className="saved-urls-status-action saved-urls-status-action--primary"
+                    onClick={() =>
+                      openBulkSnapshotPicker(
+                        snapshotPrimaryAction.targets,
+                        snapshotPrimaryAction.mode,
+                      )
+                    }
+                    title={snapshotPrimaryAction.title}
+                  >
+                    {snapshotPrimaryAction.label}
+                  </button>
+                ) : null}
+
+                <details className="saved-urls-status-more">
+                  <summary>More actions</summary>
+                  <div className="saved-urls-status-more__panel">
+                    <button
+                      type="button"
+                      className="saved-urls-status-action"
+                      onClick={() =>
+                        setFilter((f: any) => ({
+                          ...f,
+                          snapshotStatus: "missing",
+                        }))
+                      }
+                      disabled={bulkRunning}
+                      title="Filter the full result set to URLs with no active snapshots"
+                    >
+                      Show missing
+                    </button>
+
+                    <button
+                      type="button"
+                      className="saved-urls-status-action"
+                      onClick={() =>
+                        setFilter((f: any) => ({
+                          ...f,
+                          snapshotStatus: "stale",
+                        }))
+                      }
+                      disabled={bulkRunning}
+                      title={`Filter the full result set to URLs with snapshots older than ${SNAPSHOT_STALE_DAYS} days`}
+                    >
+                      Show stale
+                    </button>
+
+                    {snapshotHealth.missingCount > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          className="saved-urls-status-action"
+                          onClick={() =>
+                            openBulkSnapshotPicker(snapshotHealth.missing, "pdf")
+                          }
+                          disabled={bulkRunning}
+                          title="Capture PDF snapshots for missing URLs currently loaded on this page"
+                        >
+                          Capture missing PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="saved-urls-status-action"
+                          onClick={() =>
+                            openBulkSnapshotPicker(snapshotHealth.missing, "text")
+                          }
+                          disabled={bulkRunning}
+                          title="Capture text snapshots for missing URLs currently loaded on this page"
+                        >
+                          Capture missing text
+                        </button>
+                      </>
+                    )}
+
+                    {snapshotHealth.staleCount > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          className="saved-urls-status-action"
+                          onClick={() =>
+                            openBulkSnapshotPicker(snapshotHealth.stale, "text")
+                          }
+                          disabled={bulkRunning}
+                          title="Refresh text snapshots for stale URLs currently loaded on this page"
+                        >
+                          Refresh stale text
+                        </button>
+                        <button
+                          type="button"
+                          className="saved-urls-status-action"
+                          onClick={() =>
+                            openBulkSnapshotPicker(snapshotHealth.stale, "pdf")
+                          }
+                          disabled={bulkRunning}
+                          title="Refresh PDF snapshots for stale URLs currently loaded on this page"
+                        >
+                          Refresh stale PDF
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </details>
               </div>
             </section>
           )}
@@ -3345,31 +3486,38 @@ const SavedUrlsPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div className="inline-flex self-start xl:self-auto items-center rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/70 p-1 shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("registry")}
-                      className={[
-                        "rounded-lg px-3 py-2 text-sm font-medium transition",
-                        viewMode === "registry"
-                          ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                          : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white",
-                      ].join(" ")}
-                      title="Show dense source registry table"
-                    >
-                      Registry
-                    </button>
+                  <div
+                    className="inline-flex self-start xl:self-auto items-center rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/70 p-1 shadow-sm"
+                    aria-label="Saved URLs view mode"
+                  >
+                    {canUseRegistryView && (
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("registry")}
+                        className={[
+                          "rounded-lg px-3 py-2 text-sm font-medium transition",
+                          effectiveViewMode === "registry"
+                            ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                            : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white",
+                        ].join(" ")}
+                        title="Show dense source registry table"
+                        aria-pressed={effectiveViewMode === "registry"}
+                      >
+                        Registry
+                      </button>
+                    )}
 
                     <button
                       type="button"
                       onClick={() => setViewMode("cards")}
                       className={[
                         "rounded-lg px-3 py-2 text-sm font-medium transition",
-                        viewMode === "cards"
+                        effectiveViewMode === "cards"
                           ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
                           : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white",
                       ].join(" ")}
                       title="Show card layout"
+                      aria-pressed={effectiveViewMode === "cards"}
                     >
                       Cards
                     </button>
@@ -3758,7 +3906,7 @@ const SavedUrlsPage: React.FC = () => {
             )}
 
             {/* Registry / Cards */}
-            {viewMode === "registry" ? (
+            {effectiveViewMode === "registry" ? (
               <SourceRegistryTable
                 rows={sorted}
                 selection={selection}
@@ -3771,7 +3919,7 @@ const SavedUrlsPage: React.FC = () => {
                 onCapture={openCapturePicker}
               />
             ) : (
-              <StaggerList className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 2xl:gap-6">
+              <StaggerList className="saved-urls-card-grid grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:gap-6">
                 {sorted.map((u) => (
                   <StaggerItem key={u.id}>
                     <SavedUrlCard
