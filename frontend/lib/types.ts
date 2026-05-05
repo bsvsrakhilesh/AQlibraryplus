@@ -96,6 +96,13 @@ export interface FileItem {
       | "page_print"
       | "institutional_node";
     capturedUrl?: string;
+    sourcePageUrl?: string | null;
+    originalSearchQuery?: string | null;
+    discoveredDocumentId?: string | null;
+    discoveryTitle?: string | null;
+    discoveryAnchorText?: string | null;
+    discoveryContextText?: string | null;
+    discoveryDateText?: string | null;
     contentType?: string | null;
     contentDisposition?: string | null;
     bytes?: number;
@@ -211,6 +218,12 @@ export interface SavedUrl {
   lastVisitedAt?: string; // ISO
   visitCount: number;
   latestSnapshot?: SnapshotInfo | null;
+  discoverySummary?: {
+    discoveredCount: number;
+    capturedCount: number;
+    verifiedCount: number;
+    lastDiscoveredAt: string | null;
+  } | null;
 }
 
 export interface Collection {

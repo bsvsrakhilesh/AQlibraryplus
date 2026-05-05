@@ -1024,6 +1024,7 @@ const UrlCollectorPage: React.FC = () => {
                   onClear={handleClearResults}
                   sortKey={sortKey}
                   onSortChange={(k) => setSortKey(k)}
+                  searchQuery={lastQuery || keywords}
                 />
 
                 {hasSearched && searchResults.length > 0 && (

@@ -366,9 +366,56 @@ export type BackendUrlRow = {
     createdAt: string;
     sha256?: string | null;
   } | null;
+  discoverySummary?: PdfDiscoverySummary | null;
   contentHash?: string | null;
   taggerVersion?: string | null;
   tagsMeta?: any;
+};
+
+export type PdfDiscoverySummary = {
+  discoveredCount: number;
+  capturedCount: number;
+  verifiedCount: number;
+  lastDiscoveredAt: string | null;
+};
+
+export type DiscoveredPdfDocument = {
+  id: string;
+  sourceUrlId: number;
+  discoveryRunId: string | null;
+  url: string;
+  canonicalUrl: string;
+  title: string;
+  anchorText: string | null;
+  contextText: string | null;
+  dateHint: string | null;
+  rawDateHint: string | null;
+  fileNameHint: string | null;
+  contentType: string | null;
+  contentLength: number | null;
+  verified: boolean;
+  score: number;
+  confidence: "high" | "medium" | "low";
+  discoveryMethod: string;
+  status: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  capturedAt: string | null;
+  captureError: string | null;
+  capturedFiles?: Array<{
+    id: string;
+    fileName: string;
+    createdAt: string;
+    sha256: string | null;
+  }>;
+};
+
+export type PdfDiscoveryResponse = {
+  runId?: string;
+  sourceUrlId: number;
+  sourceUrl?: string;
+  documents: DiscoveredPdfDocument[];
+  summary: PdfDiscoverySummary;
 };
 
 export type BackendStoredFile = {
@@ -388,8 +435,10 @@ export type BackendStoredFile = {
   folderId?: string | null;
   storagePath?: string;
   captureType?: "UPLOAD" | "URL_TEXT" | "URL_PDF";
+  captureScope?: "SOURCE_PAGE" | "DISCOVERED_DOCUMENT";
   sourceUrl?: string | null;
   urlId?: number | null;
+  discoveredDocumentId?: string | null;
   sha256?: string | null;
   tagsMeta?: any;
   contentHash?: string | null;
@@ -721,6 +770,25 @@ export async function getUrlSnapshots(urlId: number, limit = 50) {
     params: { limit },
   });
   return res.data as BackendStoredFile[];
+}
+
+export async function fetchDiscoveredPdfDocuments(
+  urlId: number,
+): Promise<PdfDiscoveryResponse> {
+  const res = await api.get(`/api/urls/${urlId}/discovered-documents`);
+  return res.data as PdfDiscoveryResponse;
+}
+
+export async function discoverPdfDocuments(
+  urlId: number,
+  opts: {
+    query?: string | null;
+    maxDepth?: number;
+    useBrowserFallback?: boolean;
+  } = {},
+): Promise<PdfDiscoveryResponse> {
+  const res = await api.post(`/api/urls/${urlId}/discover-documents`, opts);
+  return res.data as PdfDiscoveryResponse;
 }
 
 // ------------------------------
@@ -1151,6 +1219,12 @@ export async function crawlSavePdf(
   reader?: boolean,
   urlId?: number,
   accessMode: "public" | "institutional" = "public",
+  discovery?: {
+    discoveredDocumentId?: string | null;
+    captureScope?: "SOURCE_PAGE" | "DISCOVERED_DOCUMENT";
+    sourcePageUrl?: string | null;
+    originalSearchQuery?: string | null;
+  },
 ) {
   try {
     const res = await api.post("/api/crawl/pdf", {
@@ -1161,6 +1235,7 @@ export async function crawlSavePdf(
       reader,
       urlId,
       accessMode,
+      ...(discovery || {}),
     });
 
     return toFileItem(res.data as BackendStoredFile);

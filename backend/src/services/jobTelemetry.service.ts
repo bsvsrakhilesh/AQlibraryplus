@@ -58,6 +58,10 @@ function buildData(update: JobTelemetryUpdate) {
   return data;
 }
 
+function isMissingTelemetryTarget(error: any) {
+  return error?.code === "P2025" || error?.code === "P2003";
+}
+
 async function upsertJob(
   db: DbLike,
   kind: JobKind,
@@ -65,19 +69,37 @@ async function upsertJob(
   create: Record<string, any>,
   update: Record<string, any>,
 ) {
-  if (kind === "ingestion") {
-    return db.ingestionJob.upsert({
+  try {
+    if (kind === "ingestion") {
+      return db.ingestionJob.upsert({
+        where: { sourceId },
+        create: { sourceId, ...create },
+        update,
+      });
+    }
+
+    return db.embeddingJob.upsert({
       where: { sourceId },
       create: { sourceId, ...create },
       update,
     });
+  } catch (error: any) {
+    if (isMissingTelemetryTarget(error)) return null;
+    throw error;
+  }
+}
+
+async function updateJob(
+  db: DbLike,
+  kind: JobKind,
+  sourceId: string,
+  data: Record<string, any>,
+) {
+  if (kind === "ingestion") {
+    return db.ingestionJob.updateMany({ where: { sourceId }, data });
   }
 
-  return db.embeddingJob.upsert({
-    where: { sourceId },
-    create: { sourceId, ...create },
-    update,
-  });
+  return db.embeddingJob.updateMany({ where: { sourceId }, data });
 }
 
 export async function markJobQueued(
@@ -171,11 +193,7 @@ export async function markJobProgress(
     meta: args.meta,
   });
 
-  if (kind === "ingestion") {
-    return db.ingestionJob.update({ where: { sourceId }, data });
-  }
-
-  return db.embeddingJob.update({ where: { sourceId }, data });
+  return updateJob(db, kind, sourceId, data);
 }
 
 export async function markJobSucceeded(
@@ -194,11 +212,7 @@ export async function markJobSucceeded(
     finished: true,
   });
 
-  if (kind === "ingestion") {
-    return db.ingestionJob.update({ where: { sourceId }, data });
-  }
-
-  return db.embeddingJob.update({ where: { sourceId }, data });
+  return updateJob(db, kind, sourceId, data);
 }
 
 export async function markJobFailed(
@@ -216,9 +230,5 @@ export async function markJobFailed(
     failed: true,
   });
 
-  if (kind === "ingestion") {
-    return db.ingestionJob.update({ where: { sourceId }, data });
-  }
-
-  return db.embeddingJob.update({ where: { sourceId }, data });
+  return updateJob(db, kind, sourceId, data);
 }

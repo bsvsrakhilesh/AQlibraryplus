@@ -30,6 +30,7 @@ interface Props {
   open: boolean;
   suggestedName: string;
   mode: Mode;
+  fileNameMode?: "visible" | "hidden";
   showInstitutionalToggle?: boolean;
   defaultAccessMode?: CaptureAccessMode;
   onCancel: () => void;
@@ -45,6 +46,7 @@ const FolderPickerModal: React.FC<Props> = ({
   open,
   suggestedName,
   mode,
+  fileNameMode = "visible",
   showInstitutionalToggle = false,
   defaultAccessMode = "public",
   onCancel,
@@ -91,6 +93,7 @@ const FolderPickerModal: React.FC<Props> = ({
 
   // Which folder in the list is selected as the destination (single click)
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const showFileName = fileNameMode !== "hidden";
 
   // Manual double-click detector (more reliable than native dblclick if UI re-renders)
   const lastClickRef = useRef<{ id: string; t: number } | null>(null);
@@ -116,7 +119,7 @@ const FolderPickerModal: React.FC<Props> = ({
     isOpen: open,
     onClose: onCancel,
     dialogRef,
-    initialFocusRef: fileNameInputRef,
+    initialFocusRef: showFileName ? fileNameInputRef : closeButtonRef,
   });
 
   const load = useCallback(async (parentId: string | null) => {
@@ -654,6 +657,7 @@ const FolderPickerModal: React.FC<Props> = ({
                     )}
                   </div>
 
+                  {showFileName && (
                   <div className="rounded-2xl border border-border bg-white/60 dark:bg-neutral-900/40 p-4">
                     <div className="text-sm font-semibold">File name</div>
                     <p className="text-xs text-muted mt-1">
@@ -673,6 +677,7 @@ const FolderPickerModal: React.FC<Props> = ({
                       />
                     </div>
                   </div>
+                  )}
 
                   {showInstitutionalToggle && (
                     <div className="rounded-2xl border border-border bg-white/60 dark:bg-neutral-900/40 p-4">
@@ -928,13 +933,13 @@ const FolderPickerModal: React.FC<Props> = ({
                   onClick={() =>
                     onConfirm({
                       folderId: selectedFolderId ?? current,
-                      fileName,
+                      fileName: showFileName ? fileName : "",
                       mode,
                       accessMode,
                     })
                   }
                   disabled={
-                    !fileName.trim() ||
+                    (showFileName && !fileName.trim()) ||
                     infoLoading ||
                     loading ||
                     (showInstitutionalToggle &&

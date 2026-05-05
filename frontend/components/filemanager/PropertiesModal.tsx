@@ -280,6 +280,23 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
       copyValue: file.captureMeta?.capturedUrl || null,
     },
     {
+      label: "Source page URL",
+      value: displayText(file.captureMeta?.sourcePageUrl, "—"),
+      href: file.captureMeta?.sourcePageUrl || null,
+      copyValue: file.captureMeta?.sourcePageUrl || null,
+    },
+    {
+      label: "Discovered document ID",
+      value: displayText(file.captureMeta?.discoveredDocumentId, "—"),
+      mono: true,
+      copyValue: file.captureMeta?.discoveredDocumentId || null,
+    },
+    {
+      label: "Search query",
+      value: displayText(file.captureMeta?.originalSearchQuery, "—"),
+      copyValue: file.captureMeta?.originalSearchQuery || null,
+    },
+    {
       label: "Bytes captured",
       value:
         typeof file.captureMeta?.bytes === "number"

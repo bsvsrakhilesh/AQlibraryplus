@@ -6,6 +6,7 @@ import {
   canonicalizeUrl,
   normalizedDomainFromUrl,
 } from "../utils/urlCanonical";
+import { getDiscoverySummariesByUrlId } from "./documentDiscovery.service";
 import {
   deriveSeparatedTags,
   mergeUniqueTags,
@@ -409,11 +410,13 @@ type UrlWithCollectionLinks = Prisma.UrlGetPayload<{
 function serializeUrlRow(
   url: UrlWithCollectionLinks,
   latestSnapshot: any = null,
+  discoverySummary: any = null,
 ) {
   return {
     ...url,
     collections: (url.collections || []).map((link) => link.collectionId),
     latestSnapshot,
+    discoverySummary,
   };
 }
 
@@ -484,11 +487,17 @@ export async function getAllUrls(opts: GetAllOpts) {
     },
   });
 
-  // Attach latest active URL snapshot info, if any.
-  const latestByUrl = await getLatestSnapshotsByUrlId(urls.map((u) => u.id));
+  // Attach latest active URL snapshot and PDF discovery info, if any.
+  const urlIds = urls.map((u) => u.id);
+  const latestByUrl = await getLatestSnapshotsByUrlId(urlIds);
+  const discoveryByUrl = await getDiscoverySummariesByUrlId(urlIds);
 
   return urls.map((u) =>
-    serializeUrlRow(u, latestByUrl.get(u.id) ?? null),
+    serializeUrlRow(
+      u,
+      latestByUrl.get(u.id) ?? null,
+      discoveryByUrl.get(u.id) ?? null,
+    ),
   ) as any;
 }
 
@@ -531,10 +540,16 @@ export async function getUrlsPaged(opts: GetPagedUrlsOpts) {
   ]);
 
   // Attach latest active URL snapshot info, if any — only for the returned page.
-  const latestByUrl = await getLatestSnapshotsByUrlId(urls.map((u) => u.id));
+  const urlIds = urls.map((u) => u.id);
+  const latestByUrl = await getLatestSnapshotsByUrlId(urlIds);
+  const discoveryByUrl = await getDiscoverySummariesByUrlId(urlIds);
 
   const items = urls.map((u) =>
-    serializeUrlRow(u, latestByUrl.get(u.id) ?? null),
+    serializeUrlRow(
+      u,
+      latestByUrl.get(u.id) ?? null,
+      discoveryByUrl.get(u.id) ?? null,
+    ),
   ) as any[];
 
   return { items, total, page, pageSize };
@@ -557,7 +572,12 @@ export async function getUrlById(id: number) {
     throw err;
   }
   const latestByUrl = await getLatestSnapshotsByUrlId([rec.id]);
-  return serializeUrlRow(rec, latestByUrl.get(rec.id) ?? null);
+  const discoveryByUrl = await getDiscoverySummariesByUrlId([rec.id]);
+  return serializeUrlRow(
+    rec,
+    latestByUrl.get(rec.id) ?? null,
+    discoveryByUrl.get(rec.id) ?? null,
+  );
 }
 
 export async function recordUrlVisit(id: number) {

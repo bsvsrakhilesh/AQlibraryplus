@@ -26,6 +26,11 @@ enum CaptureType {
   URL_PDF
 }
 
+enum CaptureScope {
+  SOURCE_PAGE
+  DISCOVERED_DOCUMENT
+}
+
 enum DocumentKind {
   URL
   FILE
@@ -163,6 +168,8 @@ model Url {
   taggingError  String?
 
   snapshots StoredFile[] @relation("UrlSnapshots")
+  discoveryRuns UrlDiscoveryRun[] @relation("UrlDiscoveryRuns")
+  discoveredDocuments UrlDiscoveredDocument[] @relation("UrlDiscoveredDocuments")
 
   notebookSources NotebookSource[] @relation("UrlNotebookSources")
   captureEvents   CaptureEvent[]
@@ -237,6 +244,7 @@ model StoredFile {
   contentHash    String?
 
   captureType CaptureType @default(UPLOAD)
+  captureScope CaptureScope @default(SOURCE_PAGE)
   sha256      String?
   sourceUrl   String?
   sourcePublishedAt DateTime?
@@ -249,6 +257,9 @@ model StoredFile {
   urlId Int?
   url   Url? @relation("UrlSnapshots", fields: [urlId], references: [id], onDelete: SetNull)
 
+  discoveredDocumentId String?
+  discoveredDocument   UrlDiscoveredDocument? @relation("DiscoveredDocumentFiles", fields: [discoveredDocumentId], references: [id], onDelete: SetNull)
+
   taggerVersion String?
   tagsMeta      Json?
 
@@ -259,8 +270,79 @@ model StoredFile {
   notebookSources NotebookSource[] @relation("FileNotebookSources")
 
   @@index([urlId])
+  @@index([discoveredDocumentId])
   @@index([deletedAt])
   @@index([taggingStatus])
+}
+
+model UrlDiscoveryRun {
+  id String @id @default(cuid())
+
+  sourceUrlId Int
+  sourceUrl   Url @relation("UrlDiscoveryRuns", fields: [sourceUrlId], references: [id], onDelete: Cascade)
+
+  sourcePageUrl String
+  query         String?
+  status        String @default("RUNNING")
+  errorCode     String?
+  errorMessage  String?
+
+  maxDepth       Int @default(1)
+  candidateCount Int @default(0)
+  verifiedCount  Int @default(0)
+  capturedCount  Int @default(0)
+  methodSummary  Json?
+
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+
+  documents UrlDiscoveredDocument[]
+
+  @@index([sourceUrlId, startedAt])
+  @@index([status])
+}
+
+model UrlDiscoveredDocument {
+  id String @id @default(cuid())
+
+  sourceUrlId Int
+  sourceUrl   Url @relation("UrlDiscoveredDocuments", fields: [sourceUrlId], references: [id], onDelete: Cascade)
+
+  discoveryRunId String?
+  discoveryRun   UrlDiscoveryRun? @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+
+  url          String
+  canonicalUrl String
+  title        String
+  anchorText   String?
+  contextText  String?
+
+  dateHint    DateTime?
+  rawDateHint String?
+  fileNameHint String?
+
+  contentType   String?
+  contentLength Int?
+  verified      Boolean @default(false)
+
+  score           Float @default(0)
+  confidence      String @default("low")
+  discoveryMethod String
+  status          String @default("DISCOVERED")
+
+  rawMeta Json?
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+  capturedAt  DateTime?
+  captureError String?
+
+  capturedFiles StoredFile[] @relation("DiscoveredDocumentFiles")
+
+  @@unique([sourceUrlId, canonicalUrl])
+  @@index([sourceUrlId, score])
+  @@index([discoveryRunId])
+  @@index([status])
 }
 
 model Folder {

@@ -181,6 +181,9 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
   onCapture,
 }) => {
   const isPdf = isPdfUrlLike(url.url);
+  const discoverySummary = url.discoverySummary;
+  const discoveredCount = discoverySummary?.discoveredCount ?? 0;
+  const capturedPdfCount = discoverySummary?.capturedCount ?? 0;
   const freshness = freshnessChip(url);
   const ai = aiStatusChip(url);
   const publishedLabel = url.publishedAt
@@ -322,6 +325,17 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
             );
           })()}
 
+          {discoveredCount > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span
+                className="chip chip-sky"
+                title="PDFs discovered under this saved source page"
+              >
+                PDFs: {capturedPdfCount}/{discoveredCount}
+              </span>
+            </div>
+          )}
+
           {url.description ? (
             <p className="mt-3 min-h-[4.5rem] line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
               {url.description}
@@ -391,10 +405,12 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
               onClick={() => onCapture(url, "pdf")}
               className={`${pdfBtn} ${actionBtn}`}
               title={
-                isPdf ? "Download original PDF" : "Capture as PDF snapshot"
+                isPdf
+                  ? "Download original PDF"
+                  : "Find and capture PDFs linked from this source"
               }
             >
-              {isPdf ? "PDF" : "PDF"}
+              {isPdf ? "PDF" : discoveredCount > 0 ? "PDFs" : "Find PDFs"}
             </button>
           </>
         ) : (

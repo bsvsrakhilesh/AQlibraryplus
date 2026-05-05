@@ -140,6 +140,13 @@ export function inferPreferredCollectorCapture(
   return "text";
 }
 
+export function isDirectPdfSearchResult(result: SearchResult): boolean {
+  const url = String(result.url || "").toLowerCase();
+  if (/\.pdf(?:$|[?#])/.test(url) || url.includes(".pdf?")) return true;
+  if (result.intelligence?.fileTypeHint === "pdf") return true;
+  return false;
+}
+
 export function getCollectorCaptureMeta(mode: CaptureMode) {
   return mode === "pdf"
     ? {

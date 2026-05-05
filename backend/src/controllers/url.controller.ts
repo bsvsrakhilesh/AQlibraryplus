@@ -26,6 +26,10 @@ import {
 import prisma from "../config/database";
 import { recordCaptureEvent } from "../services/provenance.service";
 import { probeUrlKind } from "../services/urlProbe.service";
+import {
+  discoverDocumentsForUrl,
+  listDiscoveredDocumentsForUrl,
+} from "../services/documentDiscovery.service";
 
 /* ----------------------- helpers ----------------------- */
 
@@ -805,6 +809,54 @@ export async function probeUrlByIdHandler(
       ...probe,
       probedAt: nowIso,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/* ----------------------- URL PDF discovery ----------------------- */
+
+export async function discoverUrlDocumentsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const id = ensureNumericId(req);
+    const body = (req.body ?? {}) as {
+      query?: string | null;
+      maxDepth?: number | null;
+      useBrowserFallback?: boolean | null;
+    };
+
+    const out = await discoverDocumentsForUrl({
+      sourceUrlId: id,
+      query:
+        typeof body.query === "string" && body.query.trim()
+          ? body.query.trim()
+          : null,
+      maxDepth:
+        typeof body.maxDepth === "number" && Number.isFinite(body.maxDepth)
+          ? body.maxDepth
+          : 1,
+      useBrowserFallback: body.useBrowserFallback !== false,
+    });
+
+    return res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getUrlDiscoveredDocumentsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const id = ensureNumericId(req);
+    const out = await listDiscoveredDocumentsForUrl(id);
+    return res.json(out);
   } catch (err) {
     next(err);
   }

@@ -407,6 +407,19 @@ export default function EvidenceInspector({ file }: Props) {
           value: file.captureMeta?.capturedUrl ?? "—",
         },
         { label: "Tagger version", value: file.taggerVersion ?? "—" },
+        {
+          label: "Source page URL",
+          value: file.captureMeta?.sourcePageUrl ?? "—",
+        },
+        {
+          label: "Discovered document ID",
+          value: file.captureMeta?.discoveredDocumentId ?? "—",
+          mono: true,
+        },
+        {
+          label: "Search query",
+          value: file.captureMeta?.originalSearchQuery ?? "—",
+        },
         { label: "Tagging status", value: file.taggingStatus ?? "NONE" },
         { label: "Tagging job", value: file.taggingJobId ?? "—", mono: true },
         { label: "Tagging error", value: file.taggingError ?? "—" },

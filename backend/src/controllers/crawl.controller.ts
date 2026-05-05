@@ -20,6 +20,10 @@ import { log, requestMeta } from "../utils/logger";
 import { setReadableContentOnPage, hardenLivePage } from "../utils/reader";
 import { probeUrlKind } from "../services/urlProbe.service";
 import { captureViaInstitutionalNode } from "../services/institutionalCapture.service";
+import {
+  markDiscoveredDocumentCaptured,
+  markDiscoveredDocumentCaptureFailed,
+} from "../services/documentDiscovery.service";
 import { execFile } from "node:child_process";
 
 try {
@@ -268,6 +272,14 @@ type CaptureMeta = {
     | "page_print"
     | "institutional_node";
   capturedUrl?: string;
+  captureScope?: "SOURCE_PAGE" | "DISCOVERED_DOCUMENT";
+  sourcePageUrl?: string | null;
+  originalSearchQuery?: string | null;
+  discoveredDocumentId?: string | null;
+  discoveryTitle?: string | null;
+  discoveryAnchorText?: string | null;
+  discoveryContextText?: string | null;
+  discoveryDateText?: string | null;
   contentType?: string | null;
   contentDisposition?: string | null;
   bytes?: number;
@@ -662,8 +674,10 @@ async function persistFile(
   folderId?: string | null,
   meta?: {
     captureType?: "UPLOAD" | "URL_TEXT" | "URL_PDF";
+    captureScope?: "SOURCE_PAGE" | "DISCOVERED_DOCUMENT";
     sourceUrl?: string | null;
     urlId?: number | null;
+    discoveredDocumentId?: string | null;
     requestId?: string | null;
     captureMeta?: CaptureMeta | null;
   },
@@ -693,10 +707,12 @@ async function persistFile(
 
       // new fields
       captureType: (meta?.captureType as any) ?? "UPLOAD",
+      captureScope: (meta?.captureScope as any) ?? "SOURCE_PAGE",
       sourceUrl: meta?.sourceUrl ?? null,
       sha256,
       contentHash: sha256,
       urlId: meta?.urlId ?? null,
+      discoveredDocumentId: meta?.discoveredDocumentId ?? null,
 
       // keep capture diagnostics (UI can show where bytes came from)
       tagsMeta: meta?.captureMeta
@@ -726,6 +742,17 @@ async function persistFile(
     actorName: rec.uploaderName ?? null,
     requestId: (meta as any)?.requestId ?? null,
   });
+
+  if (meta?.discoveredDocumentId) {
+    try {
+      await markDiscoveredDocumentCaptured({
+        discoveredDocumentId: meta.discoveredDocumentId,
+        fileId: rec.id,
+      });
+    } catch {
+      // Discovery status is helpful but non-fatal for the captured file.
+    }
+  }
 
   // every StoredFile must map to a canonical DocumentRevision
   try {
@@ -1165,6 +1192,10 @@ export async function crawlPdfHandler(
       fullPage = true,
       urlId,
       accessMode = "public",
+      discoveredDocumentId,
+      captureScope,
+      sourcePageUrl,
+      originalSearchQuery,
     } = req.body || {};
     if (!url || typeof url !== "string") {
       return res.status(400).json({ message: "Body must include { url }" });
@@ -1183,6 +1214,65 @@ export async function crawlPdfHandler(
     }
 
     await resolveAndGuard(__u.hostname);
+
+    let discoveredDocument: any = null;
+    if (
+      typeof discoveredDocumentId === "string" &&
+      discoveredDocumentId.trim()
+    ) {
+      discoveredDocument = await (prisma as any).urlDiscoveredDocument.findUnique(
+        {
+          where: { id: discoveredDocumentId.trim() },
+          select: {
+            id: true,
+            sourceUrlId: true,
+            url: true,
+            title: true,
+            anchorText: true,
+            contextText: true,
+            rawDateHint: true,
+          },
+        },
+      );
+
+      if (!discoveredDocument) {
+        return res.status(404).json({
+          code: "DISCOVERED_DOCUMENT_NOT_FOUND",
+          message: "Discovered PDF candidate not found.",
+        });
+      }
+    }
+
+    const effectiveUrlId =
+      typeof urlId === "number"
+        ? urlId
+        : typeof discoveredDocument?.sourceUrlId === "number"
+          ? discoveredDocument.sourceUrlId
+          : null;
+
+    const effectiveCaptureScope =
+      captureScope === "DISCOVERED_DOCUMENT" || discoveredDocument
+        ? "DISCOVERED_DOCUMENT"
+        : "SOURCE_PAGE";
+
+    const lineageMeta = {
+      captureScope: effectiveCaptureScope as
+        | "SOURCE_PAGE"
+        | "DISCOVERED_DOCUMENT",
+      discoveredDocumentId: discoveredDocument?.id ?? null,
+      sourcePageUrl:
+        typeof sourcePageUrl === "string" && sourcePageUrl.trim()
+          ? sourcePageUrl.trim()
+          : null,
+      originalSearchQuery:
+        typeof originalSearchQuery === "string" && originalSearchQuery.trim()
+          ? originalSearchQuery.trim()
+          : null,
+      discoveryTitle: discoveredDocument?.title ?? null,
+      discoveryAnchorText: discoveredDocument?.anchorText ?? null,
+      discoveryContextText: discoveredDocument?.contextText ?? null,
+      discoveryDateText: discoveredDocument?.rawDateHint ?? null,
+    };
 
     if (accessMode === "institutional") {
       log.info("crawlPdfHandler_institutional_begin", {
@@ -1221,12 +1311,14 @@ export async function crawlPdfHandler(
         folderId || null,
         {
           captureType: "URL_PDF",
+          ...lineageMeta,
           sourceUrl: captured.finalUrl || url,
-          urlId: typeof urlId === "number" ? urlId : null,
+          urlId: effectiveUrlId,
           requestId: (req as any).requestId ?? null,
           captureMeta: {
             method: "institutional_node",
             capturedUrl: captured.finalUrl || url,
+            ...lineageMeta,
             contentType: captured.mimeType || "application/pdf",
             bytes: captured.buffer.byteLength,
             notes: noteBits.join(" • "),
@@ -1234,7 +1326,7 @@ export async function crawlPdfHandler(
         },
       );
 
-      return finalizeCapturedFile(fileRec, urlId, req, res);
+      return finalizeCapturedFile(fileRec, effectiveUrlId, req, res);
     }
 
     const __allowed = await isRobotsAllowed(__u.toString());
@@ -1261,7 +1353,7 @@ export async function crawlPdfHandler(
 
     // Common post-processing (copy URL tags + maybe schedule ai-tag + respond)
     const postProcessAndRespond = async (fileRec: any) => {
-      return finalizeCapturedFile(fileRec, urlId, req, res);
+      return finalizeCapturedFile(fileRec, effectiveUrlId, req, res);
     };
 
     // ===== Fast-path: try DIRECT PDF bytes (handles SCI wrapper URLs via filename=...) =====
@@ -1365,11 +1457,13 @@ export async function crawlPdfHandler(
           folderId || null,
           {
             captureType: "URL_PDF",
+            ...lineageMeta,
             sourceUrl: url, // keep wrapper as provenance
-            urlId: typeof urlId === "number" ? urlId : null,
+            urlId: effectiveUrlId,
             captureMeta: {
               method: "direct_fetch",
               capturedUrl: candidate,
+              ...lineageMeta,
               contentDisposition: cd,
               contentType: full.headers.get("content-type"),
               bytes: pdfBytes.length,
@@ -1442,11 +1536,13 @@ export async function crawlPdfHandler(
           folderId || null,
           {
             captureType: "URL_PDF",
+            ...lineageMeta,
             sourceUrl: url,
-            urlId: typeof urlId === "number" ? urlId : null,
+            urlId: effectiveUrlId,
             captureMeta: {
               method: "direct_fetch",
               capturedUrl: candidate,
+              ...lineageMeta,
               contentDisposition: dl.cd,
               contentType: dl.ct,
               bytes: dl.bytes.length,
@@ -1634,11 +1730,13 @@ export async function crawlPdfHandler(
               folderId || null,
               {
                 captureType: "URL_PDF",
+                ...lineageMeta,
                 sourceUrl: url,
-                urlId: typeof urlId === "number" ? urlId : null,
+                urlId: effectiveUrlId,
                 captureMeta: {
                   method: "dom_candidate_fetch",
                   capturedUrl: c,
+                  ...lineageMeta,
                   contentDisposition: dl.cd,
                   contentType: dl.ct,
                   bytes: dl.bytes.length,
@@ -1696,11 +1794,13 @@ export async function crawlPdfHandler(
             folderId || null,
             {
               captureType: "URL_PDF",
+              ...lineageMeta,
               sourceUrl: url,
-              urlId: typeof urlId === "number" ? urlId : null,
+              urlId: effectiveUrlId,
               captureMeta: {
                 method: "puppeteer_intercept",
                 capturedUrl: hit.pdfUrl,
+                ...lineageMeta,
                 contentDisposition: hit.cd,
                 contentType: "application/pdf",
                 bytes: hit.bytes.length,
@@ -1832,11 +1932,13 @@ export async function crawlPdfHandler(
       folderId || null,
       {
         captureType: "URL_PDF",
+        ...lineageMeta,
         sourceUrl: url,
-        urlId: typeof urlId === "number" ? urlId : null,
+        urlId: effectiveUrlId,
         captureMeta: {
           method: "page_print",
           capturedUrl: url,
+          ...lineageMeta,
           contentType: "application/pdf",
           bytes: Buffer.isBuffer(pdfBuf) ? pdfBuf.length : pdfBuf.byteLength,
           notes: "Browser page-print snapshot fallback",
@@ -1845,7 +1947,7 @@ export async function crawlPdfHandler(
     );
 
     log.info("crawl_pdf_done", { ...requestMeta(req), fileId: fileRec.id });
-    return finalizeCapturedFile(fileRec, urlId, req, res);
+    return finalizeCapturedFile(fileRec, effectiveUrlId, req, res);
   } catch (err) {
     // Hardened: logging must never throw, and we must log the actual request url (not global URL).
     try {
@@ -1855,6 +1957,13 @@ export async function crawlPdfHandler(
         url,
         error: String((err as any)?.message || err),
       });
+      const discoveredDocumentId = (req.body as any)?.discoveredDocumentId;
+      if (typeof discoveredDocumentId === "string" && discoveredDocumentId) {
+        markDiscoveredDocumentCaptureFailed({
+          discoveredDocumentId,
+          error: String((err as any)?.message || err),
+        }).catch(() => {});
+      }
     } catch {
       // last-resort logging (never throw from error handler)
       log.error("crawlPdfHandler_error", { error: "logging_failed" });

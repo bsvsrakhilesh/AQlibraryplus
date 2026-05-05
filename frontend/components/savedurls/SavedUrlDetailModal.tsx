@@ -1321,6 +1321,32 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                   </button>
                 </div>
 
+                {url.discoverySummary &&
+                  url.discoverySummary.discoveredCount > 0 && (
+                    <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">
+                            Discovered PDFs
+                          </div>
+                          <div className="mt-1 text-xs">
+                            {url.discoverySummary.capturedCount} captured of{" "}
+                            {url.discoverySummary.discoveredCount} discovered.
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="rounded-xl border border-sky-300 bg-white/80 px-3 py-2 text-xs font-medium text-sky-800 disabled:opacity-50 dark:border-sky-700 dark:bg-sky-950/50 dark:text-sky-100"
+                          onClick={() => onRequestCapture?.(url, "pdf")}
+                          disabled={!onRequestCapture}
+                        >
+                          View PDFs
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 <div>
                   {revisionsLoading ? (
                     <div className="text-sm text-gray-500">

@@ -23,6 +23,7 @@ import {
 } from "../../lib/api";
 import DownloadIcon from "../icons/DownloadIcon";
 import FolderPickerModal from "./FolderPickerModal";
+import PdfDiscoveryDrawer from "./PdfDiscoveryDrawer";
 import { StaggerList, StaggerItem } from "../motion/StaggerList";
 import {
   canonicalize as canonicalizeSaved,
@@ -33,6 +34,7 @@ import { useConfirm } from "../providers/Confirm";
 import {
   getCollectorCaptureMeta,
   inferPreferredCollectorCapture,
+  isDirectPdfSearchResult,
   suggestCollectorCaptureName,
   type CaptureMode,
 } from "../../utils/urlCollector";
@@ -48,6 +50,7 @@ interface ResultsTableProps {
   onClear?: () => void;
   sortKey?: "original" | "title" | "domain" | "year";
   onSortChange?: (k: "original" | "title" | "domain" | "year") => void;
+  searchQuery?: string;
 }
 
 /* ---------------- helpers ---------------- */
@@ -174,6 +177,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   onClear,
   sortKey: sortKeyProp,
   onSortChange,
+  searchQuery = "",
 }) => {
   // local selection if parent doesn't control it
   const [localSelected, setLocalSelected] = useState<Set<string>>(selectedUrls);
@@ -209,6 +213,11 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     url: string;
     title: string;
   }>({ url: "", title: "" });
+  const [pdfDiscoveryTarget, setPdfDiscoveryTarget] = useState<{
+    urlId: number;
+    url: string;
+    title: string;
+  } | null>(null);
   const [captureBusy, setCaptureBusy] = useState<string | null>(null);
 
   // Dedupe toggle
@@ -781,8 +790,34 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     }
   };
 
-  // open modal to choose destination + filename
-  const openCapture = (mode: "text" | "pdf", url: string, title: string) => {
+  const openPdfDiscovery = async (url: string, title: string) => {
+    setCaptureBusy(url);
+    try {
+      const urlId = await ensureSavedUrlId(url, title);
+      setPdfDiscoveryTarget({ urlId, url, title });
+    } catch (e: any) {
+      pushNotice(
+        "error",
+        `Could not start PDF harvest: ${e?.message ?? "Unknown error"}`,
+      );
+    } finally {
+      setCaptureBusy(null);
+    }
+  };
+
+  // open modal to choose destination + filename, or harvest child PDFs first
+  const openCapture = (
+    mode: "text" | "pdf",
+    url: string,
+    title: string,
+    result?: SearchResult,
+  ) => {
+    const row = result ?? results.find((r) => r.url === url);
+    if (mode === "pdf" && row && !isDirectPdfSearchResult(row)) {
+      void openPdfDiscovery(url, title);
+      return;
+    }
+
     setPickerMode(mode);
     setPickerTarget({ url, title });
     setPickerOpen(true);
@@ -1291,6 +1326,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           const dupN = dupCountByUrl[r.url] ?? 0;
           const collectionCount = getUrlCollections(r.url).length;
           const detectedYear = getResultYear(r);
+          const directPdf = isDirectPdfSearchResult(r);
 
           const preferredCapture = inferPreferredCollectorCapture(r);
           const secondaryCapture: CaptureMode =
@@ -1300,9 +1336,21 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           const secondaryMeta = getCollectorCaptureMeta(secondaryCapture);
 
           const recommendationText =
-            preferredCapture === "pdf"
+            preferredCapture === "pdf" && !directPdf
+              ? "Recommended capture: Find PDFs"
+              : preferredCapture === "pdf"
               ? "Recommended capture: PDF"
               : "Recommended capture: Text";
+
+          const preferredLongLabel =
+            preferredCapture === "pdf" && !directPdf
+              ? "Find PDFs"
+              : preferredMeta.longLabel;
+
+          const preferredTitle =
+            preferredCapture === "pdf" && !directPdf
+              ? "Find and capture PDFs linked from this page"
+              : preferredMeta.title;
 
           return (
             <StaggerItem
@@ -1524,14 +1572,15 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                             preferredCapture,
                             r.url,
                             r.title || h || "page",
+                            r,
                           );
                         }}
                         className="btn-primary px-3 py-1.5 rounded-full"
-                        title={preferredMeta.title}
+                        title={preferredTitle}
                       >
                         <DownloadIcon className="h-4 w-4" />
                         <span className="hidden sm:inline">
-                          {preferredMeta.longLabel}
+                          {preferredLongLabel}
                         </span>
                         <span className="sm:hidden">
                           {preferredMeta.shortLabel}
@@ -1545,6 +1594,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                             secondaryCapture,
                             r.url,
                             r.title || h || "page",
+                            r,
                           );
                         }}
                         className="btn-ghost px-3 py-1.5"
@@ -1640,6 +1690,16 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
         defaultAccessMode="public"
         onCancel={() => setPickerOpen(false)}
         onConfirm={onConfirmCapture}
+      />
+
+      <PdfDiscoveryDrawer
+        open={!!pdfDiscoveryTarget}
+        sourceUrlId={pdfDiscoveryTarget?.urlId ?? null}
+        sourceUrl={pdfDiscoveryTarget?.url ?? ""}
+        sourceTitle={pdfDiscoveryTarget?.title ?? ""}
+        query={searchQuery}
+        autoDiscover
+        onClose={() => setPdfDiscoveryTarget(null)}
       />
     </div>
   );

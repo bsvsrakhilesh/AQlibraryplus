@@ -29,6 +29,13 @@ const crawlPdfBody = z.object({
   reader: z.boolean().optional(),
   urlId: z.number().int().optional().nullable(),
   accessMode: accessModeSchema,
+  discoveredDocumentId: z.string().optional().nullable(),
+  captureScope: z
+    .enum(["SOURCE_PAGE", "DISCOVERED_DOCUMENT"])
+    .optional()
+    .nullable(),
+  sourcePageUrl: z.string().url().optional().nullable(),
+  originalSearchQuery: z.string().max(1000).optional().nullable(),
 });
 
 r.post("/crawl/pdf", validate({ body: crawlPdfBody }), crawlPdfHandler);

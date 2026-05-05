@@ -49,6 +49,7 @@ import {
   deriveAiTagRuntimeFromJob,
 } from "../lib/aiTagUi";
 import FolderPickerModal from "../components/urlcollector/FolderPickerModal";
+import PdfDiscoveryDrawer from "../components/urlcollector/PdfDiscoveryDrawer";
 import {
   getCollections,
   createCollection,
@@ -417,6 +418,18 @@ function faviconFor(u: string): string {
   return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(d)}`;
 }
 
+function isPdfUrlLike(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return (
+      u.pathname.toLowerCase().endsWith(".pdf") ||
+      u.search.toLowerCase().includes(".pdf")
+    );
+  } catch {
+    return String(raw || "").toLowerCase().includes(".pdf");
+  }
+}
+
 function toUISaved(row: BackendUrlRow): UISavedUrl {
   const domain = getDomain(row.url);
   const collections = Array.isArray(row.collections)
@@ -450,6 +463,7 @@ function toUISaved(row: BackendUrlRow): UISavedUrl {
     lastVisitedAt: row.lastVisitedAt ?? undefined,
     visitCount: typeof row.visitCount === "number" ? row.visitCount : 0,
     latestSnapshot: (row as any).latestSnapshot ?? null,
+    discoverySummary: (row as any).discoverySummary ?? null,
     tagsMetaRaw,
     taggerVersion: (row as any).taggerVersion ?? null,
     contentHash: (row as any).contentHash ?? null,
@@ -839,6 +853,8 @@ const SavedUrlsPage: React.FC = () => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"text" | "pdf">("text");
   const [pickerTarget, setPickerTarget] = useState<UISavedUrl | null>(null);
+  const [pdfDiscoveryTarget, setPdfDiscoveryTarget] =
+    useState<UISavedUrl | null>(null);
 
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [detailCaptureRefreshKey, setDetailCaptureRefreshKey] = useState(0);
@@ -1987,6 +2003,10 @@ const SavedUrlsPage: React.FC = () => {
 
   const openCapturePicker = useCallback(
     (url: UISavedUrl, mode: "text" | "pdf") => {
+      if (mode === "pdf" && !isPdfUrlLike(url.url)) {
+        setPdfDiscoveryTarget(url);
+        return;
+      }
       setPickerTarget(url);
       setPickerMode(mode);
       setPickerOpen(true);
@@ -4157,6 +4177,22 @@ const SavedUrlsPage: React.FC = () => {
                   setBulkPickerOpen(false);
                   setBulkTargets([]);
                 }
+              }}
+            />
+
+            <PdfDiscoveryDrawer
+              open={!!pdfDiscoveryTarget}
+              sourceUrlId={
+                pdfDiscoveryTarget ? Number(pdfDiscoveryTarget.id) : null
+              }
+              sourceUrl={pdfDiscoveryTarget?.url ?? ""}
+              sourceTitle={pdfDiscoveryTarget?.title ?? ""}
+              autoDiscover
+              onClose={() => setPdfDiscoveryTarget(null)}
+              onAfterCapture={async () => {
+                await refreshUrlsFromServer();
+                await refreshRowsAndFacetsAndQueue();
+                setDetailCaptureRefreshKey((key) => key + 1);
               }}
             />
 

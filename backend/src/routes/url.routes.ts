@@ -18,6 +18,8 @@ import {
   refreshUrlMetadataHandler,
   probeUrlHandler,
   probeUrlByIdHandler,
+  discoverUrlDocumentsHandler,
+  getUrlDiscoveredDocumentsHandler,
 } from "../controllers/url.controller";
 import { z } from "zod";
 import { validate } from "../middlewares/validate";
@@ -61,6 +63,14 @@ const urlSnapshotsQuery = z.object({
 const urlRevisionsQuery = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
 });
+
+const discoverDocumentsBody = z
+  .object({
+    query: z.string().trim().max(1000).optional().nullable(),
+    maxDepth: z.number().int().min(1).max(2).optional().nullable(),
+    useBrowserFallback: z.boolean().optional().nullable(),
+  })
+  .default({});
 
 const listUrlsQuery = z.object({
   q: z.string().optional(),
@@ -116,6 +126,12 @@ r.get(
   "/urls/:id/revisions",
   validate({ query: urlRevisionsQuery }),
   getUrlRevisionsHandler,
+);
+r.get("/urls/:id/discovered-documents", getUrlDiscoveredDocumentsHandler);
+r.post(
+  "/urls/:id/discover-documents",
+  validate({ body: discoverDocumentsBody }),
+  discoverUrlDocumentsHandler,
 );
 r.post("/urls/exists", validate({ body: urlsExistsBody }), urlsExistHandler);
 r.post("/urls", validate({ body: createUrlsBody }), createUrlsHandler);

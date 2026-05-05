@@ -46,6 +46,19 @@ export const ingestionWorker = new Worker(
     };
     if (!sourceId) throw new Error("Missing sourceId");
 
+    const src = await prisma.notebookSource.findUnique({
+      where: { id: sourceId },
+      include: { url: true, file: true },
+    });
+
+    if (!src) {
+      log.warn("ingestion_job_orphaned_source_skipped", {
+        sourceId,
+        queueJobId: job.id,
+      });
+      return;
+    }
+
     await markJobRunning(prisma, "ingestion", sourceId, {
       queueJobId: job.id,
       stage: "starting",
@@ -59,13 +72,6 @@ export const ingestionWorker = new Worker(
       queueJobId: job.id,
       forceOcr: Boolean(forceOcr),
     });
-
-    const src = await prisma.notebookSource.findUnique({
-      where: { id: sourceId },
-      include: { url: true, file: true },
-    });
-
-    if (!src) throw new Error(`NotebookSource not found: ${sourceId}`);
 
     await markJobProgress(prisma, "ingestion", sourceId, {
       stage: "source_resolved",
@@ -341,12 +347,20 @@ ingestionWorker.on("failed", async (job, err) => {
   const sourceId = (job?.data as any)?.sourceId;
   if (!sourceId) return;
 
-  await markJobFailed(prisma, "ingestion", sourceId, {
-    stage: "failed",
-    statusMessage: "Ingestion failed",
-    error: err?.message ?? String(err),
-    meta: { queueJobId: job?.id ?? null },
-  });
+  try {
+    await markJobFailed(prisma, "ingestion", sourceId, {
+      stage: "failed",
+      statusMessage: "Ingestion failed",
+      error: err?.message ?? String(err),
+      meta: { queueJobId: job?.id ?? null },
+    });
+  } catch (telemetryError: any) {
+    log.warn("ingestion_job_failed_telemetry_skipped", {
+      sourceId,
+      queueJobId: job?.id ?? null,
+      error: telemetryError?.message ?? String(telemetryError),
+    });
+  }
 
   log.error("ingestion_job_failed", {
     sourceId,

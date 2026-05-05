@@ -23,6 +23,7 @@ export async function ensureDocumentRevisionForStoredFile(
       id: true,
       urlId: true,
       captureType: true,
+      captureScope: true,
       contentHash: true,
       sha256: true,
       sourceUrl: true,
@@ -45,7 +46,8 @@ export async function ensureDocumentRevisionForStoredFile(
   let documentId: string;
 
   const isUrlSnapshot =
-    f.captureType === "URL_TEXT" || f.captureType === "URL_PDF";
+    (f.captureType === "URL_TEXT" || f.captureType === "URL_PDF") &&
+    (f as any).captureScope !== "DISCOVERED_DOCUMENT";
 
   if (isUrlSnapshot) {
     // Ensure we have a urlId. If crawl saved without urlId, repair using sourceUrl.

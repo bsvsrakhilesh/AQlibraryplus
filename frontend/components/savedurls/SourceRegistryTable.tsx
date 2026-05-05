@@ -176,6 +176,9 @@ const SourceRegistryTable: React.FC<Props> = ({
               const ai = getAiMeta(url);
               const isSelected = selection.has(url.id);
               const isPdf = isPdfUrlLike(url.url);
+              const discoverySummary = url.discoverySummary;
+              const discoveredCount = discoverySummary?.discoveredCount ?? 0;
+              const capturedPdfCount = discoverySummary?.capturedCount ?? 0;
 
               return (
                 <tr
@@ -227,6 +230,17 @@ const SourceRegistryTable: React.FC<Props> = ({
                               {url.description ? (
                                 <div className="mt-1 text-xs text-neutral-600 dark:text-neutral-300 line-clamp-2">
                                   {url.description}
+                                </div>
+                              ) : null}
+
+                              {discoveredCount > 0 ? (
+                                <div className="mt-2">
+                                  <span
+                                    className="chip chip-sky"
+                                    title="PDFs discovered under this saved source page"
+                                  >
+                                    PDFs: {capturedPdfCount}/{discoveredCount}
+                                  </span>
                                 </div>
                               ) : null}
                             </div>
@@ -371,7 +385,7 @@ const SourceRegistryTable: React.FC<Props> = ({
                         title={
                           isPdf
                             ? "Download original PDF"
-                            : "Capture as PDF snapshot"
+                            : "Find and capture PDFs linked from this source"
                         }
                         className={[
                           "rounded-lg px-3 py-2 text-xs font-medium transition",
@@ -380,7 +394,7 @@ const SourceRegistryTable: React.FC<Props> = ({
                           !onCapture ? "cursor-not-allowed opacity-50" : "",
                         ].join(" ")}
                       >
-                        PDF
+                        {isPdf ? "PDF" : discoveredCount > 0 ? "PDFs" : "Find PDFs"}
                       </button>
 
                       <button

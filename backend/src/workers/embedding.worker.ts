@@ -34,6 +34,19 @@ export const embeddingWorker = new Worker(
     const { sourceId } = job.data as { sourceId: string };
     if (!sourceId) throw new Error("Missing sourceId");
 
+    const src = await prisma.notebookSource.findUnique({
+      where: { id: sourceId },
+      select: { activeRevisionId: true },
+    });
+
+    if (!src) {
+      log.warn("embedding_job_orphaned_source_skipped", {
+        sourceId,
+        queueJobId: job.id,
+      });
+      return;
+    }
+
     await markJobRunning(prisma, "embedding", sourceId, {
       queueJobId: job.id,
       stage: "starting",
@@ -46,11 +59,6 @@ export const embeddingWorker = new Worker(
       sourceId,
       queueJobId: job.id,
       model: DEFAULT_EMBEDDING_MODEL,
-    });
-
-    const src = await prisma.notebookSource.findUnique({
-      where: { id: sourceId },
-      select: { activeRevisionId: true },
     });
 
     await markJobProgress(prisma, "embedding", sourceId, {
@@ -136,12 +144,20 @@ embeddingWorker.on("failed", async (job, err) => {
   const sourceId = (job?.data as any)?.sourceId;
   if (!sourceId) return;
 
-  await markJobFailed(prisma, "embedding", sourceId, {
-    stage: "failed",
-    statusMessage: "Embedding job failed",
-    error: err?.message ?? String(err),
-    meta: { queueJobId: job?.id ?? null, model: DEFAULT_EMBEDDING_MODEL },
-  });
+  try {
+    await markJobFailed(prisma, "embedding", sourceId, {
+      stage: "failed",
+      statusMessage: "Embedding job failed",
+      error: err?.message ?? String(err),
+      meta: { queueJobId: job?.id ?? null, model: DEFAULT_EMBEDDING_MODEL },
+    });
+  } catch (telemetryError: any) {
+    log.warn("embedding_job_failed_telemetry_skipped", {
+      sourceId,
+      queueJobId: job?.id ?? null,
+      error: telemetryError?.message ?? String(telemetryError),
+    });
+  }
 
   log.error("embedding_job_failed", {
     sourceId,

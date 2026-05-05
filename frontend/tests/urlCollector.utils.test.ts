@@ -5,6 +5,7 @@ import {
   buildCollectorSearchQuery,
   formatAppliedCollectorSearchPlan,
   inferPreferredCollectorCapture,
+  isDirectPdfSearchResult,
   normalizeCollectorKeywords,
   normalizeCollectorWebsite,
   suggestCollectorCaptureName,
@@ -84,6 +85,30 @@ test("inferPreferredCollectorCapture prefers PDF for official document types and
   assert.equal(inferPreferredCollectorCapture(courtOrder), "pdf");
   assert.equal(inferPreferredCollectorCapture(article), "text");
   assert.equal(inferPreferredCollectorCapture(directPdf), "pdf");
+});
+
+test("isDirectPdfSearchResult distinguishes PDFs from container pages", () => {
+  assert.equal(
+    isDirectPdfSearchResult({
+      title: "Report",
+      url: "https://example.gov/report.pdf",
+    }),
+    true,
+  );
+
+  assert.equal(
+    isDirectPdfSearchResult({
+      title: "Orders",
+      url: "https://example.gov/orders",
+      intelligence: {
+        docType: "official_document",
+        sourceType: "government",
+        fileTypeHint: "html",
+        confidence: "high",
+      },
+    }),
+    false,
+  );
 });
 
 test("suggestCollectorCaptureName prefers embedded pdf filenames and keeps a stable extension", () => {
