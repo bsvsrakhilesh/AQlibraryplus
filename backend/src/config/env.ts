@@ -16,6 +16,13 @@ const EnvSchema = z.object({
   OPENAI_MODEL: z.string().optional().default("gpt-5.2"),
   OPENAI_TIMEOUT_MS: z.coerce.number().optional().default(30_000),
 
+  // Embeddings. Current SourceChunk.embedding column is vector(1536).
+  EMBEDDING_MODEL: z.string().optional().default("text-embedding-3-small"),
+  EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().optional().default(1536),
+  EMBEDDING_BATCH_SIZE: z.coerce.number().int().positive().optional().default(96),
+  EMBEDDING_MAX_RETRIES: z.coerce.number().int().min(0).optional().default(3),
+  EMBEDDING_RETRY_BASE_MS: z.coerce.number().int().positive().optional().default(750),
+
   // Redis (queues)
   REDIS_URL: z.string().optional().default("redis://localhost:6379/0"),
   EMBEDDING_QUEUE_CONCURRENCY: z.coerce.number().optional().default(2),

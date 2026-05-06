@@ -14,6 +14,13 @@ export type ChatHistoryItem = {
 
 export type AnswerMode = "draft" | "evidence" | "briefing";
 
+type ChatStreamEvent =
+  | { type: "run"; runId: string }
+  | { type: "status"; message: string }
+  | { type: "delta"; text: string };
+
+type ChatStreamEmit = (event: ChatStreamEvent) => void | Promise<void>;
+
 const NOTEBOOK_CHAT_PROMPT_VERSION = "notebook-chat-v2";
 
 function asJson(value: unknown): Prisma.InputJsonValue {
@@ -499,6 +506,7 @@ async function rerankWithLLM(p: {
   candidates: { chunkId: string; text: string; sourceLabel: string }[];
   finalLimit: number;
   temperature?: number;
+  signal?: AbortSignal;
 }) {
   if (!p.candidates.length) return [];
 
@@ -530,14 +538,17 @@ async function rerankWithLLM(p: {
     `Return JSON as { ranked: [{ chunkId, score }] } with highest score = most relevant.`,
   ].join("\n");
 
-  const resp = await openaiClient().responses.parse({
-    model: defaultModel(),
-    input: [
-      { role: "system" as const, content: system },
-      { role: "user" as const, content: user },
-    ],
-    text: { format: zodTextFormat(RerankSchema, "rerank") },
-  });
+  const resp = await openaiClient().responses.parse(
+    {
+      model: defaultModel(),
+      input: [
+        { role: "system" as const, content: system },
+        { role: "user" as const, content: user },
+      ],
+      text: { format: zodTextFormat(RerankSchema, "rerank") },
+    },
+    p.signal ? { signal: p.signal } : undefined,
+  );
 
   const out = resp.output_parsed;
   if (!out) return [];
@@ -1057,6 +1068,8 @@ export async function runNotebookChat(p: {
   answerMode?: AnswerMode;
   requestId?: string | null;
   createdBy?: string | null;
+  signal?: AbortSignal;
+  onStreamEvent?: ChatStreamEmit;
 }) {
   const notebookId = p.notebookId;
   const message = (p.message ?? "").trim();
@@ -1086,6 +1099,8 @@ export async function runNotebookChat(p: {
     sourceIds: filterSourceIds,
   });
 
+  await p.onStreamEvent?.({ type: "run", runId: run.id });
+
   let candidateChunkIds: string[] = [];
   let finalChunkIds: string[] = [];
   let sourceRevisionIds: string[] = [];
@@ -1093,11 +1108,24 @@ export async function runNotebookChat(p: {
   let pipelineConfigIds: string[] = [];
 
   try {
+    if (p.signal?.aborted) {
+      throw new DOMException("Chat request was canceled.", "AbortError");
+    }
+
+    await p.onStreamEvent?.({ type: "status", message: "Retrieving evidence" });
+
     candidateChunkIds = await retrieveRelevantChunkIdsHybrid({
       notebookId,
       query: message,
       limit: 8,
       sourceIds: filterSourceIds,
+    });
+
+    await p.onStreamEvent?.({
+      type: "status",
+      message: candidateChunkIds.length
+        ? `Found ${candidateChunkIds.length} candidate passages`
+        : "No matching passages found",
     });
 
     if (!env.OPENAI_ENABLED) {
@@ -1177,11 +1205,13 @@ export async function runNotebookChat(p: {
     });
 
     try {
+      await p.onStreamEvent?.({ type: "status", message: "Ranking evidence" });
       finalChunkIds = await rerankWithLLM({
         query: message,
         candidates: rerankCandidates,
         finalLimit: 8,
         temperature: 0,
+        signal: p.signal,
       });
     } catch {
       finalChunkIds = candidateChunkIds;
@@ -1252,13 +1282,18 @@ export async function runNotebookChat(p: {
       { role: "user" as const, content: user },
     ];
 
-    const resp = await openaiClient().responses.parse({
-      model: defaultModel(),
-      input,
-      text: {
-        format: zodTextFormat(ChatAnswerSchema, "chat_answer"),
+    await p.onStreamEvent?.({ type: "status", message: "Composing answer" });
+
+    const resp = await openaiClient().responses.parse(
+      {
+        model: defaultModel(),
+        input,
+        text: {
+          format: zodTextFormat(ChatAnswerSchema, "chat_answer"),
+        },
       },
-    });
+      p.signal ? { signal: p.signal } : undefined,
+    );
 
     const openaiResponseId = (resp as any)?.id ?? null;
     const out = resp.output_parsed;
@@ -1399,7 +1434,7 @@ export async function runNotebookChat(p: {
       byChunkId,
     });
 
-    return await succeedNotebookChatRun({
+    const result = await succeedNotebookChatRun({
       runId: run.id,
       startedAtMs,
       candidateChunkIds,
@@ -1418,6 +1453,19 @@ export async function runNotebookChat(p: {
         claimLinks,
       },
     });
+
+    if (p.onStreamEvent) {
+      const answer = String(result.answer ?? "");
+      for (let i = 0; i < answer.length; i += 18) {
+        if (p.signal?.aborted) break;
+        await p.onStreamEvent({
+          type: "delta",
+          text: answer.slice(i, i + 18),
+        });
+      }
+    }
+
+    return result;
   } catch (error) {
     await failNotebookChatRun({
       runId: run.id,

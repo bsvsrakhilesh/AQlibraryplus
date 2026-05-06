@@ -2,8 +2,9 @@ import { Worker, type ConnectionOptions } from "bullmq";
 import prisma from "../config/database";
 import { env, requireOpenAI } from "../config/env";
 import {
-  DEFAULT_EMBEDDING_MODEL,
   embedTexts,
+  embeddingModelLabel,
+  getEmbeddingConfig,
   toPgVectorLiteral,
 } from "../services/embeddings.service";
 import {
@@ -33,6 +34,8 @@ export const embeddingWorker = new Worker(
 
     const { sourceId } = job.data as { sourceId: string };
     if (!sourceId) throw new Error("Missing sourceId");
+    const embeddingConfig = getEmbeddingConfig();
+    const embeddingLabel = embeddingModelLabel(embeddingConfig);
 
     const src = await prisma.notebookSource.findUnique({
       where: { id: sourceId },
@@ -52,13 +55,19 @@ export const embeddingWorker = new Worker(
       stage: "starting",
       progressPct: 4,
       statusMessage: "Worker picked up embedding job",
-      meta: { bullJobName: job.name, model: DEFAULT_EMBEDDING_MODEL },
+      meta: {
+        bullJobName: job.name,
+        model: embeddingConfig.model,
+        dimensions: embeddingConfig.dimensions,
+        batchSize: embeddingConfig.batchSize,
+      },
     });
 
     log.info("embedding_job_started", {
       sourceId,
       queueJobId: job.id,
-      model: DEFAULT_EMBEDDING_MODEL,
+      model: embeddingConfig.model,
+      dimensions: embeddingConfig.dimensions,
     });
 
     await markJobProgress(prisma, "embedding", sourceId, {
@@ -72,7 +81,7 @@ export const embeddingWorker = new Worker(
       where: {
         sourceId,
         revisionId: src?.activeRevisionId ?? undefined,
-        embeddedAt: null,
+        OR: [{ embeddedAt: null }, { embeddingModel: { not: embeddingLabel } }],
       },
       orderBy: { idx: "asc" },
       select: { id: true, text: true },
@@ -82,7 +91,11 @@ export const embeddingWorker = new Worker(
       await markJobSucceeded(prisma, "embedding", sourceId, {
         stage: "completed",
         statusMessage: "All chunks are already indexed",
-        meta: { indexedChunkCount: 0, model: DEFAULT_EMBEDDING_MODEL },
+        meta: {
+          indexedChunkCount: 0,
+          model: embeddingConfig.model,
+          dimensions: embeddingConfig.dimensions,
+        },
       });
       return;
     }
@@ -91,11 +104,42 @@ export const embeddingWorker = new Worker(
       stage: "embedding_model_call",
       progressPct: 48,
       statusMessage: `Embedding ${chunks.length} chunk(s)`,
-      meta: { chunkCount: chunks.length, model: DEFAULT_EMBEDDING_MODEL },
+      meta: {
+        chunkCount: chunks.length,
+        model: embeddingConfig.model,
+        dimensions: embeddingConfig.dimensions,
+        batchSize: embeddingConfig.batchSize,
+      },
     });
 
     const texts = chunks.map((c) => c.text);
-    const embeddings = await embedTexts(texts, DEFAULT_EMBEDDING_MODEL);
+    const embeddings = await embedTexts(texts, embeddingConfig.model, {
+      dimensions: embeddingConfig.dimensions,
+      batchSize: embeddingConfig.batchSize,
+      onBatchStart: async (progress) => {
+        const pct = 18 + Math.round((progress.batchIndex / progress.batchCount) * 42);
+        await markJobProgress(prisma, "embedding", sourceId, {
+          stage: "embedding_model_call",
+          progressPct: pct,
+          statusMessage: `Embedding batch ${progress.batchIndex}/${progress.batchCount}`,
+          meta: {
+            ...progress,
+            chunkCount: chunks.length,
+          },
+        });
+      },
+      onBatchComplete: async (progress) => {
+        await markJobProgress(prisma, "embedding", sourceId, {
+          stage: "embedding_model_call",
+          progressPct: 60,
+          statusMessage: `Embedded batch ${progress.batchIndex}/${progress.batchCount}`,
+          meta: {
+            ...progress,
+            chunkCount: chunks.length,
+          },
+        });
+      },
+    });
     if (embeddings.length !== chunks.length) {
       throw new Error("Embedding count mismatch.");
     }
@@ -104,34 +148,60 @@ export const embeddingWorker = new Worker(
       stage: "persisting_embeddings",
       progressPct: 82,
       statusMessage: "Persisting vector index rows",
-      meta: { chunkCount: chunks.length, model: DEFAULT_EMBEDDING_MODEL },
+      meta: {
+        chunkCount: chunks.length,
+        model: embeddingConfig.model,
+        dimensions: embeddingConfig.dimensions,
+        batchSize: embeddingConfig.batchSize,
+      },
     });
 
     const now = new Date();
-    await prisma.$transaction(
-      chunks.map((row, i) => {
-        const v = toPgVectorLiteral(embeddings[i]);
-        return prisma.$executeRaw`
-          UPDATE "SourceChunk"
-          SET "embedding" = ${v}::vector,
-              "embeddingModel" = ${DEFAULT_EMBEDDING_MODEL},
-              "embeddedAt" = ${now}
-          WHERE "id" = ${row.id}
-        `;
-      }),
-    );
+    for (let i = 0; i < chunks.length; i += embeddingConfig.batchSize) {
+      const chunkBatch = chunks.slice(i, i + embeddingConfig.batchSize);
+      await prisma.$transaction(
+        chunkBatch.map((row, batchIndex) => {
+          const absoluteIndex = i + batchIndex;
+          const v = toPgVectorLiteral(embeddings[absoluteIndex]);
+          return prisma.$executeRaw`
+            UPDATE "SourceChunk"
+            SET "embedding" = ${v}::vector,
+                "embeddingModel" = ${embeddingLabel},
+                "embeddedAt" = ${now}
+            WHERE "id" = ${row.id}
+          `;
+        }),
+      );
+
+      await markJobProgress(prisma, "embedding", sourceId, {
+        stage: "persisting_embeddings",
+        progressPct: 82 + Math.round(((i + chunkBatch.length) / chunks.length) * 15),
+        statusMessage: `Persisted ${i + chunkBatch.length}/${chunks.length} embeddings`,
+        meta: {
+          persistedChunkCount: i + chunkBatch.length,
+          chunkCount: chunks.length,
+          model: embeddingConfig.model,
+          dimensions: embeddingConfig.dimensions,
+        },
+      });
+    }
 
     await markJobSucceeded(prisma, "embedding", sourceId, {
       stage: "completed",
       statusMessage: "Semantic index is ready",
-      meta: { chunkCount: chunks.length, model: DEFAULT_EMBEDDING_MODEL },
+      meta: {
+        chunkCount: chunks.length,
+        model: embeddingConfig.model,
+        dimensions: embeddingConfig.dimensions,
+      },
     });
 
     log.info("embedding_job_succeeded", {
       sourceId,
       queueJobId: job.id,
       chunkCount: chunks.length,
-      model: DEFAULT_EMBEDDING_MODEL,
+      model: embeddingConfig.model,
+      dimensions: embeddingConfig.dimensions,
     });
   },
   {
@@ -145,11 +215,16 @@ embeddingWorker.on("failed", async (job, err) => {
   if (!sourceId) return;
 
   try {
+    const embeddingConfig = getEmbeddingConfig();
     await markJobFailed(prisma, "embedding", sourceId, {
       stage: "failed",
       statusMessage: "Embedding job failed",
       error: err?.message ?? String(err),
-      meta: { queueJobId: job?.id ?? null, model: DEFAULT_EMBEDDING_MODEL },
+      meta: {
+        queueJobId: job?.id ?? null,
+        model: embeddingConfig.model,
+        dimensions: embeddingConfig.dimensions,
+      },
     });
   } catch (telemetryError: any) {
     log.warn("embedding_job_failed_telemetry_skipped", {
@@ -163,6 +238,6 @@ embeddingWorker.on("failed", async (job, err) => {
     sourceId,
     queueJobId: job?.id ?? null,
     error: err?.message ?? String(err),
-    model: DEFAULT_EMBEDDING_MODEL,
+    model: getEmbeddingConfig().model,
   });
 });

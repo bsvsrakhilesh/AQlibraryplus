@@ -32,6 +32,10 @@ import {
   runNotebookChat,
   listNotebookChatRuns,
 } from "../services/notebookChat.service";
+import {
+  formatNotebookSseEvent,
+  userSafeNotebookStreamError,
+} from "../services/notebookStream.service";
 import { writeAuditLog } from "../services/audit.service";
 import {
   buildActorAuditMetadata,
@@ -439,6 +443,74 @@ export async function postNotebookChatHandler(
     res.json(out);
   } catch (e) {
     next(e);
+  }
+}
+
+export async function postNotebookChatStreamHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const notebookId = firstParam(req.params.id);
+  const abortController = new AbortController();
+  let closed = false;
+
+  const send = (event: "run" | "status" | "delta" | "final" | "error", data: any) => {
+    if (closed || res.writableEnded) return;
+    res.write(formatNotebookSseEvent(event, data));
+  };
+
+  try {
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    req.on("close", () => {
+      closed = true;
+      abortController.abort();
+    });
+
+    const out = await runNotebookChat({
+      notebookId,
+      message: req.body.message,
+      history: Array.isArray(req.body?.history) ? req.body.history : undefined,
+      sourceIds: Array.isArray(req.body?.sourceIds)
+        ? req.body.sourceIds
+        : undefined,
+      answerMode:
+        req.body?.answerMode === "draft" ||
+        req.body?.answerMode === "evidence" ||
+        req.body?.answerMode === "briefing"
+          ? req.body.answerMode
+          : undefined,
+      requestId: (req as any).requestId ?? null,
+      createdBy: null,
+      signal: abortController.signal,
+      onStreamEvent: (event) => send(event.type, event),
+    });
+
+    await logAudit(req, {
+      action: "notebook.chat.streamed",
+      resourceType: "CHAT_RUN",
+      resourceId: out.runId ?? null,
+      metadata: {
+        notebookId,
+        answerMode: out.mode,
+        sourceCount: Array.isArray(req.body?.sourceIds)
+          ? req.body.sourceIds.length
+          : null,
+        model: out.model ?? null,
+      },
+    });
+
+    send("final", out);
+    if (!closed && !res.writableEnded) res.end();
+  } catch (e) {
+    if (closed || res.writableEnded) return;
+    send("error", { message: userSafeNotebookStreamError(e) });
+    res.end();
   }
 }
 

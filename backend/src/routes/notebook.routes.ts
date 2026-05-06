@@ -11,6 +11,7 @@ import {
   postNotebookSourceFileHandler,
   deleteNotebookSourceHandler,
   getNotebookChatHistoryHandler,
+  postNotebookChatStreamHandler,
   postNotebookChatHandler,
   postNotebookNoteHandler,
   postNotebookTemplateNoteHandler,
@@ -186,6 +187,27 @@ r.get(
       .optional(),
   }),
   getNotebookChatHistoryHandler,
+);
+
+r.post(
+  "/notebooks/:id/chat/stream",
+  validate({
+    params: z.object({ id: z.string().min(1) }),
+    body: z.object({
+      message: z.string().min(1),
+      history: z
+        .array(
+          z.object({
+            role: z.enum(["user", "assistant"]),
+            content: z.string().min(1),
+          }),
+        )
+        .optional(),
+      sourceIds: z.array(z.string().min(1)).optional(),
+      answerMode: z.enum(["draft", "evidence", "briefing"]).optional(),
+    }),
+  }),
+  postNotebookChatStreamHandler,
 );
 
 r.post(

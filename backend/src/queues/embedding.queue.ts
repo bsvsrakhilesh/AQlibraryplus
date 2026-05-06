@@ -2,6 +2,10 @@ import { Queue, type ConnectionOptions } from "bullmq";
 import { env } from "../config/env";
 import prisma from "../config/database";
 import { markJobQueued } from "../services/jobTelemetry.service";
+import {
+  embeddingModelLabel,
+  getEmbeddingConfig,
+} from "../services/embeddings.service";
 
 function bullConnection(): ConnectionOptions {
   const u = new URL(env.REDIS_URL);
@@ -27,6 +31,7 @@ export const embeddingQueue = new Queue("embeddings", {
 
 export async function enqueueEmbeddingJob(sourceId: string) {
   const jobId = sourceId;
+  const config = getEmbeddingConfig();
 
   const existing = await embeddingQueue.getJob(jobId);
   if (
@@ -46,6 +51,9 @@ export async function enqueueEmbeddingJob(sourceId: string) {
     statusMessage: "Queued embedding job",
     meta: {
       bullQueue: "embeddings",
+      model: config.model,
+      dimensions: config.dimensions,
+      embeddingModel: embeddingModelLabel(config),
     },
   });
 }

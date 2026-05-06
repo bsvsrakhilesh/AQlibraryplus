@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Eye, Pencil, Plus, Save, ShieldCheck } from "lucide-react";
 import {
   notebookClient as api,
   type NoteProvenanceBundle,
 } from "../../lib/notebookClient";
 import { subscribeNotebookEvent } from "../../lib/notebookEvents";
+import { useConfirm } from "../providers/Confirm";
 
 function isNoteProvenanceBundle(value: unknown): value is NoteProvenanceBundle {
   return (
@@ -45,15 +48,89 @@ function mergeNoteProvenance(
   };
 }
 
+function renderInlineMarkdown(text: string) {
+  return String(text ?? "")
+    .split(/(\*\*[^*]+\*\*|_[^_]+_)/g)
+    .map((part, index) => {
+      if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+        return <strong key={index}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("_") && part.endsWith("_") && part.length > 2) {
+        return <em key={index}>{part.slice(1, -1)}</em>;
+      }
+      return <span key={index}>{part}</span>;
+    });
+}
+
+function MarkdownPreview({ text }: { text: string }) {
+  const blocks: React.ReactNode[] = [];
+  let listItems: string[] = [];
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    const items = listItems;
+    listItems = [];
+    blocks.push(
+      <ul key={`ul-${blocks.length}`} className="my-2 list-disc pl-5 space-y-1">
+        {items.map((item, index) => (
+          <li key={index}>{renderInlineMarkdown(item)}</li>
+        ))}
+      </ul>,
+    );
+  };
+
+  String(text || "")
+    .split(/\r?\n/)
+    .forEach((line, index) => {
+      const trimmed = line.trim();
+      const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+      if (bullet) {
+        listItems.push(bullet[1]);
+        return;
+      }
+
+      flushList();
+      if (!trimmed) {
+        blocks.push(<div key={`br-${index}`} className="h-2" />);
+        return;
+      }
+
+      const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+      if (heading) {
+        blocks.push(
+          <div
+            key={`h-${index}`}
+            className="mt-3 first:mt-0 text-sm font-semibold text-slate-950"
+          >
+            {renderInlineMarkdown(heading[2])}
+          </div>,
+        );
+        return;
+      }
+
+      blocks.push(
+        <p key={`p-${index}`} className="my-1 first:mt-0 last:mb-0">
+          {renderInlineMarkdown(trimmed)}
+        </p>,
+      );
+    });
+
+  flushList();
+
+  return <>{blocks.length ? blocks : <span className="text-slate-400">Nothing to preview yet.</span>}</>;
+}
+
 export default function NotesEditor({
   notebookId,
 }: {
   notebookId: string | null;
 }) {
   const qc = useQueryClient();
+  const { confirm } = useConfirm();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [view, setView] = useState<"write" | "preview">("write");
 
   // UX state (NotebookLM-style): draft vs saved note
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -67,7 +144,7 @@ export default function NotesEditor({
   const [citationsPayload, setCitationsPayload] =
     useState<NoteProvenanceBundle | null>(null);
 
-  const startNewNote = () => {
+  const resetNote = useCallback(() => {
     setActiveNoteId(null);
     setTitle("");
     setContent("");
@@ -76,7 +153,24 @@ export default function NotesEditor({
     setLastSavedAt(null);
     setLastDraftAt(null);
     setCitationsPayload(null);
-  };
+    setView("write");
+  }, []);
+
+  const confirmDiscardIfDirty = useCallback(async () => {
+    if (!dirty) return true;
+    return confirm({
+      title: "Unsaved note changes",
+      description:
+        "You have unsaved note edits. Continue and keep them only as a local draft?",
+      confirmText: "Continue",
+      cancelText: "Stay here",
+    });
+  }, [confirm, dirty]);
+
+  const startNewNote = useCallback(async () => {
+    if (!(await confirmDiscardIfDirty())) return;
+    resetNote();
+  }, [confirmDiscardIfDirty, resetNote]);
 
   // Switching notebooks should exit edit-mode cleanly
   useEffect(() => {
@@ -140,10 +234,9 @@ export default function NotesEditor({
   // load drafts (separate drafts for "new note" vs "editing note")
   useEffect(() => {
     if (!notebookId) return;
+    if (activeNoteId) return;
 
-    const base = activeNoteId
-      ? `nb:noteDraft:${notebookId}:note:${activeNoteId}`
-      : `nb:noteDraft:${notebookId}:new`;
+    const base = `nb:noteDraft:${notebookId}:new`;
 
     const t = localStorage.getItem(`${base}:title`) || "";
     const c = localStorage.getItem(`${base}:content`) || "";
@@ -210,20 +303,27 @@ export default function NotesEditor({
   // Open an existing note from the Recent notes list
   useEffect(() => {
     return subscribeNotebookEvent("open-note", (n) => {
-      if (!n || !n.id) return;
+      void (async () => {
+        if (!n || !n.id) return;
+        if (!(await confirmDiscardIfDirty())) return;
 
-      setActiveNoteId(n.id);
-      setTitle(n.title || "");
-      setContent(n.content || "");
-      setDirty(false);
-      setSaveError(null);
-      setLastSavedAt(new Date(n.updatedAt));
-      setLastDraftAt(null);
-      setCitationsPayload(n.citations ?? null);
+        setActiveNoteId(n.id);
+        setTitle(n.title || "");
+        setContent(n.content || "");
+        setDirty(false);
+        setSaveError(null);
+        setLastSavedAt(new Date(n.updatedAt));
+        setLastDraftAt(null);
+        setCitationsPayload(n.citations ?? null);
+        setView("write");
 
-      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        editorRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      })();
     });
-  }, []);
+  }, [confirmDiscardIfDirty]);
 
   useEffect(() => {
     return subscribeNotebookEvent("new-note", () => {
@@ -253,21 +353,23 @@ export default function NotesEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, [notebookId, title, content, activeNoteId, dirty, saveM]);
 
+  const provenanceArtifacts = citationsPayload?.artifacts ?? [];
+
   return (
     <div
       ref={editorRef}
-      className="p-4 flex flex-col gap-2 border-emerald-100/70 bg-white/75 rounded-xl shadow-md backdrop-blur supports-[backdrop-filter]:bg-white/55"
+      className="p-4 flex flex-col gap-3 border border-slate-200/80 bg-white/85 rounded-xl shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/70"
     >
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className="text-sm font-semibold">Notes</div>
+          <div className="text-sm font-semibold text-slate-950">Notes</div>
 
           {activeNoteId ? (
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800">
               Editing
             </span>
           ) : (
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700">
               New
             </span>
           )}
@@ -276,14 +378,15 @@ export default function NotesEditor({
             <button
               type="button"
               onClick={startNewNote}
-              className="ml-1 text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+              className="ml-1 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
               title="Start a new note"
             >
+              <Plus className="h-3 w-3" />
               New note
             </button>
           )}
         </div>
-        <div className="text-[11px] text-gray-500">
+        <div className="text-[11px] text-slate-500">
           {saveM.isPending
             ? "Saving…"
             : saveError
@@ -304,6 +407,50 @@ export default function NotesEditor({
         </div>
       </div>
 
+      <div className="flex items-center justify-between gap-2">
+        <div
+          className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-0.5"
+          role="group"
+          aria-label="Note view"
+        >
+          <button
+            type="button"
+            onClick={() => setView("write")}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+              view === "write"
+                ? "bg-white text-slate-950 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Pencil className="h-3 w-3" />
+            Write
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("preview")}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+              view === "preview"
+                ? "bg-white text-slate-950 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Eye className="h-3 w-3" />
+            Preview
+          </button>
+        </div>
+
+        {provenanceArtifacts.length ? (
+          <div
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800"
+            title="This note includes saved provenance from chat or template generation."
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            {provenanceArtifacts.length} evidence bundle
+            {provenanceArtifacts.length === 1 ? "" : "s"}
+          </div>
+        ) : null}
+      </div>
+
       <input
         name="note-title"
         value={title}
@@ -315,17 +462,38 @@ export default function NotesEditor({
         className="border rounded-xl px-3 py-2 text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
         disabled={!notebookId}
       />
-      <textarea
-        name="note-content"
-        value={content}
-        onChange={(e) => {
-          setContent(e.target.value);
-          setDirty(true);
-        }}
-        placeholder="Write notes (markdown allowed)…"
-        className="h-40 border rounded-xl p-3 text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
-        disabled={!notebookId}
-      />
+      {view === "write" ? (
+        <textarea
+          name="note-content"
+          value={content}
+          onChange={(e) => {
+            setContent(e.target.value);
+            setDirty(true);
+          }}
+          placeholder="Write notes (markdown allowed)..."
+          className="h-44 border rounded-xl p-3 text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
+          disabled={!notebookId}
+        />
+      ) : (
+        <div className="min-h-44 border rounded-xl p-3 text-sm leading-6 bg-slate-50/70 text-slate-800">
+          <MarkdownPreview text={content} />
+        </div>
+      )}
+
+      {provenanceArtifacts.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {provenanceArtifacts.slice(0, 4).map((artifact, index) => (
+            <span
+              key={`${artifact.runId ?? "artifact"}_${artifact.createdAt}_${index}`}
+              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+              title={artifact.model || artifact.promptVersion || undefined}
+            >
+              {artifact.kind === "chat-answer" ? "Chat" : "Template"} ·{" "}
+              {artifact.citations?.length ?? 0} citations
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="flex justify-end">
         <button
           onClick={() =>
@@ -340,8 +508,9 @@ export default function NotesEditor({
             (!title.trim() && !content.trim()) ||
             (activeNoteId ? !dirty : false)
           }
-          className="px-6 py-2.5 rounded-full bg-slate-500 text-white text-sm disabled:opacity-60 shadow hover:bg-slate-600"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-slate-950 text-white text-sm font-semibold disabled:opacity-55 disabled:cursor-not-allowed shadow-[0_16px_40px_rgba(15,23,42,0.18)] hover:bg-black"
         >
+          <Save className="h-4 w-4" />
           {saveM.isPending
             ? "Saving…"
             : activeNoteId

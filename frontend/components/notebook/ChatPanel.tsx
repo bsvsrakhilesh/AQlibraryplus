@@ -238,6 +238,8 @@ export default function ChatPanel({
 }) {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
+  const [streamStatus, setStreamStatus] = useState("Thinking");
+  const [streamMessageId, setStreamMessageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -266,6 +268,15 @@ export default function ChatPanel({
   const scopeCount = scopeIncludedCount ?? readyCount;
   const totalCount = totalSources ?? scopeCount;
   const blockedCount = notReadyIncludedCount ?? 0;
+  const sourceGuardMessage =
+    totalCount === 0
+      ? "Add a source before asking."
+      : scopeCount === 0
+        ? "Include at least one source before asking."
+        : readyCount === 0
+          ? "Wait for at least one included source to become Ready."
+          : null;
+  const canChat = !!notebookId && !sourceGuardMessage;
 
   // Load chat history from the backend for this notebook.
   useEffect(() => {
@@ -413,6 +424,19 @@ export default function ChatPanel({
 
       const question = (q || "").trim();
       if (!question) return;
+      if (sourceGuardMessage) {
+        setMessages((m) => [
+          ...m,
+          {
+            id: uid(),
+            ts: Date.now(),
+            role: "assistant",
+            text: sourceGuardMessage,
+            displayText: sourceGuardMessage,
+          },
+        ]);
+        return;
+      }
 
       const history = buildHistory(12);
 
@@ -423,40 +447,114 @@ export default function ChatPanel({
         text: question,
       };
 
-      setMessages((m) => [...m, userMsg]);
+      const assistantId = uid();
+      let streamedText = "";
+
+      setMessages((m) => [
+        ...m,
+        userMsg,
+        {
+          id: assistantId,
+          ts: Date.now(),
+          role: "assistant",
+          text: "",
+          displayText: "",
+        },
+      ]);
       setPending(true);
+      setStreamStatus("Starting");
+      setStreamMessageId(assistantId);
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
       try {
-        const res = await api.chat(notebookId, question, {
+        const res = await api.chatStream(notebookId, question, {
           sourceIds,
           history,
           answerMode,
           signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === "status") {
+              setStreamStatus(event.message);
+              return;
+            }
+
+            if (event.type === "run") {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantId ? { ...msg, runId: event.runId } : msg,
+                ),
+              );
+              return;
+            }
+
+            if (event.type === "delta") {
+              streamedText += event.text;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantId
+                    ? {
+                        ...msg,
+                        text: streamedText,
+                        displayText: streamedText,
+                      }
+                    : msg,
+                ),
+              );
+              return;
+            }
+
+            if (event.type === "final") {
+              const answer = event.answer;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantId
+                    ? {
+                        ...msg,
+                        text: answer.answer,
+                        displayText: streamedText || answer.answer,
+                        citations: answer.citations,
+                        suggested: answer.suggested,
+                        mode: answer.mode,
+                        evidence: answer.evidence,
+                        runId: answer.runId,
+                        promptVersion: answer.promptVersion,
+                        model: answer.model ?? null,
+                        latencyMs: answer.latencyMs ?? null,
+                        grounding: answer.grounding ?? null,
+                        claimLinks: answer.claimLinks ?? [],
+                      }
+                    : msg,
+                ),
+              );
+            }
+          },
         });
-        const assistantId = uid();
-        const base: Msg = {
-          id: assistantId,
-          ts: Date.now(),
-          role: "assistant",
-          text: res.answer,
-          displayText: "",
-          citations: res.citations,
-          suggested: res.suggested,
-          mode: res.mode,
-          evidence: res.evidence,
 
-          runId: res.runId,
-          promptVersion: res.promptVersion,
-          model: res.model ?? null,
-          latencyMs: res.latencyMs ?? null,
-          grounding: res.grounding ?? null,
-          claimLinks: res.claimLinks ?? [],
-        };
-
-        setMessages((m) => [...m, base]);
+        if (!streamedText) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? {
+                    ...msg,
+                    text: res.answer,
+                    displayText: res.answer,
+                    citations: res.citations,
+                    suggested: res.suggested,
+                    mode: res.mode,
+                    evidence: res.evidence,
+                    runId: res.runId,
+                    promptVersion: res.promptVersion,
+                    model: res.model ?? null,
+                    latencyMs: res.latencyMs ?? null,
+                    grounding: res.grounding ?? null,
+                    claimLinks: res.claimLinks ?? [],
+                  }
+                : msg,
+            ),
+          );
+        }
 
         if (saveToNotes?.title) {
           emitNotebookEvent("add-note", {
@@ -490,55 +588,48 @@ export default function ChatPanel({
           });
         }
 
-        let i = 0;
-        const step = 14;
-
-        while (i < res.answer.length) {
-          if (controller.signal.aborted) break;
-          await new Promise((r) => setTimeout(r, 12));
-          i += step;
-          const slice = res.answer.slice(0, i);
-
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (!last || last.id !== assistantId) return prev;
-            return [...prev.slice(0, -1), { ...last, displayText: slice }];
-          });
-        }
       } catch (e: any) {
-        if (e?.code === "ERR_CANCELED" || e?.name === "CanceledError") {
-          setMessages((m) => [
-            ...m,
-            {
-              id: uid(),
-              ts: Date.now(),
-              role: "assistant",
-              text: "Stopped.",
-              displayText: "Stopped.",
-            },
-          ]);
+        if (
+          e?.code === "ERR_CANCELED" ||
+          e?.name === "CanceledError" ||
+          e?.name === "AbortError"
+        ) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? {
+                    ...msg,
+                    text: streamedText || "Stopped.",
+                    displayText: streamedText || "Stopped.",
+                  }
+                : msg,
+            ),
+          );
           return;
         }
         const errMessage = String(
           e?.message || "Chat failed. Please try again.",
         );
-        setMessages((m) => [
-          ...m,
-          {
-            id: uid(),
-            ts: Date.now(),
-            role: "assistant",
-            text: `Error: ${errMessage}`,
-            displayText: errMessage,
-          },
-        ]);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantId
+              ? {
+                  ...msg,
+                  text: `Error: ${errMessage}`,
+                  displayText: errMessage,
+                }
+              : msg,
+          ),
+        );
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         setPending(false);
+        setStreamStatus("Thinking");
+        setStreamMessageId(null);
       }
     },
 
-    [notebookId, sourceIds, answerMode],
+    [notebookId, sourceIds, answerMode, sourceGuardMessage],
   );
 
   // Notebook Guide / Studio can fire a "send this prompt" event.
@@ -558,7 +649,7 @@ export default function ChatPanel({
       setInput(prompt);
       composerRef.current?.focus();
 
-      if (autoSend && notebookId && !pending) {
+      if (autoSend && notebookId && !pending && canChat) {
         setInput("");
         const note =
           saveToNotes && noteTitle
@@ -570,12 +661,12 @@ export default function ChatPanel({
         send(prompt, note);
       }
     });
-  }, [notebookId, pending, send]);
+  }, [notebookId, pending, send, canChat]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!pending && notebookId && input.trim()) {
+      if (!pending && canChat && input.trim()) {
         const q = input.trim();
         setInput("");
         send(q);
@@ -1023,7 +1114,7 @@ export default function ChatPanel({
             })}
 
             {/* Typing indicator bubble */}
-            {pending && (
+            {pending && !streamMessageId && (
               <div className="flex gap-3 justify-start">
                 <div className="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.25)]">
                   <span className="text-[12px] font-bold tracking-tight">
@@ -1034,11 +1125,15 @@ export default function ChatPanel({
                 <div className="max-w-[720px] w-full">
                   <div className="text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-2">
                     Assistant{" "}
-                    <span className="text-slate-500 font-normal">thinking</span>
+                    <span className="text-slate-500 font-normal">
+                      {streamStatus}
+                    </span>
                   </div>
                   <div className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/40 bg-white/80 backdrop-blur shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
                     <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
-                    <span className="text-sm text-slate-600">Generating…</span>
+                    <span className="text-sm text-slate-600">
+                      {streamStatus}...
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1063,10 +1158,10 @@ export default function ChatPanel({
                   onKeyDown={onKeyDown}
                   placeholder={
                     notebookId
-                      ? "Ask about your sources…"
+                      ? sourceGuardMessage || "Ask about your sources..."
                       : "Create/select a notebook to start"
                   }
-                  disabled={!notebookId}
+                  disabled={!notebookId || !!sourceGuardMessage}
                   className="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-slate-400 disabled:text-slate-400"
                   rows={1}
                 />
@@ -1093,16 +1188,16 @@ export default function ChatPanel({
                   abortRef.current?.abort();
                   return;
                 }
-                if (!notebookId) return;
+                if (!canChat) return;
                 const q = input.trim();
                 if (!q) return;
                 setInput("");
                 send(q);
               }}
-              disabled={!notebookId || (!pending && !input.trim())}
+              disabled={!canChat || (!pending && !input.trim())}
               className={clsx(
                 "w-11 h-11 grid place-items-center rounded-2xl text-white shadow-[0_18px_50px_rgba(15,23,42,0.25)] transition-all",
-                !notebookId || (!pending && !input.trim())
+                !canChat || (!pending && !input.trim())
                   ? "bg-slate-400 cursor-not-allowed opacity-70"
                   : pending
                     ? "bg-rose-600 hover:bg-rose-700 active:scale-[0.98]"

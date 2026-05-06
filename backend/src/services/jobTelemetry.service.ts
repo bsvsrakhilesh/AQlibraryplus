@@ -232,3 +232,39 @@ export async function markJobFailed(
 
   return updateJob(db, kind, sourceId, data);
 }
+
+export async function markStaleRunningJobsFailed(
+  db: DbLike,
+  staleBefore: Date,
+) {
+  const data = buildData({
+    status: "FAILED",
+    stage: "stale",
+    statusMessage: "Job heartbeat expired",
+    error:
+      "Worker heartbeat expired while the job was RUNNING. The job can be retried safely.",
+    failed: true,
+  });
+
+  const [ingestion, embedding] = await Promise.all([
+    db.ingestionJob.updateMany({
+      where: {
+        status: "RUNNING",
+        OR: [{ lastHeartbeatAt: null }, { lastHeartbeatAt: { lt: staleBefore } }],
+      },
+      data,
+    }),
+    db.embeddingJob.updateMany({
+      where: {
+        status: "RUNNING",
+        OR: [{ lastHeartbeatAt: null }, { lastHeartbeatAt: { lt: staleBefore } }],
+      },
+      data,
+    }),
+  ]);
+
+  return {
+    ingestionRecoveredCount: ingestion.count,
+    embeddingRecoveredCount: embedding.count,
+  };
+}

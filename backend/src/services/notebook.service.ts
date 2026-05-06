@@ -6,6 +6,13 @@ import crypto from "crypto";
 import { Prisma } from "../generated/prisma/client";
 import { listAuditLogs } from "./audit.service";
 import { normalizeNoteProvenance } from "./notebookProvenance.service";
+import {
+  CHUNK_SPLITTER_VERSION,
+  DEFAULT_CHUNK_MAX_CHARS,
+  DEFAULT_CHUNK_OVERLAP_CHARS,
+  assertIngestibleText,
+  splitTextWithOffsets,
+} from "./chunking.service";
 
 const JOB_RUNTIME_SELECT = {
   status: true,
@@ -696,30 +703,6 @@ export async function pickNotebookCitations(
 
 /* ---------- helpers ---------- */
 
-function splitTextWithOffsets(text: string, maxChars = 1400, overlap = 220) {
-  const clean = (text || "").replace(/\u0000/g, "").replace(/\r/g, "");
-  const out: { text: string; start: number; end: number }[] = [];
-
-  let i = 0;
-  while (i < clean.length) {
-    const end = Math.min(clean.length, i + maxChars);
-    const raw = clean.slice(i, end);
-    const chunk = raw.trim();
-
-    if (chunk.length >= 40) {
-      const leftTrim = raw.indexOf(chunk);
-      const start = i + Math.max(0, leftTrim);
-      const finish = start + chunk.length;
-      out.push({ text: chunk, start, end: finish });
-    }
-
-    if (end >= clean.length) break;
-    i = Math.max(0, end - overlap);
-  }
-
-  return out;
-}
-
 function roughTokens(s: string) {
   return Math.ceil((s || "").length / 4);
 }
@@ -734,8 +717,15 @@ export async function createChunksForSource(
   },
 ) {
   const fullText = payload.fullText || "";
-  const chunks = splitTextWithOffsets(fullText, 1400, 220);
-  if (!chunks.length) return;
+  assertIngestibleText(fullText);
+  const chunks = splitTextWithOffsets(
+    fullText,
+    DEFAULT_CHUNK_MAX_CHARS,
+    DEFAULT_CHUNK_OVERLAP_CHARS,
+  );
+  if (!chunks.length) {
+    throw new Error("No indexable chunks were produced from extracted text.");
+  }
 
   // Each ingestion produces a new SourceRevision. Old evidence remains immutable.
   const contentHash = crypto
@@ -748,6 +738,38 @@ export async function createChunksForSource(
     _max: { ordinal: true },
   });
   const nextOrdinal = (maxOrd._max.ordinal ?? 0) + 1;
+
+  const existingActive = await prisma.sourceRevision.findFirst({
+    where: {
+      sourceId,
+      isActive: true,
+      contentHash,
+      pipelineConfigId: payload.pipelineConfigId ?? null,
+    },
+    select: { id: true },
+  });
+
+  if (existingActive) {
+    await prisma.notebookSource.update({
+      where: { id: sourceId },
+      data: { activeRevisionId: existingActive.id },
+    });
+
+    if (env.OPENAI_ENABLED) {
+      const missingEmbeddingCount = await prisma.sourceChunk.count({
+        where: { revisionId: existingActive.id, embeddedAt: null },
+      });
+      if (missingEmbeddingCount > 0) await enqueueEmbeddingJob(sourceId);
+    }
+
+    return {
+      revisionId: existingActive.id,
+      chunkCount: chunks.length,
+      contentHash,
+      reused: true,
+      splitterVersion: CHUNK_SPLITTER_VERSION,
+    };
+  }
 
   // Deactivate old revisions + create a new active one
   await prisma.sourceRevision.updateMany({
@@ -862,8 +884,16 @@ export async function createChunksForSource(
     }),
   );
 
+  const result = {
+    revisionId: revision.id,
+    chunkCount: chunks.length,
+    contentHash,
+    reused: false,
+    splitterVersion: CHUNK_SPLITTER_VERSION,
+  };
+
   // Queue embeddings (durable + retryable)
-  if (!env.OPENAI_ENABLED) return;
+  if (!env.OPENAI_ENABLED) return result;
 
   await prisma.embeddingJob.upsert({
     where: { sourceId },
@@ -872,4 +902,6 @@ export async function createChunksForSource(
   });
 
   await enqueueEmbeddingJob(sourceId);
+
+  return result;
 }

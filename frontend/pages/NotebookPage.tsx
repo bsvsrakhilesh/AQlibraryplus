@@ -1194,6 +1194,26 @@ export default function NotebookPage() {
                 </div>
               </div>
 
+              {sources.length > 0 && readySourceIds.length === 0 ? (
+                <div className="mb-2 rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-[12px] leading-5 text-amber-900">
+                  <div className="font-semibold">No chat-ready sources yet</div>
+                  <div className="text-amber-800/80">
+                    Keep sources included, then repair failed jobs or wait for
+                    indexing to finish before asking evidence-backed questions.
+                  </div>
+                </div>
+              ) : null}
+
+              {sources.length > 0 && includedCount === 0 ? (
+                <div className="mb-2 rounded-2xl border border-rose-200 bg-rose-50/90 px-3 py-2 text-[12px] leading-5 text-rose-900">
+                  <div className="font-semibold">All sources are excluded</div>
+                  <div className="text-rose-800/80">
+                    Use all sources, or include specific cards, so chat cannot
+                    answer from an unintended scope.
+                  </div>
+                </div>
+              ) : null}
+
               <StaggerList
                 as="div"
                 className="flex-1 min-h-0 overflow-auto overscroll-contain space-y-2 pr-1 pb-1"

@@ -1,5 +1,5 @@
 // frontend/lib/notebookClient.ts
-import { apiRequest } from "./api";
+import { apiRequest, apiUrl } from "./api";
 
 export type ID = string;
 export type SourceKind = "URL" | "FILE";
@@ -224,6 +224,13 @@ export type ChatAnswer = {
   latencyMs?: number | null;
 };
 
+export type NotebookChatStreamEvent =
+  | { type: "run"; runId: string }
+  | { type: "status"; message: string }
+  | { type: "delta"; text: string }
+  | { type: "final"; answer: ChatAnswer }
+  | { type: "error"; message: string };
+
 export type ChatHistoryRun = {
   id: ID;
   createdAt: string;
@@ -345,6 +352,17 @@ export interface NotebookClient {
       signal?: AbortSignal;
     },
   ): Promise<ChatAnswer>;
+  chatStream(
+    notebookId: ID,
+    message: string,
+    opts: {
+      sourceIds?: ID[];
+      history?: { role: "user" | "assistant"; content: string }[];
+      answerMode?: AnswerMode;
+      signal?: AbortSignal;
+      onEvent?: (event: NotebookChatStreamEvent) => void;
+    },
+  ): Promise<ChatAnswer>;
   getChunk(chunkId: ID): Promise<ChunkDetail>;
   getChunkReader(chunkId: ID, radius?: number): Promise<ChunkReader>;
   getSourcePage(sourceId: ID, pageNumber: number): Promise<SourcePage>;
@@ -426,6 +444,93 @@ async function j<T = any>(
   body?: any,
 ): Promise<T> {
   return apiRequest<T>(method, `/api${path}`, { body });
+}
+
+function emitNotebookStreamBlock(
+  block: string,
+  onEvent?: (event: NotebookChatStreamEvent) => void,
+) {
+  const lines = block.split(/\r?\n/);
+  const eventName =
+    lines
+      .find((line) => line.startsWith("event:"))
+      ?.slice("event:".length)
+      .trim() || "message";
+  const dataText = lines
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trimStart())
+    .join("\n");
+
+  if (!dataText) return null;
+
+  const data = JSON.parse(dataText);
+  if (eventName === "final") {
+    const event = { type: "final", answer: data as ChatAnswer } as const;
+    onEvent?.(event);
+    return event;
+  }
+  if (eventName === "run") {
+    const event = { type: "run", runId: String(data.runId ?? "") } as const;
+    onEvent?.(event);
+    return event;
+  }
+  if (eventName === "delta") {
+    const event = { type: "delta", text: String(data.text ?? "") } as const;
+    onEvent?.(event);
+    return event;
+  }
+  if (eventName === "error") {
+    const event = {
+      type: "error",
+      message: String(data.message || "Chat failed."),
+    } as const;
+    onEvent?.(event);
+    return event;
+  }
+
+  const event = {
+    type: "status",
+    message: String(data.message || "Working"),
+  } as const;
+  onEvent?.(event);
+  return event;
+}
+
+async function readNotebookChatStream(
+  response: Response,
+  onEvent?: (event: NotebookChatStreamEvent) => void,
+) {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Streaming is not supported in this browser.");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalAnswer: ChatAnswer | null = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() ?? "";
+
+    for (const block of blocks) {
+      const event = emitNotebookStreamBlock(block, onEvent);
+      if (event?.type === "final") finalAnswer = event.answer;
+      if (event?.type === "error") throw new Error(event.message);
+    }
+  }
+
+  const tail = buffer.trim();
+  if (tail) {
+    const event = emitNotebookStreamBlock(tail, onEvent);
+    if (event?.type === "final") finalAnswer = event.answer;
+    if (event?.type === "error") throw new Error(event.message);
+  }
+
+  if (!finalAnswer) throw new Error("Chat stream ended before a final answer.");
+  return finalAnswer;
 }
 
 function isAlreadyAttachedNotebookSourceError(error: unknown) {
@@ -774,6 +879,39 @@ export const notebookClient: NotebookClient = {
       },
       signal: opts?.signal,
     });
+  },
+  async chatStream(notebookId, message, opts) {
+    const res = await fetch(
+      apiUrl(`/api/notebooks/${notebookId}/chat/stream`),
+      {
+        method: "POST",
+        credentials: "include",
+        signal: opts.signal,
+        headers: {
+          Accept: "text/event-stream",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+          sourceIds: opts.sourceIds,
+          history: opts.history,
+          answerMode: opts.answerMode,
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      let message = `Chat failed (HTTP ${res.status})`;
+      try {
+        const data = await res.json();
+        message = data?.message || message;
+      } catch {
+        // streaming endpoints may not return JSON on transport errors
+      }
+      throw new Error(message);
+    }
+
+    return readNotebookChatStream(res, opts.onEvent);
   },
   // chunks
   getChunk(chunkId) {

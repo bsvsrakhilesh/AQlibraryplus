@@ -8,6 +8,10 @@ import {
   detectScannedPdf,
 } from "../services/extract.service";
 import { createChunksForSource } from "../services/notebook.service";
+import {
+  CHUNK_SPLITTER_VERSION,
+  assertIngestibleText,
+} from "../services/chunking.service";
 import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
 import { getOrCreatePipelineConfig } from "../services/provenance.service";
 import { ocrPdfToPagesFromFile } from "../services/ocr.service";
@@ -140,6 +144,7 @@ export const ingestionWorker = new Worker(
         whitespaceNormalization: true,
         preferSnapshot: true,
         usedSnapshot: Boolean(documentRevisionId),
+        splitterVersion: CHUNK_SPLITTER_VERSION,
       });
 
       await markJobProgress(prisma, "ingestion", sourceId, {
@@ -148,7 +153,8 @@ export const ingestionWorker = new Worker(
         statusMessage: "Creating chunks for notebook source",
       });
 
-      await createChunksForSource(sourceId, {
+      assertIngestibleText(fullText, { sourceKind: src.kind, mode: "url" });
+      const chunkResult = await createChunksForSource(sourceId, {
         fullText,
         documentRevisionId,
         pipelineConfigId: pc.id,
@@ -157,7 +163,7 @@ export const ingestionWorker = new Worker(
       await markJobSucceeded(prisma, "ingestion", sourceId, {
         stage: "completed",
         statusMessage: "URL ingestion completed",
-        meta: { documentRevisionId, sourceKind: src.kind },
+        meta: { documentRevisionId, sourceKind: src.kind, chunkResult },
       });
 
       log.info("ingestion_job_succeeded", { sourceId, queueJobId: job.id });
@@ -209,6 +215,11 @@ export const ingestionWorker = new Worker(
 
         const maxPages = Math.max(1, env.OCR_MAX_PAGES);
         const dpi = Math.max(72, env.OCR_DPI);
+        if (scan.pageCount > maxPages) {
+          throw new Error(
+            `Scanned PDF has ${scan.pageCount} page(s), above OCR_MAX_PAGES=${maxPages}. Increase OCR_MAX_PAGES or split the document before OCR.`,
+          );
+        }
 
         await markJobProgress(prisma, "ingestion", sourceId, {
           stage: "ocr_extract",
@@ -240,6 +251,7 @@ export const ingestionWorker = new Worker(
           forceOcr: Boolean(forceOcr),
           scanMetrics: scan,
           pageSeparator: "\n\n",
+          splitterVersion: CHUNK_SPLITTER_VERSION,
         });
 
         await markJobProgress(prisma, "ingestion", sourceId, {
@@ -249,7 +261,8 @@ export const ingestionWorker = new Worker(
           meta: { pageCount: ocrPages.length },
         });
 
-        await createChunksForSource(sourceId, {
+        assertIngestibleText(fullText, { sourceKind: src.kind, mode: "ocr_pdf" });
+        const chunkResult = await createChunksForSource(sourceId, {
           fullText,
           pages: ocrPages,
           documentRevisionId,
@@ -259,7 +272,7 @@ export const ingestionWorker = new Worker(
         await markJobSucceeded(prisma, "ingestion", sourceId, {
           stage: "completed",
           statusMessage: "OCR ingestion completed",
-          meta: { documentRevisionId, pageCount: ocrPages.length },
+          meta: { documentRevisionId, pageCount: ocrPages.length, chunkResult },
         });
 
         log.info("ingestion_job_succeeded", { sourceId, queueJobId: job.id });
@@ -276,6 +289,7 @@ export const ingestionWorker = new Worker(
         ocrEnabled: env.OCR_ENABLED,
         pageSeparator: "\n\n",
         whitespaceNormalization: false,
+        splitterVersion: CHUNK_SPLITTER_VERSION,
       });
 
       await markJobProgress(prisma, "ingestion", sourceId, {
@@ -285,7 +299,8 @@ export const ingestionWorker = new Worker(
         meta: { pageCount: pages.length },
       });
 
-      await createChunksForSource(sourceId, {
+      assertIngestibleText(fullText, { sourceKind: src.kind, mode: "native_pdf" });
+      const chunkResult = await createChunksForSource(sourceId, {
         fullText,
         pages,
         documentRevisionId,
@@ -295,7 +310,7 @@ export const ingestionWorker = new Worker(
       await markJobSucceeded(prisma, "ingestion", sourceId, {
         stage: "completed",
         statusMessage: "PDF ingestion completed",
-        meta: { documentRevisionId, pageCount: pages.length },
+        meta: { documentRevisionId, pageCount: pages.length, chunkResult },
       });
 
       log.info("ingestion_job_succeeded", { sourceId, queueJobId: job.id });
@@ -315,6 +330,7 @@ export const ingestionWorker = new Worker(
     const pc = await getOrCreatePipelineConfig("ingestion.file.generic", {
       whitespaceNormalization: true,
       headerInjected: true,
+      splitterVersion: CHUNK_SPLITTER_VERSION,
     });
 
     await markJobProgress(prisma, "ingestion", sourceId, {
@@ -323,7 +339,8 @@ export const ingestionWorker = new Worker(
       statusMessage: "Creating chunks",
     });
 
-    await createChunksForSource(sourceId, {
+    assertIngestibleText(fullText, { sourceKind: src.kind, mode: "generic_file" });
+    const chunkResult = await createChunksForSource(sourceId, {
       fullText,
       documentRevisionId,
       pipelineConfigId: pc.id,
@@ -332,7 +349,7 @@ export const ingestionWorker = new Worker(
     await markJobSucceeded(prisma, "ingestion", sourceId, {
       stage: "completed",
       statusMessage: "File ingestion completed",
-      meta: { documentRevisionId },
+      meta: { documentRevisionId, chunkResult },
     });
 
     log.info("ingestion_job_succeeded", { sourceId, queueJobId: job.id });
