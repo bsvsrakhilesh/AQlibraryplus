@@ -17,6 +17,7 @@ import SmartCard from "../components/ui/SmartCard";
 import { StaggerList, StaggerItem } from "../components/motion/StaggerList";
 import { PlusButton } from "../components/ui/PlusButton";
 import { useToast } from "../components/providers/Toast";
+import { useConfirm } from "../components/providers/Confirm";
 import { consumeNotebookOpenTarget } from "../lib/notebookLaunch";
 import { apiRequest } from "../lib/api";
 import {
@@ -138,6 +139,7 @@ function JobRuntimeCard({
 export default function NotebookPage() {
   const qc = useQueryClient();
   const { notify } = useToast();
+  const { confirm } = useConfirm();
 
   useEffect(() => {
     return subscribeNotebookEvent("toast", (detail) => {
@@ -476,9 +478,30 @@ export default function NotebookPage() {
   const delSourceM = useMutation({
     mutationFn: (vars: { notebookId: string; sourceId: string }) =>
       api.deleteSource(vars.notebookId, vars.sourceId),
-    onSuccess: (_data, vars) =>
-      qc.invalidateQueries({ queryKey: ["nb:sources", vars.notebookId] }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["nb:sources", vars.notebookId] });
+      notify({ text: "Source removed from notebook.", kind: "success" });
+    },
+    onError: (e: any) =>
+      notify({
+        text: e?.message || "Failed to remove source.",
+        kind: "error",
+      }),
   });
+
+  const removeSource = async (source: NBSource) => {
+    if (!activeId) return;
+    const label = sourceTitle(source);
+    const ok = await confirm({
+      title: "Remove source?",
+      description: `Remove "${label}" from this notebook. The original saved URL or file stays in your library.`,
+      confirmText: "Remove",
+      cancelText: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
+    delSourceM.mutate({ notebookId: activeId, sourceId: source.id });
+  };
 
   // =======================
   // Source diagnostics + repair
@@ -1320,11 +1343,7 @@ export default function NotebookPage() {
                             title="Remove"
                             onClick={(e: any) => {
                               e?.stopPropagation?.();
-                              activeId &&
-                                delSourceM.mutate({
-                                  notebookId: activeId,
-                                  sourceId: s.id,
-                                });
+                              removeSource(s);
                             }}
                             className="opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition"
                           >

@@ -342,6 +342,7 @@ export interface NotebookClient {
       sourceIds?: ID[];
       history?: { role: "user" | "assistant"; content: string }[];
       answerMode?: AnswerMode;
+      signal?: AbortSignal;
     },
   ): Promise<ChatAnswer>;
   getChunk(chunkId: ID): Promise<ChunkDetail>;
@@ -764,11 +765,14 @@ export const notebookClient: NotebookClient = {
 
   // chat
   chat(notebookId, message, opts) {
-    return j<ChatAnswer>("POST", `/notebooks/${notebookId}/chat`, {
-      message,
-      sourceIds: opts?.sourceIds,
-      history: opts?.history,
-      answerMode: opts?.answerMode,
+    return apiRequest<ChatAnswer>("POST", `/api/notebooks/${notebookId}/chat`, {
+      body: {
+        message,
+        sourceIds: opts?.sourceIds,
+        history: opts?.history,
+        answerMode: opts?.answerMode,
+      },
+      signal: opts?.signal,
     });
   },
   // chunks

@@ -5,6 +5,7 @@ import type {
   NoteProvenanceBundle,
   ClaimCitationLink,
 } from "../../lib/notebookClient";
+import { emitNotebookEvent } from "../../lib/notebookEvents";
 
 type Props = {
   text: string;
@@ -109,7 +110,15 @@ export default function MessageActions({
   onAddToNotes,
 }: Props) {
   const copy = async () => {
-    await navigator.clipboard.writeText(text || "");
+    try {
+      await navigator.clipboard.writeText(text || "");
+      emitNotebookEvent("toast", { kind: "success", text: "Copied answer." });
+    } catch {
+      emitNotebookEvent("toast", {
+        kind: "error",
+        text: "Copy failed. Your browser blocked clipboard access.",
+      });
+    }
   };
 
   const copyWithCitations = async () => {
@@ -119,7 +128,18 @@ export default function MessageActions({
         ? suffix.replace("\n\nSources\n", "\n\nSources (verbatim quotes)\n")
         : suffix;
 
-    await navigator.clipboard.writeText(`${text || ""}${tuned}`);
+    try {
+      await navigator.clipboard.writeText(`${text || ""}${tuned}`);
+      emitNotebookEvent("toast", {
+        kind: "success",
+        text: "Copied answer with citations.",
+      });
+    } catch {
+      emitNotebookEvent("toast", {
+        kind: "error",
+        text: "Copy failed. Your browser blocked clipboard access.",
+      });
+    }
   };
 
   return (

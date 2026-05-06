@@ -1065,6 +1065,17 @@ export async function runNotebookChat(p: {
   const filterSourceIds = p.sourceIds;
   const startedAtMs = Date.now();
 
+  const notebook = await prisma.notebook.findUnique({
+    where: { id: notebookId },
+    select: { id: true },
+  });
+
+  if (!notebook) {
+    const err: any = new Error("Notebook not found");
+    err.status = 404;
+    throw err;
+  }
+
   const run = await createNotebookChatRun({
     notebookId,
     requestId: p.requestId ?? null,

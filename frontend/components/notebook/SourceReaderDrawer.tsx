@@ -297,12 +297,18 @@ export default function SourceReaderDrawer({
     if (s != null && e != null && e > s) out = pageText.slice(s, e);
 
     const header = `${title} · page ${viewPage}`;
-    await navigator.clipboard.writeText(`${header}\n\n${out}`.trim());
-
-    emitNotebookEvent("toast", {
-      kind: "success",
-      text: "Evidence copied to clipboard.",
-    });
+    try {
+      await navigator.clipboard.writeText(`${header}\n\n${out}`.trim());
+      emitNotebookEvent("toast", {
+        kind: "success",
+        text: "Evidence copied to clipboard.",
+      });
+    } catch {
+      emitNotebookEvent("toast", {
+        kind: "error",
+        text: "Copy failed. Your browser blocked clipboard access.",
+      });
+    }
   };
 
   const jumpToSourceCard = () => {
@@ -315,7 +321,18 @@ export default function SourceReaderDrawer({
     if (!reader) return;
     const center = reader.chunks.find((c) => c.id === reader.centerChunkId);
     if (!center) return;
-    await navigator.clipboard.writeText(center.text || "");
+    try {
+      await navigator.clipboard.writeText(center.text || "");
+      emitNotebookEvent("toast", {
+        kind: "success",
+        text: "Cited chunk copied.",
+      });
+    } catch {
+      emitNotebookEvent("toast", {
+        kind: "error",
+        text: "Copy failed. Your browser blocked clipboard access.",
+      });
+    }
   };
 
   const filteredChunks = useMemo(() => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type React from "react";
 import { notebookClient as api } from "../../lib/notebookClient";
 import type {
   AnswerMode,
@@ -23,7 +24,7 @@ type Msg = {
   ts: number;
   role: "user" | "assistant";
   text: string;
-  html: string;
+  displayText?: string;
   suggested?: string[];
   mode?: AnswerMode;
   evidence?: EvidenceBlock[];
@@ -44,30 +45,86 @@ function uid() {
     .slice(2, 9)}`;
 }
 
-function renderMarkdown(md: string) {
-  const esc = md
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return esc
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\_(.+?)\_/g, "<em>$1</em>")
-    .replace(/\n/g, "<br/>");
-}
-
-function renderErrorHtml(message: string) {
-  const safe = String(message ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  return `<div class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-    <strong>Error:</strong> ${safe}
-  </div>`;
-}
-
 function clsx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
+}
+
+function renderInlineMarkdown(text: string) {
+  const parts = String(text ?? "").split(/(\*\*[^*]+\*\*|_[^_]+_)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("_") && part.endsWith("_") && part.length > 2) {
+      return <em key={index}>{part.slice(1, -1)}</em>;
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function MarkdownText({ text }: { text: string }) {
+  const lines = String(text ?? "").split(/\r?\n/);
+  const blocks: React.ReactNode[] = [];
+  let listItems: string[] = [];
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    const items = listItems;
+    listItems = [];
+    blocks.push(
+      <ul key={`ul-${blocks.length}`} className="my-2 list-disc pl-5 space-y-1">
+        {items.map((item, index) => (
+          <li key={index}>{renderInlineMarkdown(item)}</li>
+        ))}
+      </ul>,
+    );
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bullet) {
+      listItems.push(bullet[1]);
+      return;
+    }
+
+    flushList();
+
+    if (!trimmed) {
+      blocks.push(<div key={`br-${index}`} className="h-2" />);
+      return;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const size =
+        heading[1].length === 1
+          ? "text-base"
+          : heading[1].length === 2
+            ? "text-[15px]"
+            : "text-sm";
+      blocks.push(
+        <div
+          key={`h-${index}`}
+          className={`${size} mt-2 first:mt-0 font-semibold text-slate-950`}
+        >
+          {renderInlineMarkdown(heading[2])}
+        </div>,
+      );
+      return;
+    }
+
+    blocks.push(
+      <p key={`p-${index}`} className="my-1 first:mt-0 last:mb-0">
+        {renderInlineMarkdown(trimmed)}
+      </p>,
+    );
+  });
+
+  flushList();
+
+  return <>{blocks}</>;
 }
 
 function fmtTime(ts: number) {
@@ -122,7 +179,6 @@ function historyRunsToMessages(runs: ChatHistoryRun[]): Msg[] {
       ts,
       role: "user",
       text: run.userMessage,
-      html: run.userMessage,
     });
 
     if (run.status === "FAILED") {
@@ -132,9 +188,7 @@ function historyRunsToMessages(runs: ChatHistoryRun[]): Msg[] {
         ts: ts + 1,
         role: "assistant",
         text: errText,
-        html: renderErrorHtml(
-          String(run.error || "Chat failed. Please try again."),
-        ),
+        displayText: String(run.error || "Chat failed. Please try again."),
         mode: run.answerMode,
         runId: run.id,
         promptVersion: run.promptVersion ?? undefined,
@@ -152,7 +206,7 @@ function historyRunsToMessages(runs: ChatHistoryRun[]): Msg[] {
       ts: ts + 1,
       role: "assistant",
       text: answerText,
-      html: renderMarkdown(answerText),
+      displayText: answerText,
       citations: run.citations ?? [],
       suggested: run.suggested ?? [],
       mode: run.answerMode,
@@ -186,12 +240,17 @@ export default function ChatPanel({
   const [pending, setPending] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Keep latest messages in a ref so we can build chat history without re-creating callbacks
   const messagesRef = useRef<Msg[]>([]);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -362,27 +421,28 @@ export default function ChatPanel({
         ts: Date.now(),
         role: "user",
         text: question,
-        html: question,
       };
 
       setMessages((m) => [...m, userMsg]);
       setPending(true);
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       try {
         const res = await api.chat(notebookId, question, {
           sourceIds,
           history,
           answerMode,
+          signal: controller.signal,
         });
-        const full = renderMarkdown(res.answer);
-
         const assistantId = uid();
         const base: Msg = {
           id: assistantId,
           ts: Date.now(),
           role: "assistant",
           text: res.answer,
-          html: "",
+          displayText: "",
           citations: res.citations,
           suggested: res.suggested,
           mode: res.mode,
@@ -433,18 +493,32 @@ export default function ChatPanel({
         let i = 0;
         const step = 14;
 
-        while (i < full.length) {
+        while (i < res.answer.length) {
+          if (controller.signal.aborted) break;
           await new Promise((r) => setTimeout(r, 12));
           i += step;
-          const slice = full.slice(0, i);
+          const slice = res.answer.slice(0, i);
 
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (!last || last.id !== assistantId) return prev;
-            return [...prev.slice(0, -1), { ...last, html: slice }];
+            return [...prev.slice(0, -1), { ...last, displayText: slice }];
           });
         }
       } catch (e: any) {
+        if (e?.code === "ERR_CANCELED" || e?.name === "CanceledError") {
+          setMessages((m) => [
+            ...m,
+            {
+              id: uid(),
+              ts: Date.now(),
+              role: "assistant",
+              text: "Stopped.",
+              displayText: "Stopped.",
+            },
+          ]);
+          return;
+        }
         const errMessage = String(
           e?.message || "Chat failed. Please try again.",
         );
@@ -455,10 +529,11 @@ export default function ChatPanel({
             ts: Date.now(),
             role: "assistant",
             text: `Error: ${errMessage}`,
-            html: renderErrorHtml(errMessage),
+            displayText: errMessage,
           },
         ]);
       } finally {
+        if (abortRef.current === controller) abortRef.current = null;
         setPending(false);
       }
     },
@@ -763,15 +838,30 @@ export default function ChatPanel({
                     <div
                       className={clsx(
                         "border shadow-[0_18px_60px_rgba(15,23,42,0.08)] px-4 py-3 text-sm leading-[1.65]",
+                        m.text.startsWith("Error:")
+                          ? "border-red-200 bg-red-50 text-red-800"
+                          : "",
                         bubbleRound,
                         isUser
                           ? "bg-white border-slate-200 text-slate-900"
-                          : "bg-white/80 backdrop-blur border-white/40 text-slate-900",
+                          : m.text.startsWith("Error:")
+                            ? ""
+                            : "bg-white/80 backdrop-blur border-white/40 text-slate-900",
                       )}
-                      {...(m.role === "assistant"
-                        ? { dangerouslySetInnerHTML: { __html: m.html } }
-                        : { children: m.html })}
-                    />
+                    >
+                      {m.role === "assistant" ? (
+                        m.text.startsWith("Error:") ? (
+                          <>
+                            <strong>Error:</strong>{" "}
+                            {m.displayText || m.text.replace(/^Error:\s*/, "")}
+                          </>
+                        ) : (
+                          <MarkdownText text={m.displayText ?? m.text} />
+                        )
+                      ) : (
+                        m.text
+                      )}
+                    </div>
 
                     {m.role === "assistant" && m.grounding ? (
                       <div
@@ -999,30 +1089,40 @@ export default function ChatPanel({
 
             <button
               onClick={() => {
-                if (!notebookId || pending) return;
+                if (pending) {
+                  abortRef.current?.abort();
+                  return;
+                }
+                if (!notebookId) return;
                 const q = input.trim();
                 if (!q) return;
                 setInput("");
                 send(q);
               }}
-              disabled={!notebookId || pending || !input.trim()}
+              disabled={!notebookId || (!pending && !input.trim())}
               className={clsx(
                 "w-11 h-11 grid place-items-center rounded-2xl text-white shadow-[0_18px_50px_rgba(15,23,42,0.25)] transition-all",
-                !notebookId || pending || !input.trim()
+                !notebookId || (!pending && !input.trim())
                   ? "bg-slate-400 cursor-not-allowed opacity-70"
-                  : "bg-slate-900 hover:bg-black active:scale-[0.98]",
+                  : pending
+                    ? "bg-rose-600 hover:bg-rose-700 active:scale-[0.98]"
+                    : "bg-slate-900 hover:bg-black active:scale-[0.98]",
               )}
-              aria-label="Send"
-              title="Send"
+              aria-label={pending ? "Stop" : "Send"}
+              title={pending ? "Stop" : "Send"}
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M2 21l19-9L2 3l3 7 9 2-9 2-3 7z" />
-              </svg>
+              {pending ? (
+                <span className="h-3.5 w-3.5 rounded-[3px] bg-white" />
+              ) : (
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M2 21l19-9L2 3l3 7 9 2-9 2-3 7z" />
+                </svg>
+              )}
             </button>
           </div>
         </div>

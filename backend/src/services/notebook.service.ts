@@ -5,6 +5,7 @@ import { enqueueIngestionJob } from "../queues/ingestion.queue";
 import crypto from "crypto";
 import { Prisma } from "../generated/prisma/client";
 import { listAuditLogs } from "./audit.service";
+import { normalizeNoteProvenance } from "./notebookProvenance.service";
 
 const JOB_RUNTIME_SELECT = {
   status: true,
@@ -30,6 +31,12 @@ function mapJobRuntime<T extends Record<string, any> | null | undefined>(
     ...job,
     meta: job.meta ?? null,
   };
+}
+
+function httpError(status: number, message: string) {
+  const err: any = new Error(message);
+  err.status = status;
+  return err;
 }
 
 export async function listNotebooks() {
@@ -72,7 +79,12 @@ export async function updateNotebook(
   id: string,
   p: { title?: string; description?: string },
 ) {
-  return prisma.notebook.update({ where: { id }, data: p });
+  try {
+    return await prisma.notebook.update({ where: { id }, data: p });
+  } catch (e: any) {
+    if (e?.code === "P2025") throw httpError(404, "Notebook not found");
+    throw e;
+  }
 }
 
 export async function deleteNotebook(id: string) {
@@ -552,14 +564,22 @@ export async function createNote(
   notebookId: string,
   p: { title?: string; content: string; citations?: any },
 ) {
-  return prisma.note.create({
-    data: {
-      notebookId,
-      title: p.title ?? "",
-      content: p.content,
-      citations: p.citations ?? undefined,
-    },
-  });
+  try {
+    const citations =
+      p.citations === undefined ? undefined : normalizeNoteProvenance(p.citations);
+
+    return await prisma.note.create({
+      data: {
+        notebookId,
+        title: p.title ?? "",
+        content: p.content,
+        citations: citations ?? undefined,
+      },
+    });
+  } catch (e: any) {
+    if (e?.code === "P2003") throw httpError(404, "Notebook not found");
+    throw e;
+  }
 }
 
 export async function updateNote(
@@ -569,8 +589,16 @@ export async function updateNote(
 ) {
   const note = await prisma.note.findUnique({ where: { id: noteId } });
   if (!note || note.notebookId !== notebookId)
-    throw new Error("Note not found");
-  return prisma.note.update({ where: { id: noteId }, data: p });
+    throw httpError(404, "Note not found");
+
+  const data = {
+    ...p,
+    ...(p.citations !== undefined
+      ? { citations: normalizeNoteProvenance(p.citations) }
+      : {}),
+  };
+
+  return prisma.note.update({ where: { id: noteId }, data });
 }
 
 export async function deleteNote(notebookId: string, noteId: string) {

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notebookClient as api } from "../../lib/notebookClient";
 import { emitNotebookEvent } from "../../lib/notebookEvents";
+import { useConfirm } from "../providers/Confirm";
 
 function clsx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -291,7 +292,7 @@ function NotebookStudio() {
       <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
         <div className="text-xs font-semibold text-slate-800">Tip</div>
         <div className="mt-1 text-[12px] text-slate-600 leading-relaxed">
-          After generation, hit <span className="font-semibold">Save now</span>{" "}
+          After generation, hit <span className="font-semibold">Save note</span>{" "}
           in Notes (Ctrl/⌘+S) to persist the artifact.
         </div>
       </div>
@@ -307,6 +308,7 @@ function RecentNotes({
   notes: any[];
 }) {
   const qc = useQueryClient();
+  const { confirm } = useConfirm();
 
   const delM = useMutation({
     mutationFn: (noteId: string) => api.deleteNote(notebookId, noteId),
@@ -345,9 +347,16 @@ function RecentNotes({
             type="button"
             className="text-[11px] text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100"
             disabled={delM.isPending}
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
-              if (!confirm("Delete this note? This cannot be undone.")) return;
+              const ok = await confirm({
+                title: "Delete note?",
+                description: "This removes the saved note from this notebook.",
+                confirmText: "Delete",
+                cancelText: "Cancel",
+                danger: true,
+              });
+              if (!ok) return;
               delM.mutate(n.id);
             }}
           >
