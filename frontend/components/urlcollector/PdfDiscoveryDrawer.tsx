@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   crawlSavePdf,
   discoverPdfDocuments,
@@ -405,7 +406,7 @@ const PdfDiscoveryDrawer: React.FC<Props> = ({
     visibleSelectedCount === visibleUncaptured.length;
   const hasActiveFilter = Boolean(filterText.trim()) || statusFilter !== "all";
 
-  return (
+  const node = (
     <>
       <div className="fixed inset-0 z-[90] bg-slate-950/35 backdrop-blur-[2px]" />
       <aside
@@ -882,6 +883,8 @@ const PdfDiscoveryDrawer: React.FC<Props> = ({
       />
     </>
   );
+
+  return createPortal(node, document.body);
 };
 
 export default PdfDiscoveryDrawer;
