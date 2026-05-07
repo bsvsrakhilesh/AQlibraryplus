@@ -303,13 +303,31 @@ export async function postNotebookSourceRunOcrHandler(
   try {
     const notebookId = firstParam(req.params.id);
     const sourceId = firstParam(req.params.sourceId);
-    const data = await runSourceOcr(notebookId, sourceId);
+    const data = await runSourceOcr(notebookId, sourceId, {
+      langs: typeof req.body?.langs === "string" ? req.body.langs : undefined,
+      pages: typeof req.body?.pages === "string" ? req.body.pages : undefined,
+      engine:
+        req.body?.engine === "auto" ||
+        req.body?.engine === "ocrmypdf" ||
+        req.body?.engine === "tesseract"
+          ? req.body.engine
+          : undefined,
+      deskew:
+        typeof req.body?.deskew === "boolean" ? req.body.deskew : undefined,
+      rotatePages:
+        typeof req.body?.rotatePages === "boolean"
+          ? req.body.rotatePages
+          : undefined,
+      clean: typeof req.body?.clean === "boolean" ? req.body.clean : undefined,
+      fallback:
+        typeof req.body?.fallback === "boolean" ? req.body.fallback : undefined,
+    });
 
     await logAudit(req, {
       action: "notebook.source.run_ocr",
       resourceType: "NOTEBOOK_SOURCE",
       resourceId: sourceId,
-      metadata: { notebookId },
+      metadata: { notebookId, ocr: req.body ?? null },
     });
 
     res.json(data);

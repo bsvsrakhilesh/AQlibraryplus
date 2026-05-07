@@ -153,6 +153,15 @@ export default function NotebookPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [fixSourceId, setFixSourceId] = useState<string | null>(null);
+  const [ocrLangs, setOcrLangs] = useState("eng");
+  const [ocrPages, setOcrPages] = useState("");
+  const [ocrEngine, setOcrEngine] = useState<
+    "auto" | "ocrmypdf" | "tesseract"
+  >("auto");
+  const [ocrDeskew, setOcrDeskew] = useState(true);
+  const [ocrRotatePages, setOcrRotatePages] = useState(true);
+  const [ocrClean, setOcrClean] = useState(false);
+  const [ocrFallback, setOcrFallback] = useState(true);
 
   // mobile panel switcher state
   const [mobileTab, setMobileTab] = useState<"sources" | "chat" | "notes">(
@@ -575,10 +584,23 @@ export default function NotebookPage() {
   });
 
   const runOcrM = useMutation({
-    mutationFn: (vars: { notebookId: string; sourceId: string }) =>
+    mutationFn: (vars: {
+      notebookId: string;
+      sourceId: string;
+      options?: {
+        langs?: string;
+        pages?: string;
+        engine?: "auto" | "ocrmypdf" | "tesseract";
+        deskew?: boolean;
+        rotatePages?: boolean;
+        clean?: boolean;
+        fallback?: boolean;
+      };
+    }) =>
       apiReq<NBSource>(
         "POST",
         `/notebooks/${vars.notebookId}/sources/${vars.sourceId}/run-ocr`,
+        vars.options ?? {},
       ),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["nb:sources", vars.notebookId] });
@@ -592,6 +614,11 @@ export default function NotebookPage() {
   });
 
   const diag = diagQ.data as SourceDiagnostics | undefined;
+  const ocrMeta = (diag?.jobs?.ingestion?.meta as any)?.ocr ?? null;
+  const scanMeta =
+    (diag?.jobs?.ingestion?.meta as any)?.scan ??
+    (diag?.activeRevision?.pipelineConfig as any)?.config?.scanMetrics ??
+    null;
 
   const active: Notebook | null = detailQ.data?.notebook ?? null;
 
@@ -1610,6 +1637,156 @@ export default function NotebookPage() {
                           </div>
                         ) : null}
 
+                        {diag?.source?.kind === "FILE" &&
+                        ((diag.source.file?.mimeType || "")
+                          .toLowerCase()
+                          .includes("pdf") ||
+                          (diag.source.file?.fileName || "")
+                            .toLowerCase()
+                            .endsWith(".pdf")) ? (
+                          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-950">
+                                  OCR
+                                </div>
+                                <div className="mt-1 text-[12px] leading-5 text-slate-600">
+                                  Auto uses OCRmyPDF first, then direct
+                                  Tesseract fallback if needed.
+                                </div>
+                              </div>
+                              {ocrMeta?.quality ? (
+                                <div className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[11px] text-emerald-900">
+                                  {ocrMeta.quality.charCount ?? 0} chars ·{" "}
+                                  {ocrMeta.quality.pageCount ?? 0} pages
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {scanMeta ? (
+                              <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+                                <div className="rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+                                  Pages: {scanMeta.pageCount ?? "—"}
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+                                  Native chars: {scanMeta.totalChars ?? "—"}
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+                                  Avg/page:{" "}
+                                  {typeof scanMeta.avgCharsPerPage === "number"
+                                    ? Math.round(scanMeta.avgCharsPerPage)
+                                    : "—"}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                              <label className="text-[11px] font-semibold text-slate-700">
+                                Language
+                                <input
+                                  value={ocrLangs}
+                                  onChange={(e) => setOcrLangs(e.target.value)}
+                                  placeholder="eng or eng+hin"
+                                  className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-normal"
+                                />
+                              </label>
+                              <label className="text-[11px] font-semibold text-slate-700">
+                                Pages
+                                <input
+                                  value={ocrPages}
+                                  onChange={(e) => setOcrPages(e.target.value)}
+                                  placeholder="1-10 or 1,3,8-12"
+                                  className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-normal"
+                                />
+                              </label>
+                              <label className="text-[11px] font-semibold text-slate-700">
+                                Engine
+                                <select
+                                  value={ocrEngine}
+                                  onChange={(e) =>
+                                    setOcrEngine(
+                                      e.target.value as
+                                        | "auto"
+                                        | "ocrmypdf"
+                                        | "tesseract",
+                                    )
+                                  }
+                                  className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-normal"
+                                >
+                                  <option value="auto">Auto</option>
+                                  <option value="ocrmypdf">OCRmyPDF</option>
+                                  <option value="tesseract">Tesseract</option>
+                                </select>
+                              </label>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {[
+                                ["deskew", ocrDeskew, setOcrDeskew, "Deskew"],
+                                [
+                                  "rotate",
+                                  ocrRotatePages,
+                                  setOcrRotatePages,
+                                  "Rotate pages",
+                                ],
+                                ["clean", ocrClean, setOcrClean, "Clean"],
+                                [
+                                  "fallback",
+                                  ocrFallback,
+                                  setOcrFallback,
+                                  "Fallback",
+                                ],
+                              ].map(([key, value, setter, label]) => (
+                                <label
+                                  key={String(key)}
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-700"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(value)}
+                                    onChange={(e) =>
+                                      (setter as (v: boolean) => void)(
+                                        e.target.checked,
+                                      )
+                                    }
+                                  />
+                                  {String(label)}
+                                </label>
+                              ))}
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  runOcrM.mutate({
+                                    notebookId: activeId,
+                                    sourceId: fixSourceId,
+                                    options: {
+                                      langs: ocrLangs.trim() || "eng",
+                                      pages: ocrPages.trim() || undefined,
+                                      engine: ocrEngine,
+                                      deskew: ocrDeskew,
+                                      rotatePages: ocrRotatePages,
+                                      clean: ocrClean,
+                                      fallback: ocrFallback,
+                                    },
+                                  })
+                                }
+                                disabled={runOcrM.isPending}
+                                className="ml-auto text-sm font-semibold px-4 py-2 rounded-xl border border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                                title="Use OCR for scanned PDFs"
+                              >
+                                {runOcrM.isPending ? "Starting OCR..." : "Run OCR"}
+                              </button>
+                            </div>
+
+                            {ocrMeta?.errors?.length ? (
+                              <div className="mt-2 text-[11px] text-amber-800">
+                                Last fallback reason: {ocrMeta.errors[0]}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
                         {/* Actions */}
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button
@@ -1639,29 +1816,6 @@ export default function NotebookPage() {
                           >
                             Retry indexing
                           </button>
-
-                          {diag?.source?.kind === "FILE" &&
-                          ((diag.source.file?.mimeType || "")
-                            .toLowerCase()
-                            .includes("pdf") ||
-                            (diag.source.file?.fileName || "")
-                              .toLowerCase()
-                              .endsWith(".pdf")) ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                runOcrM.mutate({
-                                  notebookId: activeId,
-                                  sourceId: fixSourceId,
-                                })
-                              }
-                              disabled={runOcrM.isPending}
-                              className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
-                              title="Use OCR for scanned PDFs"
-                            >
-                              Run OCR
-                            </button>
-                          ) : null}
 
                           <button
                             type="button"

@@ -293,7 +293,19 @@ export async function retrySourceIngestion(
   });
 }
 
-export async function runSourceOcr(notebookId: string, sourceId: string) {
+export async function runSourceOcr(
+  notebookId: string,
+  sourceId: string,
+  opts?: {
+    langs?: string;
+    pages?: string;
+    engine?: "auto" | "ocrmypdf" | "tesseract";
+    deskew?: boolean;
+    rotatePages?: boolean;
+    clean?: boolean;
+    fallback?: boolean;
+  },
+) {
   const src = await prisma.notebookSource.findUnique({
     where: { id: sourceId },
     include: { file: true },
@@ -323,11 +335,23 @@ export async function runSourceOcr(notebookId: string, sourceId: string) {
 
   await prisma.ingestionJob.upsert({
     where: { sourceId },
-    create: { sourceId, status: "PENDING", attemptCount: 0 },
-    update: { status: "PENDING", error: null },
+    create: {
+      sourceId,
+      status: "PENDING",
+      attemptCount: 0,
+      meta: { forceOcr: true, ocr: opts ?? null },
+    },
+    update: {
+      status: "PENDING",
+      error: null,
+      meta: {
+        forceOcr: true,
+        ocr: opts ?? null,
+      },
+    },
   });
 
-  await enqueueIngestionJob(sourceId, { forceOcr: true });
+  await enqueueIngestionJob(sourceId, { forceOcr: true, ocr: opts });
 
   return prisma.notebookSource.findUnique({
     where: { id: sourceId },

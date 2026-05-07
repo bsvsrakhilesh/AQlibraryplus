@@ -28,7 +28,18 @@ export const ingestionQueue = new Queue("ingestion", {
 
 export async function enqueueIngestionJob(
   sourceId: string,
-  opts?: { forceOcr?: boolean },
+  opts?: {
+    forceOcr?: boolean;
+    ocr?: {
+      langs?: string;
+      pages?: string;
+      engine?: "auto" | "ocrmypdf" | "tesseract";
+      deskew?: boolean;
+      rotatePages?: boolean;
+      clean?: boolean;
+      fallback?: boolean;
+    };
+  },
 ) {
   const mode = opts?.forceOcr ? "ocr" : "ingest";
   const jobId = buildIngestionQueueJobId(sourceId, mode);
@@ -45,7 +56,7 @@ export async function enqueueIngestionJob(
 
   await ingestionQueue.add(
     "ingest_source",
-    { sourceId, forceOcr: Boolean(opts?.forceOcr) },
+    { sourceId, forceOcr: Boolean(opts?.forceOcr), ocr: opts?.ocr ?? null },
     { jobId },
   );
 
@@ -58,6 +69,7 @@ export async function enqueueIngestionJob(
     meta: {
       bullQueue: "ingestion",
       forceOcr: Boolean(opts?.forceOcr),
+      ocr: opts?.ocr ?? null,
     },
   });
 }

@@ -14,7 +14,10 @@ import {
 } from "../services/chunking.service";
 import { ensureDocumentRevisionForStoredFile } from "../services/document.service";
 import { getOrCreatePipelineConfig } from "../services/provenance.service";
-import { ocrPdfToPagesFromFile } from "../services/ocr.service";
+import {
+  ocrPdfWithRouterFromFile,
+  parseOcrPageSelection,
+} from "../services/ocr.service";
 import {
   markJobFailed,
   markJobProgress,
@@ -44,9 +47,18 @@ function isPdf(mime?: string | null, fileName?: string | null) {
 export const ingestionWorker = new Worker(
   "ingestion",
   async (job) => {
-    const { sourceId, forceOcr } = job.data as {
+    const { sourceId, forceOcr, ocr } = job.data as {
       sourceId: string;
       forceOcr?: boolean;
+      ocr?: {
+        langs?: string;
+        pages?: string;
+        engine?: "auto" | "ocrmypdf" | "tesseract";
+        deskew?: boolean;
+        rotatePages?: boolean;
+        clean?: boolean;
+        fallback?: boolean;
+      } | null;
     };
     if (!sourceId) throw new Error("Missing sourceId");
 
@@ -68,13 +80,14 @@ export const ingestionWorker = new Worker(
       stage: "starting",
       progressPct: 2,
       statusMessage: "Worker picked up ingestion job",
-      meta: { forceOcr: Boolean(forceOcr), bullJobName: job.name },
+      meta: { forceOcr: Boolean(forceOcr), ocr: ocr ?? null, bullJobName: job.name },
     });
 
     log.info("ingestion_job_started", {
       sourceId,
       queueJobId: job.id,
       forceOcr: Boolean(forceOcr),
+      ocr: ocr ?? null,
     });
 
     await markJobProgress(prisma, "ingestion", sourceId, {
@@ -215,9 +228,13 @@ export const ingestionWorker = new Worker(
 
         const maxPages = Math.max(1, env.OCR_MAX_PAGES);
         const dpi = Math.max(72, env.OCR_DPI);
-        if (scan.pageCount > maxPages) {
+        const ocrPageNumbers = parseOcrPageSelection(
+          ocr?.pages ?? null,
+          scan.pageCount,
+        );
+        if (!ocrPageNumbers && scan.pageCount > maxPages) {
           throw new Error(
-            `Scanned PDF has ${scan.pageCount} page(s), above OCR_MAX_PAGES=${maxPages}. Increase OCR_MAX_PAGES or split the document before OCR.`,
+            `Scanned PDF has ${scan.pageCount} page(s), above OCR_MAX_PAGES=${maxPages}. Choose a page range such as 1-${maxPages}, or raise OCR_MAX_PAGES.`,
           );
         }
 
@@ -225,16 +242,41 @@ export const ingestionWorker = new Worker(
           stage: "ocr_extract",
           progressPct: 48,
           statusMessage: "Running OCR over scanned PDF",
-          meta: { scan, maxPages, dpi },
+          meta: { scan, maxPages, dpi, ocr: ocr ?? null },
         });
 
-        const ocrPages = await ocrPdfToPagesFromFile(f.storagePath, {
+        const ocrResult = await ocrPdfWithRouterFromFile(f.storagePath, {
           maxPages,
           dpi,
-          langs: env.OCR_LANGS,
+          langs: ocr?.langs ?? env.OCR_LANGS,
+          pages: ocr?.pages ?? null,
+          pageCount: scan.pageCount,
+          engine: ocr?.engine ?? "auto",
+          deskew: ocr?.deskew !== false,
+          rotatePages: ocr?.rotatePages !== false,
+          clean: ocr?.clean === true,
+          fallback: ocr?.fallback !== false,
+          forceOcr: Boolean(forceOcr),
           renderTimeoutMs: env.OCR_RENDER_TIMEOUT_MS,
           pageTimeoutMs: env.OCR_PAGE_TIMEOUT_MS,
+          onProgress: async (event) => {
+            const total = event.totalPages || ocrPageNumbers?.length || scan.pageCount || 1;
+            const done = event.processedPages ?? 0;
+            await markJobProgress(prisma, "ingestion", sourceId, {
+              stage: event.stage,
+              progressPct:
+                event.stage === "ocrmypdf_complete"
+                  ? 78
+                  : 48 + Math.round((done / Math.max(1, total)) * 28),
+              statusMessage:
+                event.pageNumber != null
+                  ? `OCR page ${event.pageNumber}`
+                  : `OCR ${event.stage.replace(/_/g, " ")}`,
+              meta: { scan, maxPages, dpi, ocr: ocr ?? null, event },
+            });
+          },
         });
+        const ocrPages = ocrResult.pages;
 
         const fullText = ocrPages
           .map((p) => (p.text || "").trim())
@@ -244,12 +286,19 @@ export const ingestionWorker = new Worker(
         const pc = await getOrCreatePipelineConfig("ingestion.file.pdf.ocr", {
           scannedPdfDetection: true,
           ocrUsed: true,
-          ocrEngine: "tesseract",
-          ocrLangs: env.OCR_LANGS,
+          ocrEngine: ocrResult.engine,
+          ocrFallbackUsed: ocrResult.fallbackUsed,
+          ocrLangs: ocrResult.options.langs,
           ocrDpi: dpi,
           ocrMaxPages: maxPages,
           forceOcr: Boolean(forceOcr),
           scanMetrics: scan,
+          ocrQuality: ocrResult.quality,
+          ocrPages: ocr?.pages ?? null,
+          ocrDeskew: ocrResult.options.deskew,
+          ocrRotatePages: ocrResult.options.rotatePages,
+          ocrClean: ocrResult.options.clean,
+          ocrErrors: ocrResult.errors,
           pageSeparator: "\n\n",
           splitterVersion: CHUNK_SPLITTER_VERSION,
         });
@@ -258,7 +307,16 @@ export const ingestionWorker = new Worker(
           stage: "chunking",
           progressPct: 82,
           statusMessage: "Creating OCR-derived chunks",
-          meta: { pageCount: ocrPages.length },
+          meta: {
+            pageCount: ocrPages.length,
+            ocr: {
+              engine: ocrResult.engine,
+              fallbackUsed: ocrResult.fallbackUsed,
+              quality: ocrResult.quality,
+              options: ocrResult.options,
+              errors: ocrResult.errors,
+            },
+          },
         });
 
         assertIngestibleText(fullText, { sourceKind: src.kind, mode: "ocr_pdf" });
@@ -272,7 +330,18 @@ export const ingestionWorker = new Worker(
         await markJobSucceeded(prisma, "ingestion", sourceId, {
           stage: "completed",
           statusMessage: "OCR ingestion completed",
-          meta: { documentRevisionId, pageCount: ocrPages.length, chunkResult },
+          meta: {
+            documentRevisionId,
+            pageCount: ocrPages.length,
+            chunkResult,
+            ocr: {
+              engine: ocrResult.engine,
+              fallbackUsed: ocrResult.fallbackUsed,
+              quality: ocrResult.quality,
+              options: ocrResult.options,
+              errors: ocrResult.errors,
+            },
+          },
         });
 
         log.info("ingestion_job_succeeded", { sourceId, queueJobId: job.id });
