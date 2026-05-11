@@ -6,12 +6,31 @@ tags:
   - data analysis
   - visualization
 authors:
-  - name: Your Name
+  - name: Boddu Sesha Venkata Sai Ranga Akhilesh
     orcid: 0000-0000-0000-0000
     affiliation: 1
+
+  - name: Shahzad Gani
+    orcid: 0000-0000-0000-0000
+    affiliation: 1
+
+  - name: Girish Agrawal
+    orcid: 0000-0000-0000-0000
+    affiliation: 2
+
+  - name: Vidya Subramanian
+    orcid: 0000-0000-0000-0000
+    affiliation: 3
+
 affiliations:
-  - name: Your Department, Your Institute, India
+  - name: Centre for Atmospheric Sciences, Indian Institute of Technology Delhi, India
     index: 1
+
+  - name: Transportation Research & Injury Prevention Centre, Indian Institute of Technology Delhi, India
+    index: 2
+
+  - name: Jindal School of Government and Public Policy, O.P. Jindal Global University, Sonipat, Haryana, India
+    index: 3
 date: 11 May 2026
 bibliography: paper.bib
 ---
