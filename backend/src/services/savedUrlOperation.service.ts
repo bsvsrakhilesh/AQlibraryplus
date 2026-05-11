@@ -96,6 +96,13 @@ export async function listSavedUrlOperations(ownerId: string, limit = 20) {
     where: { ownerId },
     orderBy: { updatedAt: "desc" },
     take: Math.max(1, Math.min(limit, 100)),
+    include: {
+      items: {
+        where: { status: "failed" },
+        orderBy: { updatedAt: "desc" },
+        take: 3,
+      },
+    },
   });
 
   return rows.map(serializeOperationRun);
@@ -684,6 +691,29 @@ async function summarizeRun(runId: string) {
   };
 }
 
+async function summarizeFailedItemErrors(runId: string) {
+  const failedItems = await prisma.operationRunItem.findMany({
+    where: { runId, status: "failed", error: { not: null } },
+    select: { error: true },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+  });
+
+  const uniqueErrors = Array.from(
+    new Set(
+      failedItems
+        .map((item) => String(item.error || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (!uniqueErrors.length) return null;
+
+  const summary = uniqueErrors.slice(0, 3).join(" | ");
+  const extra = uniqueErrors.length > 3 ? ` (+${uniqueErrors.length - 3} more)` : "";
+  return `${summary}${extra}`.slice(0, 1000);
+}
+
 export async function processSavedUrlOperationRun(runId: string) {
   const run = await prisma.operationRun.findUnique({
     where: { id: runId },
@@ -778,12 +808,14 @@ export async function processSavedUrlOperationRun(runId: string) {
   }
 
   const status = summary.failed > 0 ? "failed" : "success";
+  const error = status === "failed" ? await summarizeFailedItemErrors(runId) : null;
   return prisma.operationRun.update({
     where: { id: runId },
     data: {
       ...summary,
       status,
       stage: "completed",
+      error,
       statusMessage:
         status === "success"
           ? "Operation completed"

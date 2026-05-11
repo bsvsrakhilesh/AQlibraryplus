@@ -65,6 +65,19 @@ function formatTime(value?: string | null) {
   });
 }
 
+function failedItemErrors(operation: SavedUrlOperationRun) {
+  const seen = new Set<string>();
+  return (operation.items || [])
+    .filter((item) => item.status === "failed" && item.error)
+    .map((item) => String(item.error || "").trim())
+    .filter((error) => {
+      if (!error || seen.has(error)) return false;
+      seen.add(error);
+      return true;
+    })
+    .slice(0, 3);
+}
+
 const SavedUrlsOperationsPanel: React.FC<Props> = ({
   operations,
   loading = false,
@@ -114,6 +127,7 @@ const SavedUrlsOperationsPanel: React.FC<Props> = ({
               0,
               Math.min(100, Math.round(operation.progressPct || 0)),
             );
+            const itemErrors = failedItemErrors(operation);
 
             return (
               <li
@@ -151,6 +165,12 @@ const SavedUrlsOperationsPanel: React.FC<Props> = ({
                     {operation.error && (
                       <div className="mt-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                         {operation.error}
+                      </div>
+                    )}
+
+                    {!operation.error && itemErrors.length > 0 && (
+                      <div className="mt-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                        {itemErrors.join(" | ")}
                       </div>
                     )}
 

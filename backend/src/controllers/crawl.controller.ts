@@ -238,6 +238,17 @@ function bestPdfFileName(u: URL, contentDisposition: string | null) {
   return raw.toLowerCase().endsWith(".pdf") ? raw : `${raw}.pdf`;
 }
 
+function safeHttpUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const u = new URL(raw.trim());
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 // ===================== Storage helpers =====================
 const STORAGE_DIR =
   process.env.FILE_STORAGE_DIR || path.join(process.cwd(), "storage");
@@ -1282,6 +1293,17 @@ export async function crawlPdfHandler(
       discoveryDateText: discoveredDocument?.rawDateHint ?? null,
     };
 
+    const sourceReferer = safeHttpUrl(lineageMeta.sourcePageUrl);
+    const refererForCandidate = (candidateUrl: string) => {
+      if (sourceReferer) return sourceReferer;
+      try {
+        const candidate = new URL(candidateUrl);
+        return `${candidate.origin}/`;
+      } catch {
+        return undefined;
+      }
+    };
+
     if (accessMode === "institutional") {
       log.info("crawlPdfHandler_institutional_begin", {
         ...requestMeta(req),
@@ -1397,7 +1419,9 @@ export async function crawlPdfHandler(
               Accept: "application/pdf,*/*;q=0.9,text/html;q=0.8,*/*;q=0.7",
               "User-Agent": BROWSER_UA,
               "Accept-Language": "en-US,en;q=0.9",
-              Referer: `${cu.origin}/`,
+              ...(refererForCandidate(candidate)
+                ? { Referer: refererForCandidate(candidate) as string }
+                : {}),
             });
 
             const sniffCt = (
@@ -1430,7 +1454,9 @@ export async function crawlPdfHandler(
             Accept: "application/pdf,*/*",
             "User-Agent": BROWSER_UA,
             "Accept-Language": "en-US,en;q=0.9",
-            Referer: `${cu.origin}/`,
+            ...(refererForCandidate(candidate)
+              ? { Referer: refererForCandidate(candidate) as string }
+              : {}),
           });
         } catch (e) {
           log.info("crawl_pdf_full_fetch_failed", {
@@ -1521,7 +1547,7 @@ export async function crawlPdfHandler(
         }
 
         const dl = await downloadPdfWithWget(candidate, {
-          referer: `${cu.origin}/`,
+          referer: refererForCandidate(candidate),
           cookie: null,
         });
 
