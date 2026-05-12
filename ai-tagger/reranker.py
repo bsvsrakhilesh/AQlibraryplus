@@ -344,7 +344,7 @@ def rerank_with_llm(
             {"role": "user", "content": content},
         ],
         temperature=0.1,
-        **_completion_token_kwargs(700),
+        max_completion_tokens=700,
     )
 
     txt = (resp.choices[0].message.content or "").strip()
