@@ -1,7 +1,7 @@
 FROM node:22-alpine AS dev
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci || (echo "npm ci failed; package-lock.json may be out of sync. Running npm install inside the image." && npm install); else npm install; fi
 EXPOSE 3000
 CMD ["npm", "run", "dev"]
 
@@ -9,7 +9,7 @@ CMD ["npm", "run", "dev"]
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci || (echo "npm ci failed; package-lock.json may be out of sync. Running npm install inside the image." && npm install); else npm install; fi
 COPY . .
 # Let API URL be configurable at build time (optional)
 ARG VITE_API_URL=/api
