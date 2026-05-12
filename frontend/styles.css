@@ -4112,8 +4112,7 @@ body,
 }
 
 .landing-workflow-step h3,
-.landing-product-card h3,
-.landing-experience-item h3 {
+.landing-product-card h3 {
   margin: 0;
   color: #0f172a;
   font-weight: 800;
@@ -4125,8 +4124,7 @@ body,
 }
 
 .landing-workflow-step p,
-.landing-product-card p,
-.landing-experience-item p {
+.landing-product-card p {
   margin: 0;
   color: #64748b;
   line-height: 1.55;
@@ -4245,41 +4243,6 @@ body,
   font-weight: 800;
 }
 
-.landing-experience-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(22rem, 1.1fr);
-  gap: clamp(2rem, 5vw, 5rem);
-  align-items: start;
-}
-
-.landing-experience-list {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.landing-experience-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.85rem;
-  padding: 1rem;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.landing-experience-item > span {
-  display: grid;
-  width: 2.4rem;
-  height: 2.4rem;
-  place-items: center;
-  border-radius: 0.5rem;
-  background: #eefcf8;
-  color: #0f766e;
-}
-
-.landing-experience-item p {
-  margin-top: 0.35rem;
-}
 
 .landing-final-cta {
   padding: 5rem 0;
@@ -4337,8 +4300,7 @@ body,
     padding-top: 5.5rem;
   }
 
-  .landing-hero-grid,
-  .landing-experience-layout {
+  .landing-hero-grid {
     grid-template-columns: 1fr;
   }
 

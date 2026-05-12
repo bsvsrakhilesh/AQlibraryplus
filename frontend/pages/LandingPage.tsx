@@ -15,11 +15,9 @@ import {
   FileText,
   FolderOpen,
   GitBranch,
-  Layers,
   Link as LinkIcon,
   Network,
   Search,
-  Sparkles,
   Tags,
 } from "lucide-react";
 import * as THREE from "three";
@@ -163,24 +161,6 @@ const PAGE_DIRECTORY: PageInfo[] = [
     description:
       "A writing workspace for turning selected sources into notes, outlines, summaries, and policy-ready drafts.",
     highlights: ["Source attachments", "Grounded summaries", "Reusable briefs"],
-  },
-];
-
-const EXPERIENCE_POINTS = [
-  {
-    title: "Cinematic where it teaches",
-    icon: <Layers className="h-5 w-5" />,
-    body: "The 3D scene visualizes the product workflow instead of acting as decoration.",
-  },
-  {
-    title: "Operational below the fold",
-    icon: <CheckCircle2 className="h-5 w-5" />,
-    body: "Every section after the hero is built for scanning, comparison, and confident navigation.",
-  },
-  {
-    title: "Respectful motion",
-    icon: <Sparkles className="h-5 w-5" />,
-    body: "Motion is progressive, quiet, and backed by a reduced-motion fallback.",
   },
 ];
 
@@ -599,7 +579,6 @@ function LandingNav() {
   const items = [
     { label: "Workflow", href: "#workflow" },
     { label: "Pages", href: "#pages" },
-    { label: "Experience", href: "#experience" },
   ];
 
   return (
@@ -663,14 +642,9 @@ function Hero() {
     <section className="landing-cinematic-hero">
       <div className="landing-hero-grid mx-auto max-w-7xl px-6">
         <div className="landing-hero-copy">
-          <motion.div className="landing-eyebrow" {...heroFade(0)}>
-            <Sparkles className="h-4 w-4" />
-            Cinematic research workflow
-          </motion.div>
-
           <motion.h1
             className="mt-5 max-w-4xl text-4xl font-extrabold text-slate-950 md:text-6xl"
-            {...heroFade(0.06)}
+            {...heroFade(0)}
           >
             Turn scattered links and files into a structured research workspace.
           </motion.h1>
@@ -821,43 +795,8 @@ function PageDirectory() {
   );
 }
 
-function ExperienceSection() {
-  return (
-    <section id="experience" className="landing-section">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="landing-experience-layout">
-          <motion.div {...fadeUp(0)}>
-            <div className="landing-eyebrow">
-              <Sparkles className="h-4 w-4" />
-              UX principle
-            </div>
-            <h2 className="mt-4 text-3xl font-bold text-slate-950 md:text-5xl">
-              Cinematic first impression, serious product credibility.
-            </h2>
-          </motion.div>
-
-          <div className="landing-experience-list">
-            {EXPERIENCE_POINTS.map((item, index) => (
-              <motion.div
-                key={item.title}
-                className="landing-experience-item"
-                {...fadeUp(0.08 + index * 0.05)}
-              >
-                <span>{item.icon}</span>
-                <div>
-                  <h3>{item.title}</h3>
-                  <p>{item.body}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function BottomCTA() {
+
   const navigate = useNavigate();
 
   return (
@@ -910,7 +849,6 @@ export default function LandingPage() {
       <Hero />
       <WorkflowSection />
       <PageDirectory />
-      <ExperienceSection />
       <BottomCTA />
       <footer className="landing-footer">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-9 text-sm text-slate-500 sm:flex-row">
