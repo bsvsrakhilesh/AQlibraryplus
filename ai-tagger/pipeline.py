@@ -80,11 +80,44 @@ except Exception:  # pragma: no cover
         ) -> Optional[Dict[str, Any]]:
             return None
 
+        def extract_structured_with_llm(
+            *,
+            content: str,
+            file_name: Optional[str],
+            tags: Optional[Sequence[str]],
+            extraction: Optional[Dict[str, Any]],
+            grounding_units: Optional[Sequence[Dict[str, Any]]],
+        ) -> Optional[Dict[str, Any]]:
+            return None
+
         def merge_structured(
             preferred: Optional[Dict[str, Any]],
             fallback: Optional[Dict[str, Any]],
         ) -> Dict[str, Any]:
             return fallback if isinstance(fallback, dict) else {}
+
+
+try:
+    from structured_intelligence import build_structured_intelligence  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from .structured_intelligence import build_structured_intelligence  # type: ignore
+    except Exception:  # pragma: no cover
+
+        def build_structured_intelligence(
+            *,
+            content: str,
+            file_name: Optional[str] = None,
+            structured: Any = None,
+            grounding_units: Sequence[Dict[str, Any]] = (),
+            allow_llm: bool = False,
+        ) -> Dict[str, Any]:
+            return {
+                "profile": "structured_intelligence",
+                "version": 1,
+                "domain": "air_quality_governance",
+                "items": [],
+            }
 
 
 # simple tokenizer (letters/digits/hyphen/+/underscore); no trailing dots
@@ -359,6 +392,9 @@ def _ground_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> Any:
     grap = structured.get("grap")
     if isinstance(grap, dict):
         structured["grap"] = _ground_label_item(grap, units)
+        stages = grap.get("stages")
+        if isinstance(stages, list):
+            grap["stages"] = [_ground_label_item(it, units) for it in stages]
 
     return structured
 
@@ -415,6 +451,19 @@ def _clean_confidence(value: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return max(0.0, min(1.0, n))
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _dict_copy(value: Any) -> Dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
 
 
 def _pick_enum(
@@ -961,7 +1010,29 @@ def _iter_structured_tag_items(
                 },
             )
         )
-        if grap.get("stage"):
+        stages = grap.get("stages") if isinstance(grap.get("stages"), list) else []
+        if stages:
+            seen_stages = set()
+            for stage_item in stages:
+                if not isinstance(stage_item, dict):
+                    continue
+                stage = _clean_text(stage_item.get("value"), 20)
+                if not stage or stage.casefold() in seen_stages:
+                    continue
+                seen_stages.add(stage.casefold())
+                out.append(
+                    (
+                        "program_stage",
+                        f"grap stage {stage}",
+                        {
+                            "value": f"grap stage {stage}",
+                            "score": stage_item.get("score") or 0.85,
+                            "evidence": stage_item.get("evidence") or grap.get("evidence") or "",
+                            "locator": stage_item.get("locator") or grap.get("locator"),
+                        },
+                    )
+                )
+        elif grap.get("stage"):
             out.append(
                 (
                     "program_stage",
@@ -1504,19 +1575,12 @@ def _smart_quote_and_page(
     page: Optional[int] = None
     m = _SMART_LOCATOR_PREFIX_RE.match(raw)
     if m:
-        if m.group(1):
-            try:
-                page = int(m.group(1))
-            except ValueError:
-                page = None
+        page = _safe_int(m.group(1))
         raw = raw[m.end() :].strip()
 
-    loc = locator if isinstance(locator, dict) else {}
-    if page is None and loc.get("pageNumber") is not None:
-        try:
-            page = int(loc.get("pageNumber"))
-        except (TypeError, ValueError):
-            page = None
+    loc = _dict_copy(locator)
+    if page is None:
+        page = _safe_int(loc.get("pageNumber"))
 
     return raw, page
 
@@ -1525,6 +1589,36 @@ def _smart_evidence_list(
     evidence: Any,
     locator: Optional[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
+    if isinstance(evidence, list):
+        out: List[Dict[str, Any]] = []
+        for raw in evidence:
+            if isinstance(raw, dict):
+                raw_locator = raw.get("locator")
+                loc = _dict_copy(raw_locator) or _dict_copy(locator)
+                quote, page = _smart_quote_and_page(
+                    raw.get("quote") or raw.get("evidence"),
+                    loc,
+                )
+                section = raw.get("section")
+                if page is None:
+                    page = _safe_int(raw.get("page"))
+            else:
+                quote, page = _smart_quote_and_page(raw, locator)
+                loc = _dict_copy(locator)
+                section = None
+
+            if not quote:
+                continue
+            item: Dict[str, Any] = {"quote": quote}
+            if page is not None:
+                item["page"] = page
+            if section:
+                item["section"] = _clean_text(section, 160)
+            if loc:
+                item["locator"] = loc
+            out.append(item)
+        return out[:3]
+
     quote, page = _smart_quote_and_page(evidence, locator)
     if not quote:
         return []
@@ -1533,7 +1627,7 @@ def _smart_evidence_list(
     if page is not None:
         item["page"] = page
 
-    loc = locator if isinstance(locator, dict) else {}
+    loc = _dict_copy(locator)
     section = loc.get("section") or loc.get("heading")
     if section:
         item["section"] = _clean_text(section, 160)
@@ -1611,9 +1705,9 @@ def _smart_candidate_units(
         if not text:
             continue
 
-        locator = unit.get("locator") if isinstance(unit.get("locator"), dict) else {}
+        locator = _dict_copy(unit.get("locator"))
         if len(text) <= max_chars:
-            out.append({"text": text, "locator": dict(locator)})
+            out.append({"text": text, "locator": _dict_copy(locator)})
             continue
 
         start = 0
@@ -1627,7 +1721,7 @@ def _smart_candidate_units(
 
             chunk = text[start:end].strip()
             if chunk:
-                loc = dict(locator)
+                loc = _dict_copy(locator)
                 loc["chunkIndex"] = idx
                 out.append({"text": chunk, "locator": loc})
                 idx += 1
@@ -1691,11 +1785,60 @@ def _is_known_taxonomy_tag(value: Any) -> bool:
     return any(k in _SMART_TAXONOMY_VALUES for k in keys if k)
 
 
+_INTELLIGENCE_SMART_MAP = {
+    "topics": (_SMART_CATEGORY_TOPICS, None),
+    "agencies": (_SMART_CATEGORY_ENTITIES, "agency"),
+    "programs": (_SMART_CATEGORY_ENTITIES, "scheme_program"),
+    "programStages": (_SMART_CATEGORY_ENTITIES, "scheme_program"),
+    "legalReferences": (_SMART_CATEGORY_ENTITIES, "legal_reference"),
+    "actionsDecisions": (_SMART_CATEGORY_ACTIONS, None),
+    "requirements": (_SMART_CATEGORY_ACTIONS, None),
+    "restrictions": (_SMART_CATEGORY_ACTIONS, None),
+    "locations": (_SMART_CATEGORY_ENTITIES, "location"),
+    "sectors": (_SMART_CATEGORY_TAXONOMY, None),
+    "pollutantsMeasurements": (_SMART_CATEGORY_TOPICS, None),
+    "datesDeadlines": (_SMART_CATEGORY_ENTITIES, "date_deadline"),
+    "claims": (_SMART_CATEGORY_DISCOVERED, None),
+}
+
+
+def _iter_structured_intelligence_items(
+    structured_intelligence: Any,
+) -> Sequence[Dict[str, Any]]:
+    if not isinstance(structured_intelligence, dict):
+        return []
+
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for key in list(_INTELLIGENCE_SMART_MAP.keys()) + ["items"]:
+        arr = structured_intelligence.get(key)
+        if not isinstance(arr, list):
+            continue
+        for raw in arr:
+            if not isinstance(raw, dict):
+                continue
+            label = _clean_text(raw.get("label") or raw.get("value"), 180)
+            category = _clean_text(raw.get("category"), 80)
+            if not label or not category:
+                continue
+            item_key = (
+                category,
+                _clean_text(raw.get("type"), 80) or "",
+                _clean_text(raw.get("normalizedValue"), 180) or label.casefold(),
+            )
+            if item_key in seen:
+                continue
+            seen.add(item_key)
+            out.append(raw)
+    return out
+
+
 def _build_smart_tags(
     *,
     tags: Sequence[str],
     tag_details: Sequence[Dict[str, Any]],
     structured: Any,
+    structured_intelligence: Any = None,
     content: str,
     grounding_units: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -1757,6 +1900,36 @@ def _build_smart_tags(
             or ("matched" if category == _SMART_CATEGORY_TAXONOMY else "suggested"),
             "evidence": ev[:3],
         }
+
+    for item in _iter_structured_intelligence_items(structured_intelligence):
+        intelligence_category = _clean_text(item.get("category"), 80) or ""
+        smart_category, forced_type = _INTELLIGENCE_SMART_MAP.get(
+            intelligence_category,
+            (_SMART_CATEGORY_DISCOVERED, None),
+        )
+        evidence = item.get("evidence")
+        if isinstance(evidence, list):
+            evidence = [
+                ev
+                for ev in evidence
+                if isinstance(ev, dict) and _clean_text(ev.get("quote"), 1200)
+            ]
+        locator = item.get("locator") if isinstance(item.get("locator"), dict) else None
+        ev_quote = evidence if isinstance(evidence, list) else None
+        if not ev_quote and isinstance(evidence, str):
+            ev_quote = evidence
+        tag_type = forced_type or _clean_text(item.get("type"), 80) or "intelligence_item"
+        add(
+            item.get("label") or item.get("value"),
+            category=smart_category,
+            tag_type=tag_type,
+            source=_clean_text(item.get("source"), 80) or "structured_intelligence",
+            confidence=item.get("confidence"),
+            evidence=ev_quote,
+            locator=locator,
+            matched_taxonomy=_clean_text(item.get("normalizedValue"), 180),
+            status=_clean_text(item.get("status"), 80) or "matched",
+        )
 
     for tag_type, value, item in _iter_structured_tag_items(structured):
         evidence = item.get("evidence") if isinstance(item, dict) else None
@@ -2142,6 +2315,13 @@ def extract_and_tag_sync(
             grounding_units=grounding_units,
             allow_llm=use_llm,
         )
+        structured_intelligence = build_structured_intelligence(
+            content=content,
+            file_name=file_name,
+            structured=structured,
+            grounding_units=grounding_units,
+            allow_llm=use_llm,
+        )
         h = hashlib.sha256(content.encode("utf-8")).hexdigest()
         tag_details = _build_ai_tag_details(
             tags=[],
@@ -2157,6 +2337,7 @@ def extract_and_tag_sync(
             tags=[],
             tag_details=tag_details,
             structured=structured,
+            structured_intelligence=structured_intelligence,
             content=content,
             grounding_units=grounding_units,
         )
@@ -2164,6 +2345,8 @@ def extract_and_tag_sync(
             "tags": [],
             "tag_details": tag_details,
             "smart_tags": smart_tags,
+            "structured_intelligence_v1": structured_intelligence,
+            "structuredIntelligenceV1": structured_intelligence,
             "phrases": [],
             "unigrams": [],
             "length": len(content),
@@ -2330,6 +2513,14 @@ def extract_and_tag_sync(
         allow_llm=use_llm,
     )
 
+    structured_intelligence = build_structured_intelligence(
+        content=content,
+        file_name=file_name,
+        structured=structured,
+        grounding_units=grounding_units,
+        allow_llm=use_llm,
+    )
+
     tag_details = _build_ai_tag_details(
         tags=tags,
         structured=structured,
@@ -2344,6 +2535,7 @@ def extract_and_tag_sync(
         tags=tags,
         tag_details=tag_details,
         structured=structured,
+        structured_intelligence=structured_intelligence,
         content=content,
         grounding_units=grounding_units,
     )
@@ -2357,6 +2549,8 @@ def extract_and_tag_sync(
         "tags": tags,
         "tag_details": tag_details,
         "smart_tags": smart_tags,
+        "structured_intelligence_v1": structured_intelligence,
+        "structuredIntelligenceV1": structured_intelligence,
         "phrases": phrases[:200],
         "unigrams": unigrams[:200],
         "length": len(content),
