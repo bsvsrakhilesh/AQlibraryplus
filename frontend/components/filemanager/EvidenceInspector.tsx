@@ -368,6 +368,10 @@ export default function EvidenceInspector({ file }: Props) {
     (file as any)?.tagsMetaRaw?.tagger?.smartTags ??
     (file as any)?.tagsMetaRaw?.aiTagger?.smartTags ??
     null;
+  const evidenceStructuredIntelligence =
+    (file as any)?.tagsMetaRaw?.tagger?.structuredIntelligenceV1 ??
+    (file as any)?.tagsMetaRaw?.aiTagger?.structuredIntelligenceV1 ??
+    null;
 
   const evidenceIntelligenceRows = file
     ? [
@@ -543,6 +547,7 @@ export default function EvidenceInspector({ file }: Props) {
             structured={evidenceStructured}
             tagDetails={evidenceTagDetails}
             smartTags={evidenceSmartTags}
+            structuredIntelligence={evidenceStructuredIntelligence}
             intelligenceRows={evidenceIntelligenceRows}
             provenanceRows={evidenceProvenanceRows}
           />
