@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import "./src/styles/fonts.css";
+@import "./src/styles/theme.css";
 @import "tailwindcss";
 
 /* Dark variant works off a `.dark` class on <html> */
