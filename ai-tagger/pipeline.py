@@ -143,6 +143,73 @@ _ACRONYM_RE = re.compile(r"\b[A-Z]{2,10}\b")
 _ACRONYM_WITH_WORD_RE = re.compile(r"\b([A-Z]{2,10})\s+([A-Z][a-z]{2,})\b")
 _ALPHANUM_RE = re.compile(r"\b[A-Z]{1,6}\d+(?:\.\d+)?\b")
 _TITLE_SEQ_RE = re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b")
+_GENERIC_TAG_WORDS = {
+    "dated",
+    "letter",
+    "memo",
+    "office",
+    "order",
+    "page",
+    "subject",
+    "sub",
+    "the",
+}
+_ALLOWED_GENERIC_PHRASES = {
+    "dc office",
+    "bsnl office",
+    "grap stage",
+}
+_KNOWN_SHORT_TAG_WORDS = {
+    "aqi",
+    "bsnl",
+    "caqm",
+    "cpcb",
+    "dmrc",
+    "dpcc",
+    "grap",
+    "huda",
+    "imd",
+    "ltd",
+    "ncr",
+    "ngt",
+    "pm10",
+    "pm25",
+    "pwd",
+}
+
+
+def _candidate_quality_reason(value: Any) -> Optional[str]:
+    text = _clean_text(value, 120)
+    if not text:
+        return "empty"
+
+    norm = text.casefold()
+    words = re.findall(r"[a-z0-9]+", norm)
+    if not words:
+        return "no_words"
+
+    if len(words) > 6:
+        return "too_long"
+
+    if all(word in _STOPWORDS or word in _GENERIC_TAG_WORDS for word in words):
+        return "only_generic_words"
+
+    if norm not in _ALLOWED_GENERIC_PHRASES:
+        if words[0] in _STOPWORDS or words[-1] in _STOPWORDS:
+            return "stopword_edge"
+        if len(words) <= 2 and any(word in _GENERIC_TAG_WORDS for word in words):
+            return "generic_short_phrase"
+
+    alpha_words = [word for word in words if any(ch.isalpha() for ch in word)]
+    if len(alpha_words) == 2 and all(len(word) <= 3 for word in alpha_words):
+        if not any(word in _KNOWN_SHORT_TAG_WORDS for word in alpha_words):
+            return "short_ocr_fragment"
+
+    return None
+
+
+def _is_good_tag_candidate(value: Any) -> bool:
+    return _candidate_quality_reason(value) is None
 
 
 def _extract_signal_terms(text: str, limit: int = 60000) -> List[str]:
@@ -163,6 +230,8 @@ def _extract_signal_terms(text: str, limit: int = 60000) -> List[str]:
         if len(s) < 3:
             return
         if " " not in s and k in _STOPWORDS:
+            return
+        if not _is_good_tag_candidate(s):
             return
         seen.add(k)
         out.append(s)
@@ -203,6 +272,8 @@ def _extract_phrases(tokens: Sequence[str], topk: int = 200) -> List[str]:
             continue
         if a in _STOPWORDS or b in _STOPWORDS:
             c = int(c * 0.5)
+        if c <= 0 or not _is_good_tag_candidate(phrase):
+            continue
         filtered[phrase] = c
     return [p for p, _ in filtered.most_common(topk)]
 
@@ -1086,6 +1157,8 @@ def _build_ai_tag_details(
     ) -> None:
         raw = _clean_text(value, 120)
         if not raw:
+            return
+        if not _is_good_tag_candidate(raw):
             return
         key = (tag_type, raw.casefold())
         if key in seen:
@@ -2410,10 +2483,14 @@ def extract_and_tag_sync(
                         raw = _clean_text(item, 120)
                         if not raw:
                             continue
+                        if not _is_good_tag_candidate(raw):
+                            continue
 
                         mapped = apply_taxonomy([raw])
                         value = mapped[0] if mapped else raw
                         if not value:
+                            continue
+                        if not _is_good_tag_candidate(value):
                             continue
 
                         key = str(value).casefold()
