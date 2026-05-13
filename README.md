@@ -22,6 +22,27 @@ Documents and notifications from various governance bodies are either stored in 
 
 ## Key features
 
+### Research Impact & Evidence Integrity
+
+- **Evidence-Backed Policy Analysis** — Centralized repository for fragmented governance documents; prevents loss of sources that disappear from web (newspapers, agency pages); enables reproducible research with cited evidence trails
+- **Cross-Agency Pattern Discovery** — Trace policy decisions and their consequences across multiple institutions; identify timeline relationships and decision dependencies for comparative governance research
+- **Grounded AI Analysis** — LLM-backed insights that don't hallucinate; all outputs anchored to source documents with citation links; reduces analyst time on manual review and categorization
+- **Provenance & Auditability** — Maintains citation links to original sources; records capture metadata (date, context, version); enables verification and supports institutional knowledge preservation
+- **Institutional Continuity** — Archives ephemeral web content before it disappears; captures decision rationale and organizational context; supports longitudinal governance studies
+
+### Data Collection & Organization
+
+- **URL Collector with Deduplication** — Search, inspect, and capture web pages as text or PDF; automatic deduplication prevents redundant data; structured capture of web-sourced evidence
+- **Flexible Multi-Format Support** — Handles web pages, PDFs, and text uploads with unified storage and searchable archive
+- **Intelligent Metadata & Tagging** — AI-powered automated tagging using LLM-based taxonomy system; customizable structured tags (CAQM taxonomy included as example); full-text search across documents and metadata
+- **Governance Workspace** — Map connections across agencies, decisions, timelines, and issues; track authorship and policy dependencies; create audit trails for governance decisions
+
+### Technical Architecture
+
+- **Reproducible & Scalable** — Docker-based deployment with containerized frontend, backend, and AI components; production and development configurations; Prisma ORM for database migrations
+- **Extensible Taxonomy System** — Composable taxonomy structure enabling domain-specific customization for different governance contexts
+- **Notebook Environment** — Interactive analysis and briefing interface for assembling evidence-backed notes, summaries, and working drafts from the archive
+
 ## Installation
 
 ## Requirements
