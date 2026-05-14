@@ -24,8 +24,8 @@ Documents and notifications from various governance bodies are either stored in 
 
 ### Research Impact & Evidence Integrity
 
-- **Evidence-Backed Policy Analysis** — Centralized repository for fragmented governance documents; prevents loss of sources that disappear from web (newspapers, agency pages); enables reproducible research with cited evidence trails
-- **Cross-Agency Pattern Discovery** — Trace policy decisions and their consequences across multiple institutions; identify timeline relationships and decision dependencies for comparative governance research
+- **Evidence-Backed Policy Analysis** — Centralized repository for fragmented governance documents; prevents loss of sources that disappear from web (newspaper article, agency pages); enables reproducible research with cited evidence.
+- **Cross-Agency Pattern Discovery** — Trace policy decisions and their consequences within the organization or across multiple institutions ; identify timeline relationships and decision dependencies for comparative governance research and decisions.
 - **Grounded AI Analysis** — LLM-backed insights that don't hallucinate; all outputs anchored to source documents with citation links; reduces analyst time on manual review and categorization
 - **Provenance & Auditability** — Maintains citation links to original sources; records capture metadata (date, context, version); enables verification and supports institutional knowledge preservation
 - **Institutional Continuity** — Archives ephemeral web content before it disappears; captures decision rationale and organizational context; supports longitudinal governance studies
