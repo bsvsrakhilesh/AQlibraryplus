@@ -326,6 +326,103 @@ See: [User Manual](./docs/SmartScrape_User_Manual.pdf)
 
 ## Testing and verification
 
+SmartScrape provides automated tests for the TypeScript backend, frontend
+collector utilities, and Python AI tagger components. The tests are intended to
+verify the core research-software behavior that supports reproducible evidence
+collection: URL normalization, search input validation, queue identifiers, OCR
+option parsing, notebook text chunking and provenance handling, governance
+workspace query planning, document discovery, embedding vector formatting,
+tag-candidate filtering, structured intelligence extraction, and OpenAI client
+compatibility helpers.
+
+Install dependencies before running the test suites:
+
+```powershell
+npm install
+```
+
+If testing the Python AI tagger outside Docker, create a Python environment and
+install its dependencies:
+
+```powershell
+cd ai-tagger
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cd ..
+```
+
+Run the backend tests:
+
+```powershell
+npm -w backend test
+```
+
+Run the frontend tests:
+
+```powershell
+npm -w frontend test
+```
+
+Run the Python AI tagger tests:
+
+```powershell
+cd ai-tagger
+python -m unittest discover -s tests
+cd ..
+```
+
+Build the production frontend and backend bundles:
+
+```powershell
+npm run build
+```
+
+For end-to-end verification, start the full local development stack:
+
+```powershell
+docker compose -f docker-compose.dev.yml up --build
+```
+
+When the services are running, verify that these endpoints are available:
+
+```text
+http://localhost:3000
+http://localhost:4000/health
+http://localhost:7071/health
+```
+
+A reviewer can then perform this manual smoke test:
+
+1. Open `http://localhost:3000`.
+2. Use the URL Collector to search for relevant sources using keywords,
+   website/domain filters, year filters, jurisdiction, region, and document
+   format options.
+3. Review the returned URLs, inspect their snippets and metadata, and save one
+   or more relevant results to the archive.
+4. Upload a small PDF or plain-text file in the File Manager.
+5. Run AI tagging on a saved URL or uploaded file when the tagger service is
+   available.
+6. Confirm that the saved source appears with title, URL or file name, capture
+   metadata, tags, and provenance information.
+7. Attach the saved source to a Notebook and ask a question that requires a
+   cited answer from the archived evidence.
+8. Open the Governance Workspace and verify that the same source can be used for
+   issue, agency, timeline, or evidence review workflows where applicable.
+
+The expected result is that automated tests exit successfully, the frontend and
+backend build without TypeScript errors, service health checks respond, and the
+manual workflow produces a saved evidence source that can be searched, tagged,
+attached to a notebook, and cited in an answer.
+
+Some integrations depend on external services. OpenAI-backed notebook/chat,
+LLM-assisted tag ranking, and structured extraction require a valid
+`OPENAI_API_KEY`. Google-powered URL search requires valid `GOOGLE_CSE_KEY` and
+`GOOGLE_CSE_CX` credentials. Without these keys, deterministic tests, local
+startup, file upload, saved-source management, and non-LLM verification paths
+can still be exercised, but external search and LLM-backed analysis will be
+limited.
+
 ## Development status
 
 ## Citation
