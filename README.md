@@ -278,6 +278,17 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ## Documentation
 
+A detailed user manual is provided separately. It explains how to use the main SmartScrape workflows, including:
+
+- collecting URLs and PDFs
+- uploading and organizing documents
+- using tags and metadata
+- working with the Governance Workspace
+- using the Notebook for evidence-backed analysis
+- interpreting citations and saved sources
+
+See: [User Manual](./docs/SmartScrape_User_Manual.pdf)
+
 ## Testing and verification
 
 ## Development status
