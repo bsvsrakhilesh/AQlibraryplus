@@ -174,13 +174,25 @@ function LandingNav() {
           ))}
         </nav>
 
-        <button
-          type="button"
-          onClick={() => navigate("/app/url-collector")}
-          className="rounded-full bg-[#000000] px-6 py-2.5 text-sm font-medium text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
-        >
-          Open App
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/notebook")}
+            className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5 text-sm font-medium text-[#000000] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-black/20"
+          >
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Open Notebook</span>
+            <span className="sm:hidden">Notebook</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/app/url-collector")}
+            className="rounded-full bg-[#000000] px-5 py-2.5 text-sm font-medium text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
+          >
+            Open App
+          </button>
+        </div>
       </div>
     </header>
   );
@@ -237,13 +249,23 @@ function Hero() {
         archive they trust.
       </p>
 
-      <button
-        type="button"
-        onClick={() => navigate("/app/url-collector")}
-        className="animate-fade-rise-delay-2 mt-12 rounded-full bg-[#000000] px-14 py-5 text-base font-medium text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
-      >
-        Open App
-      </button>
+      <div className="animate-fade-rise-delay-2 mt-12 flex flex-col items-center gap-3 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => navigate("/app/url-collector")}
+          className="inline-flex min-w-[184px] items-center justify-center rounded-full bg-[#000000] px-10 py-5 text-base font-medium text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
+        >
+          Open App
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate("/notebook")}
+          className="inline-flex min-w-[184px] items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-10 py-5 text-base font-medium text-[#000000] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-black/20"
+        >
+          <BookOpen className="h-5 w-5" aria-hidden="true" />
+          Open Notebook
+        </button>
+      </div>
     </section>
   );
 }
@@ -327,13 +349,23 @@ function BottomCTA() {
             Start with the first source. Keep the full trail.
           </h2>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate("/app/url-collector")}
-          className="rounded-full bg-[#000000] px-8 py-4 text-sm font-medium text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
-        >
-          Open URL Collector
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/app/url-collector")}
+            className="rounded-full bg-[#000000] px-8 py-4 text-sm font-medium text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
+          >
+            Open URL Collector
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/notebook")}
+            className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-8 py-4 text-sm font-medium text-[#000000] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-black/20"
+          >
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
+            Open Notebook
+          </button>
+        </div>
       </div>
     </section>
   );
