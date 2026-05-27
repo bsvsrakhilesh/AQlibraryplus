@@ -497,15 +497,28 @@ const SavedUrlsPage: React.FC = () => {
     void listCollectorPurposes().then(setCollectorPurposes).catch(() => undefined);
   }, []);
 
-  useEffect(() => {
+  const refreshActivePurposeSummary = useCallback(async () => {
     if (!activePurposeId) {
       setActivePurpose(null);
-      return;
+      return null;
     }
-    void getCollectorPurpose(activePurposeId)
-      .then(setActivePurpose)
-      .catch(() => setActivePurpose(null));
+
+    try {
+      const purpose = await getCollectorPurpose(activePurposeId);
+      setActivePurpose(purpose);
+      setCollectorPurposes((current) =>
+        current.map((row) => (row.id === purpose.id ? purpose : row)),
+      );
+      return purpose;
+    } catch {
+      setActivePurpose(null);
+      return null;
+    }
   }, [activePurposeId]);
+
+  useEffect(() => {
+    void refreshActivePurposeSummary();
+  }, [refreshActivePurposeSummary]);
 
   // Tagging health banner
   const [tagSummary, setTagSummary] = useState<UrlTaggingSummary | null>(null);
@@ -1114,10 +1127,12 @@ const SavedUrlsPage: React.FC = () => {
       refreshRowsAndFacetsAndQueue(),
       refreshTaggingSummary(),
       refreshCollectionsFromServer(),
+      refreshActivePurposeSummary(),
     ]);
   }, [
     operationTerminalSignature,
     refreshCollectionsFromServer,
+    refreshActivePurposeSummary,
     refreshRowsAndFacetsAndQueue,
     refreshTaggingSummary,
   ]);
@@ -3872,7 +3887,10 @@ const SavedUrlsPage: React.FC = () => {
                         );
 
                   // Refresh list so latestSnapshot appears immediately.
-                  await refreshUrlsFromServer();
+                  await Promise.all([
+                    refreshUrlsFromServer(),
+                    refreshActivePurposeSummary(),
+                  ]);
 
                   if (openedFromDetailModal) {
                     setDetailCaptureRefreshKey((key) => key + 1);
@@ -3951,8 +3969,11 @@ const SavedUrlsPage: React.FC = () => {
               autoDiscover
               onClose={() => setPdfDiscoveryTarget(null)}
               onAfterCapture={async () => {
-                await refreshUrlsFromServer();
-                await refreshRowsAndFacetsAndQueue();
+                await Promise.all([
+                  refreshUrlsFromServer(),
+                  refreshRowsAndFacetsAndQueue(),
+                  refreshActivePurposeSummary(),
+                ]);
                 setDetailCaptureRefreshKey((key) => key + 1);
               }}
             />

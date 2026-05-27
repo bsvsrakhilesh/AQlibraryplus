@@ -828,6 +828,13 @@ export default function Large_IconView({
           const title = getTitle(f);
           const canRetry = canRetryAiTag(f);
           const tagging = getTaggingInfo(f);
+          const purposeLabel = f.collectorPurposes?.length
+            ? `${f.collectorPurposes[0].title}${
+                f.collectorPurposes.length > 1
+                  ? ` +${f.collectorPurposes.length - 1}`
+                  : ""
+              }`
+            : "";
 
           const titleAttr = [
             title,
@@ -940,10 +947,11 @@ export default function Large_IconView({
                   title={
                     String((f as any).captureType || "").startsWith("URL_") &&
                     (f as any).sourceUrl
-                      ? String((f as any).sourceUrl)
-                      : getTileSecondaryText(f)
+                      ? `${purposeLabel ? `${purposeLabel} | ` : ""}${String((f as any).sourceUrl)}`
+                      : `${purposeLabel ? `${purposeLabel} | ` : ""}${getTileSecondaryText(f)}`
                   }
                 >
+                  {purposeLabel ? `${purposeLabel} | ` : ""}
                   {getTileSecondaryText(f)}
                 </div>
               </div>

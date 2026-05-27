@@ -639,14 +639,60 @@ export async function getGovernanceAnswerSession(sessionId: string) {
   return mapSession(session, runs);
 }
 
+export function claimTextWithinEvidenceScope(
+  claim:
+    | {
+        claimText?: string | null;
+        trace?: { sourceDocumentId?: string | null } | null;
+      }
+    | null
+    | undefined,
+  allowedDocumentIdSet: ReadonlySet<string> | null,
+) {
+  if (!claim?.claimText) return null;
+  if (
+    allowedDocumentIdSet &&
+    !allowedDocumentIdSet.has(claim.trace?.sourceDocumentId ?? "")
+  ) {
+    return null;
+  }
+  return claim.claimText;
+}
+
+export function assertEvidenceCardsWithinPurposeScope(
+  cards: Array<Pick<EvidenceCard, "evidenceId" | "documentId">>,
+  allowedDocumentIds?: string[] | null,
+) {
+  if (!allowedDocumentIds) return;
+
+  const allowedDocumentIdSet = new Set(allowedDocumentIds);
+  const escapedCard = cards.find(
+    (card) => !card.documentId || !allowedDocumentIdSet.has(card.documentId),
+  );
+  if (!escapedCard) return;
+
+  const error: any = new Error(
+    `Purpose evidence boundary violation detected for ${escapedCard.evidenceId}.`,
+  );
+  error.status = 500;
+  throw error;
+}
+
 async function loadEvidenceCards(p: {
   question: string;
   candidateDocumentIds: string[];
+  allowedDocumentIds?: string[] | null;
   maxCards?: number;
 }) {
-  if (!p.candidateDocumentIds.length) return [];
+  const allowedDocumentIdSet = p.allowedDocumentIds
+    ? new Set(p.allowedDocumentIds)
+    : null;
+  const candidateDocumentIds = allowedDocumentIdSet
+    ? p.candidateDocumentIds.filter((documentId) => allowedDocumentIdSet.has(documentId))
+    : p.candidateDocumentIds;
+  if (!candidateDocumentIds.length) return [];
 
-  const rankByDoc = new Map(p.candidateDocumentIds.map((id, index) => [id, index]));
+  const rankByDoc = new Map(candidateDocumentIds.map((id, index) => [id, index]));
   const keywords = extractKeywords(p.question);
 
   const chunks = await prisma.sourceChunk.findMany({
@@ -654,7 +700,7 @@ async function loadEvidenceCards(p: {
       revision: {
         isActive: true,
         documentRevision: {
-          documentId: { in: p.candidateDocumentIds },
+          documentId: { in: candidateDocumentIds },
         },
       },
     },
@@ -670,7 +716,7 @@ async function loadEvidenceCards(p: {
       },
     },
     orderBy: [{ createdAt: "desc" }],
-    take: Math.max(80, p.candidateDocumentIds.length * 18),
+    take: Math.max(80, candidateDocumentIds.length * 18),
   });
 
   const cards: EvidenceCard[] = chunks.map((chunk: any) => {
@@ -715,7 +761,7 @@ async function loadEvidenceCards(p: {
 
   const [claims, events, gaps, relations, traces] = await Promise.all([
     prisma.documentClaim.findMany({
-      where: { trace: { sourceDocumentId: { in: p.candidateDocumentIds } } },
+      where: { trace: { sourceDocumentId: { in: candidateDocumentIds } } },
       include: {
         issue: { select: { title: true } },
         subjectAgency: { select: { name: true } },
@@ -725,7 +771,7 @@ async function loadEvidenceCards(p: {
       take: 70,
     }),
     prisma.documentEvent.findMany({
-      where: { trace: { sourceDocumentId: { in: p.candidateDocumentIds } } },
+      where: { trace: { sourceDocumentId: { in: candidateDocumentIds } } },
       include: {
         issue: { select: { title: true } },
         actorAgency: { select: { name: true } },
@@ -735,7 +781,7 @@ async function loadEvidenceCards(p: {
       take: 60,
     }),
     prisma.governanceGap.findMany({
-      where: { trace: { sourceDocumentId: { in: p.candidateDocumentIds } } },
+      where: { trace: { sourceDocumentId: { in: candidateDocumentIds } } },
       include: {
         issue: { select: { title: true } },
         primaryAgency: { select: { name: true } },
@@ -746,13 +792,23 @@ async function loadEvidenceCards(p: {
       take: 60,
     }),
     prisma.documentRelation.findMany({
-      where: { trace: { sourceDocumentId: { in: p.candidateDocumentIds } } },
+      where: { trace: { sourceDocumentId: { in: candidateDocumentIds } } },
       include: {
         issue: { select: { title: true } },
         fromAgency: { select: { name: true } },
         toAgency: { select: { name: true } },
-        fromClaim: { select: { claimText: true } },
-        toClaim: { select: { claimText: true } },
+        fromClaim: {
+          select: {
+            claimText: true,
+            trace: { select: { sourceDocumentId: true } },
+          },
+        },
+        toClaim: {
+          select: {
+            claimText: true,
+            trace: { select: { sourceDocumentId: true } },
+          },
+        },
         trace: { select: traceSelect },
       },
       orderBy: { updatedAt: "desc" },
@@ -760,7 +816,7 @@ async function loadEvidenceCards(p: {
     }),
     prisma.extractionTrace.findMany({
       where: {
-        sourceDocumentId: { in: p.candidateDocumentIds },
+        sourceDocumentId: { in: candidateDocumentIds },
         evidenceText: { not: null },
       },
       select: traceSelect,
@@ -842,12 +898,20 @@ async function loadEvidenceCards(p: {
   }
 
   for (const relation of relations as any[]) {
+    const fromClaimText = claimTextWithinEvidenceScope(
+      relation.fromClaim,
+      allowedDocumentIdSet,
+    );
+    const toClaimText = claimTextWithinEvidenceScope(
+      relation.toClaim,
+      allowedDocumentIdSet,
+    );
     const text = compact(
       [
         relation.relationType,
         relation.rationale,
-        relation.fromClaim?.claimText,
-        relation.toClaim?.claimText,
+        fromClaimText,
+        toClaimText,
         relation.trace?.evidenceText,
       ]
         .filter(Boolean)
@@ -1262,10 +1326,15 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       ownerId: input.ownerId ?? "local",
     });
 
-    if (
-      input.collectorPurposeId &&
-      !((evidenceResponse as any)?.evidenceScope?.allowedDocumentIds ?? []).length
-    ) {
+    const allowedDocumentIds = input.collectorPurposeId
+      ? safeStringArray((evidenceResponse as any)?.evidenceScope?.allowedDocumentIds)
+      : null;
+    retrievalMetadata = {
+      collectorPurposeId: input.collectorPurposeId ?? null,
+      allowedDocumentIds,
+    };
+
+    if (input.collectorPurposeId && !allowedDocumentIds?.length) {
       const err: any = new Error(
         "This purpose has no captured evidence yet. Capture a saved URL before asking questions.",
       );
@@ -1291,8 +1360,10 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
     const initialEvidenceCards = await loadEvidenceCards({
       question,
       candidateDocumentIds,
+      allowedDocumentIds,
       maxCards: 44,
     });
+    assertEvidenceCardsWithinPurposeScope(initialEvidenceCards, allowedDocumentIds);
 
     await input.onStreamEvent?.({ type: "status", message: "Ranking evidence" });
     const evidenceCards = await maybeRerankEvidenceWithAssistModel({
@@ -1301,11 +1372,12 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       finalLimit: 26,
       signal: input.signal,
     });
+    assertEvidenceCardsWithinPurposeScope(evidenceCards, allowedDocumentIds);
 
     retrievalMetadata = {
       ...buildRetrievalMetadata(evidenceResponse, evidenceCards),
       collectorPurposeId: input.collectorPurposeId ?? null,
-      allowedDocumentIds: (evidenceResponse as any)?.evidenceScope?.allowedDocumentIds ?? null,
+      allowedDocumentIds,
     };
 
     if (!evidenceCards.length) {

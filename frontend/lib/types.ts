@@ -92,6 +92,7 @@ export interface FileItem {
   urlId?: number | null;
   sourcePublishedAt?: string | null;
   sourceAuthors?: string[] | null;
+  collectorPurposes?: Array<{ id: string; title: string }>;
   sha256?: string | null;
   captureMeta?: {
     method:

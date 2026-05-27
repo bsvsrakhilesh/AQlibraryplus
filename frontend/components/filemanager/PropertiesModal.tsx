@@ -252,6 +252,12 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
       copyValue: file.urlId != null ? String(file.urlId) : null,
     },
     {
+      label: "Purposes",
+      value: file.collectorPurposes?.length
+        ? file.collectorPurposes.map((purpose) => purpose.title).join(", ")
+        : "—",
+    },
+    {
       label: "SHA-256",
       value: displayText(file.sha256, "—"),
       mono: true,

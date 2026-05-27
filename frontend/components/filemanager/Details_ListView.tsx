@@ -1018,6 +1018,19 @@ export default function Details_ListView({
                 <span className="fm-file-name" title={fileDisplayName(f)}>
                   {fileDisplayName(f)}
                 </span>
+                {f.collectorPurposes?.length ? (
+                  <div className="fm-inline-pills">
+                    {f.collectorPurposes.map((purpose) => (
+                      <span
+                        key={purpose.id}
+                        className="fm-mini-pill fm-mini-pill--ghost"
+                        title={`Purpose: ${purpose.title}`}
+                      >
+                        {purpose.title}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <span className="fm-cell-subtle">
                   {typeLabel} · {sizeLabel}
                 </span>

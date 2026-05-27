@@ -1710,6 +1710,11 @@ const storedFileExplorerInclude = {
     select: {
       publishedAt: true,
       authors: true,
+      collectorPurposeLinks: {
+        select: {
+          purpose: { select: { id: true, title: true } },
+        },
+      },
     },
   },
   documentRevision: {
@@ -2157,6 +2162,17 @@ r.get("/files/:id", async (req, res, next) => {
       where: { id },
       include: {
         // if present, this is the “how it got created” event
+        url: {
+          select: {
+            publishedAt: true,
+            authors: true,
+            collectorPurposeLinks: {
+              select: {
+                purpose: { select: { id: true, title: true } },
+              },
+            },
+          },
+        },
         captureEvent: {
           include: {
             pipelineConfig: true,
@@ -2207,6 +2223,8 @@ r.get("/files/:id", async (req, res, next) => {
         ((f as any).sourceAuthors?.length ? (f as any).sourceAuthors : null) ??
         (f as any).url?.authors ??
         [],
+      collectorPurposes:
+        (f as any).url?.collectorPurposeLinks?.map((link: any) => link.purpose) ?? [],
       sha256: f.sha256 ?? null,
       contentHash: f.contentHash ?? null,
       taggerVersion: f.taggerVersion ?? null,

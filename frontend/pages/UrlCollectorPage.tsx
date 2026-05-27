@@ -228,6 +228,7 @@ const UrlCollectorPage: React.FC = () => {
 
   // Abort in-flight searches when a new one starts
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const resultsRequestEpochRef = useRef(0);
   // After a 429, we pause further search calls for a short cooldown
   const rateLimitUntilRef = useRef<number>(0);
 
@@ -475,6 +476,13 @@ const UrlCollectorPage: React.FC = () => {
         return;
       }
 
+      const requestEpoch = ++resultsRequestEpochRef.current;
+      const assertCurrentResultsRequest = () => {
+        if (requestEpoch !== resultsRequestEpochRef.current) {
+          throw Object.assign(new Error("AbortError"), { name: "AbortError" });
+        }
+      };
+
       // Cancel any previous request
       try {
         fetchAbortRef.current?.abort();
@@ -512,6 +520,11 @@ const UrlCollectorPage: React.FC = () => {
       setError(null);
       setHasSearched(true);
       setAiRerankedCount(0);
+      setCollectorSearchId(null);
+      setSearchResults([]);
+      setSelectedUrls(new Set());
+      setNextPage(null);
+      setTotalResults(null);
 
       // keep URL in sync (shareable)
       syncUrl(site, kws, scope);
@@ -531,6 +544,7 @@ const UrlCollectorPage: React.FC = () => {
 
         // Fetch page 1 immediately
         const p1 = await fetchPage(1);
+        assertCurrentResultsRequest();
         setCollectorSearchId(p1.collectorSearchId);
         collectorJobActions.updateJob(jobId, {
           stage: "page-1",
@@ -577,6 +591,7 @@ const UrlCollectorPage: React.FC = () => {
         ) {
           // Pace requests to avoid bursty 429s
           await sleep(PREFETCH_DELAY_MS, controller.signal);
+          assertCurrentResultsRequest();
           collectorJobActions.updateJob(jobId, {
             stage: `page-${np}`,
             message: `Fetching page ${np}`,
@@ -589,6 +604,7 @@ const UrlCollectorPage: React.FC = () => {
           let pn;
           try {
             pn = await fetchPage(np);
+            assertCurrentResultsRequest();
           } catch (e: any) {
             if (e?.message === "RATE_LIMITED") {
               rateLimitUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
@@ -647,6 +663,7 @@ const UrlCollectorPage: React.FC = () => {
             controller.signal,
           );
 
+          assertCurrentResultsRequest();
           if (!controller.signal.aborted) {
             setSearchResults(reranked);
           }
@@ -752,6 +769,12 @@ const UrlCollectorPage: React.FC = () => {
   const handleLoadMore = useCallback(async () => {
     if (!nextPage || !lastQuery) return;
 
+    const requestEpoch = resultsRequestEpochRef.current;
+    const assertCurrentResultsRequest = () => {
+      if (requestEpoch !== resultsRequestEpochRef.current) {
+        throw Object.assign(new Error("AbortError"), { name: "AbortError" });
+      }
+    };
     const controller = new AbortController();
     const jobId = collectorJobActions.startJob({
       kind: "load_more",
@@ -790,6 +813,7 @@ const UrlCollectorPage: React.FC = () => {
         controller.signal,
         lastSearchOpts ?? undefined,
       );
+      assertCurrentResultsRequest();
 
       collectorJobActions.updateJob(jobId, {
         stage: "merging",
@@ -821,6 +845,7 @@ const UrlCollectorPage: React.FC = () => {
         controller.signal,
       );
 
+      assertCurrentResultsRequest();
       if (controller.signal.aborted) {
         throw Object.assign(new Error("AbortError"), { name: "AbortError" });
       }
@@ -899,6 +924,8 @@ const UrlCollectorPage: React.FC = () => {
   // Clears only results and selection — keeps website, keywords, and scope
   // intact so the researcher can tweak the query and re-run without retyping.
   const handleClearResults = useCallback(() => {
+    resultsRequestEpochRef.current += 1;
+    fetchAbortRef.current?.abort();
     setSearchResults([]);
     setSelectedUrls(new Set());
     setHasSearched(false);
@@ -908,12 +935,15 @@ const UrlCollectorPage: React.FC = () => {
     setAiRerankedCount(0);
     setNextPage(null);
     setTotalResults(null);
+    setCollectorSearchId(null);
     setLastQuery("");
     setLastSearchOpts(null);
   }, []);
 
   // Full reset — wipes the form inputs, scope filters, URL params, and localStorage.
   const handleReset = useCallback(() => {
+    resultsRequestEpochRef.current += 1;
+    fetchAbortRef.current?.abort();
     setSearchResults([]);
     setSelectedUrls(new Set());
     setHasSearched(false);
@@ -923,6 +953,7 @@ const UrlCollectorPage: React.FC = () => {
     setAiRerankedCount(0);
     setNextPage(null);
     setTotalResults(null);
+    setCollectorSearchId(null);
     setLastQuery("");
     setLastSearchOpts(null);
     setWebsite("");
@@ -943,6 +974,24 @@ const UrlCollectorPage: React.FC = () => {
 
   const selectPurpose = useCallback(
     (purposeId: string) => {
+      if (purposeId !== activePurposeId) {
+        resultsRequestEpochRef.current += 1;
+        fetchAbortRef.current?.abort();
+        setSearchResults([]);
+        setSelectedUrls(new Set());
+        setCollectorSearchId(null);
+        setHasSearched(false);
+        setError(null);
+        setIsLoading(false);
+        setIsLoadingMore(false);
+        setIsReranking(false);
+        setPrefetchCount(0);
+        setAiRerankedCount(0);
+        setNextPage(null);
+        setTotalResults(null);
+        setLastQuery("");
+        setLastSearchOpts(null);
+      }
       setActivePurposeId(purposeId);
       setPurposeLanes([]);
       setActiveLaneKey("");
@@ -951,7 +1000,7 @@ const UrlCollectorPage: React.FC = () => {
       else next.delete("purposeId");
       navigate({ search: next.toString() ? `?${next.toString()}` : "" }, { replace: true });
     },
-    [loc.search, navigate],
+    [activePurposeId, loc.search, navigate],
   );
 
   const createPurpose = useCallback(async () => {

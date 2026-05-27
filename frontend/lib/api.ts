@@ -514,6 +514,14 @@ export type BackendStoredFile = {
   captureScope?: "SOURCE_PAGE" | "DISCOVERED_DOCUMENT";
   sourceUrl?: string | null;
   urlId?: number | null;
+  url?: {
+    publishedAt?: string | null;
+    authors?: string[] | null;
+    collectorPurposeLinks?: Array<{
+      purpose: { id: string; title: string };
+    }>;
+  } | null;
+  collectorPurposes?: Array<{ id: string; title: string }>;
   discoveredDocumentId?: string | null;
   sha256?: string | null;
   tagsMeta?: any;
@@ -605,6 +613,10 @@ export function toFileItem(row: BackendStoredFile): FileItem {
       null,
     sourceAuthors:
       (row as any).sourceAuthors ?? (row as any)?.url?.authors ?? null,
+    collectorPurposes:
+      row.collectorPurposes ??
+      row.url?.collectorPurposeLinks?.map((link) => link.purpose) ??
+      [],
     sha256: (row as any).sha256 ?? null,
     captureMeta: (row as any)?.tagsMeta?.capture ?? null,
     contentHash: (row as any)?.contentHash ?? null,
@@ -660,6 +672,8 @@ export function normalizeFileDetail(input: any): FileDetail {
       captureType: row.captureType,
       sourceUrl: row.sourceUrl,
       urlId: row.urlId,
+      url: row.url,
+      collectorPurposes: row.collectorPurposes,
       sha256: row.sha256,
       tagsMeta: row.tagsMeta,
       contentHash: row.contentHash,
