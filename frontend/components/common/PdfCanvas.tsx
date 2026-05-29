@@ -92,13 +92,12 @@ export default function PdfCanvas({
 
     (async () => {
       try {
-        const workerReady = await ensurePdfWorker();
+        await ensurePdfWorker();
 
         try {
           const task = getDocument({
             url,
             withCredentials: true,
-            disableWorker: !workerReady,
             httpHeaders: {
               Accept:
                 "application/pdf, application/octet-stream;q=0.9, */*;q=0.1",
@@ -115,7 +114,6 @@ export default function PdfCanvas({
           if (cancelled) return;
           const task2 = getDocument({
             data,
-            disableWorker: true,
             disableRange: true,
             disableStream: true,
           });
