@@ -3,7 +3,7 @@ import prisma from "../config/database";
 import { enqueueAiTagUrl } from "../queues/aiTagUrl.queue";
 import { enqueueSavedUrlOperation } from "../queues/savedUrlOperation.queue";
 import { crawlPdfHandler, crawlTextHandler } from "../controllers/crawl.controller";
-import { extractUrlMetadata } from "./extract.service";
+import { extractUrlMetadata, withPublishedAtMeta } from "./extract.service";
 import { ensureDocumentRevisionForStoredFile } from "./document.service";
 import { recordCaptureEvent } from "./provenance.service";
 
@@ -426,7 +426,7 @@ async function invokeCrawlHandler(
 async function refreshMetadataForUrl(urlId: number) {
   const row = await prisma.url.findUnique({
     where: { id: urlId },
-    select: { id: true, url: true },
+    select: { id: true, url: true, tagsMeta: true },
   });
   if (!row) throw new Error("URL not found.");
 
@@ -436,6 +436,7 @@ async function refreshMetadataForUrl(urlId: number) {
     data: {
       publishedAt: meta.publishedAt,
       authors: meta.authors ?? [],
+      tagsMeta: withPublishedAtMeta(row.tagsMeta, meta.publishedAtMeta) as any,
     },
     select: { id: true, publishedAt: true, authors: true },
   });
@@ -484,6 +485,7 @@ async function refreshMetadataForUrl(urlId: number) {
     id: updatedUrl.id,
     publishedAt: updatedUrl.publishedAt?.toISOString?.() ?? null,
     authors: updatedUrl.authors ?? [],
+    publishedAtMeta: meta.publishedAtMeta,
   };
 }
 

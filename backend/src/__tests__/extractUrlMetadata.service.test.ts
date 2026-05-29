@@ -72,10 +72,12 @@ test("extractUrlMetadata prioritizes article JSON-LD publication metadata", asyn
 
   assert.deepEqual(out.authors, ["Asha Rao", "Centre for Clean Air"]);
   assert.equal(isoDate(out.publishedAt), "2026-04-16");
-  assert.deepEqual(out.publishedAtMeta, {
-    source: "jsonld",
-    confidence: 0.85,
-  });
+  assert.equal(out.publishedAtMeta.source, "jsonld");
+  assert.equal(out.publishedAtMeta.confidence, 0.92);
+  assert.equal(
+    out.publishedAtMeta.details?.winningCandidate?.locator?.field,
+    "datePublished",
+  );
   assert.match(out.snippet, /verifiable monitoring/);
 });
 
@@ -107,9 +109,10 @@ test("extractUrlMetadata falls back to HTML meta authors and dates", async (t) =
   assert.equal(isoDate(out.publishedAt), "2025-11-07");
   assert.equal(out.publishedAtMeta.source, "html_meta");
   assert.equal(out.publishedAtMeta.confidence, 0.65);
-  assert.deepEqual(out.publishedAtMeta.details, {
-    raw: "2025-11-07T09:15:00.000Z",
-  });
+  assert.equal(
+    out.publishedAtMeta.details?.winningCandidate?.raw,
+    "2025-11-07T09:15:00.000Z",
+  );
 });
 
 test("extractUrlMetadata uses valid URL date patterns only when page metadata is absent", async (t) => {
@@ -127,10 +130,12 @@ test("extractUrlMetadata uses valid URL date patterns only when page metadata is
   );
 
   assert.equal(isoDate(out.publishedAt), "2024-02-29");
-  assert.deepEqual(out.publishedAtMeta, {
-    source: "url_pattern",
-    confidence: 0.35,
-  });
+  assert.equal(out.publishedAtMeta.source, "url_pattern");
+  assert.equal(out.publishedAtMeta.confidence, 0.35);
+  assert.equal(
+    out.publishedAtMeta.details?.winningCandidate?.date,
+    "2024-02-29T00:00:00.000Z",
+  );
 });
 
 test("extractUrlMetadata does not roll impossible URL dates into a false publication date", async (t) => {
@@ -148,10 +153,9 @@ test("extractUrlMetadata does not roll impossible URL dates into a false publica
   );
 
   assert.equal(out.publishedAt, null);
-  assert.deepEqual(out.publishedAtMeta, {
-    source: "unknown",
-    confidence: 0.0,
-  });
+  assert.equal(out.publishedAtMeta.source, "unknown");
+  assert.equal(out.publishedAtMeta.confidence, 0.0);
+  assert.deepEqual(out.publishedAtMeta.details?.topCandidates, []);
 });
 
 test("extractUrlMetadata reports unknown provenance when fetch fallback has no date signal", async (t) => {
@@ -171,10 +175,9 @@ test("extractUrlMetadata reports unknown provenance when fetch fallback has no d
   assert.equal(out.snippet, "");
   assert.deepEqual(out.authors, []);
   assert.equal(out.publishedAt, null);
-  assert.deepEqual(out.publishedAtMeta, {
-    source: "unknown",
-    confidence: 0.0,
-  });
+  assert.equal(out.publishedAtMeta.source, "unknown");
+  assert.equal(out.publishedAtMeta.confidence, 0.0);
+  assert.deepEqual(out.publishedAtMeta.details?.topCandidates, []);
 });
 
 test("extractUrlMetadata blocks private DNS targets before fetching metadata", async (t) => {

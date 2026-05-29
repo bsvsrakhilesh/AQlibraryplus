@@ -19,7 +19,10 @@ import {
   getUrlSnapshots,
   recordUrlVisit,
 } from "../services/url.service";
-import { extractUrlMetadata } from "../services/extract.service";
+import {
+  extractUrlMetadata,
+  withPublishedAtMeta,
+} from "../services/extract.service";
 import {
   listRevisionsForUrl,
   ensureDocumentRevisionForStoredFile,
@@ -557,7 +560,7 @@ export async function previewUrlHandler(
     if (!url)
       return res.status(400).json({ message: "Body must include { url }" });
 
-    const { title, snippet, authors, publishedAt } =
+    const { title, snippet, authors, publishedAt, publishedAtMeta } =
       await extractUrlMetadata(url);
 
     res.json({
@@ -566,6 +569,7 @@ export async function previewUrlHandler(
       snippet,
       authors,
       publishedAt: publishedAt ? publishedAt.toISOString() : null,
+      publishedAtMeta,
     });
   } catch (err) {
     next(err);
@@ -649,7 +653,7 @@ export async function refreshUrlMetadataHandler(
 
     const u = await prisma.url.findUnique({
       where: { id },
-      select: { id: true, url: true },
+      select: { id: true, url: true, tagsMeta: true },
     });
 
     if (!u) return res.status(404).json({ message: "URL not found" });
@@ -680,6 +684,7 @@ export async function refreshUrlMetadataHandler(
       data: {
         publishedAt: meta.publishedAt,
         authors: meta.authors ?? [],
+        tagsMeta: withPublishedAtMeta(u.tagsMeta, meta.publishedAtMeta) as any,
       },
       select: {
         id: true,
@@ -739,6 +744,7 @@ export async function refreshUrlMetadataHandler(
         ? updatedUrl.publishedAt.toISOString()
         : null,
       authors: updatedUrl.authors ?? [],
+      publishedAtMeta: meta.publishedAtMeta,
     });
   } catch (err) {
     next(err);

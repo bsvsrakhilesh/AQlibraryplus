@@ -21,17 +21,32 @@ const MAX_PDF_BYTES = Number(
   process.env.EXTRACT_MAX_PDF_BYTES || 20 * 1024 * 1024,
 );
 
-type PublishedAtMeta = {
-  source:
-    | "pdf_info"
-    | "pdf_pages"
-    | "pdf_text_heuristic"
-    | "jsonld"
-    | "html_meta"
-    | "url_pattern"
-    | "unknown";
+export type PublishedAtSource =
+  | "pdf_info"
+  | "pdf_pages"
+  | "pdf_text_heuristic"
+  | "jsonld"
+  | "html_meta"
+  | "text_explicit"
+  | "text_heuristic"
+  | "filename_pattern"
+  | "url_pattern"
+  | "unknown";
+
+export type PublishedAtMeta = {
+  source: PublishedAtSource;
   confidence: number; // 0..1
   details?: Record<string, any>;
+};
+
+export type PublishedAtCandidate = {
+  date: Date;
+  source: Exclude<PublishedAtSource, "unknown">;
+  confidence: number;
+  raw?: string;
+  evidenceText?: string;
+  locator?: Record<string, any>;
+  reason?: string;
 };
 
 function ipv4ToInt(ip: string) {
@@ -112,6 +127,135 @@ function cleanSnippet(text: string) {
     .replace(/\u0000/g, "")
     .trim();
 }
+
+function titleFromExtractedText(text: string) {
+  return (
+    String(text || "")
+      .split(/\r?\n|\.|\|/)
+      .map((x) => cleanSnippet(x))
+      .find(Boolean) || ""
+  );
+}
+
+const PUBLISHED_AT_SOURCE_PRIORITY: Record<PublishedAtSource, number> = {
+  jsonld: 100,
+  html_meta: 90,
+  text_explicit: 88,
+  pdf_pages: 86,
+  pdf_text_heuristic: 58,
+  pdf_info: 45,
+  filename_pattern: 34,
+  url_pattern: 32,
+  text_heuristic: 30,
+  unknown: 0,
+};
+
+function clampConfidence(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function isUsableCandidate(candidate: PublishedAtCandidate) {
+  const year = candidate.date.getUTCFullYear();
+  return (
+    candidate.date instanceof Date &&
+    Number.isFinite(candidate.date.getTime()) &&
+    year >= 1990 &&
+    year <= 2100
+  );
+}
+
+function sortPublishedAtCandidates(candidates: PublishedAtCandidate[]) {
+  return dedupePublishedAtCandidates(candidates)
+    .filter(isUsableCandidate)
+    .map((candidate) => ({
+      ...candidate,
+      confidence: clampConfidence(candidate.confidence),
+    }))
+    .sort((a, b) => {
+      if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+      const priorityDiff =
+        PUBLISHED_AT_SOURCE_PRIORITY[b.source] -
+        PUBLISHED_AT_SOURCE_PRIORITY[a.source];
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.date.getTime() - a.date.getTime();
+    });
+}
+
+function dedupePublishedAtCandidates(candidates: PublishedAtCandidate[]) {
+  const out: PublishedAtCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of candidates) {
+    const key = [
+      candidate.source,
+      candidate.date.toISOString().slice(0, 10),
+      candidate.raw || "",
+      JSON.stringify(candidate.locator || {}),
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(candidate);
+  }
+
+  return out;
+}
+
+export function chooseBestPublishedAtCandidate(
+  candidates: PublishedAtCandidate[],
+) {
+  return sortPublishedAtCandidates(candidates)[0] ?? null;
+}
+
+function serializePublishedAtCandidate(candidate: PublishedAtCandidate) {
+  return {
+    date: candidate.date.toISOString(),
+    source: candidate.source,
+    confidence: clampConfidence(candidate.confidence),
+    ...(candidate.raw ? { raw: candidate.raw } : {}),
+    ...(candidate.evidenceText ? { evidenceText: candidate.evidenceText } : {}),
+    ...(candidate.locator ? { locator: candidate.locator } : {}),
+    ...(candidate.reason ? { reason: candidate.reason } : {}),
+  };
+}
+
+export function publishedAtMetaFromCandidates(
+  candidates: PublishedAtCandidate[],
+): PublishedAtMeta {
+  const sorted = sortPublishedAtCandidates(candidates);
+  const winning = sorted[0];
+
+  if (!winning) {
+    return {
+      source: "unknown",
+      confidence: 0.0,
+      details: { topCandidates: [] },
+    };
+  }
+
+  return {
+    source: winning.source,
+    confidence: clampConfidence(winning.confidence),
+    details: {
+      winningCandidate: serializePublishedAtCandidate(winning),
+      topCandidates: sorted.slice(0, 5).map(serializePublishedAtCandidate),
+    },
+  };
+}
+
+export function withPublishedAtMeta(
+  existing: unknown,
+  publishedAtMeta: PublishedAtMeta | null | undefined,
+) {
+  const base =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? { ...(existing as Record<string, any>) }
+      : {};
+
+  if (!publishedAtMeta) return base;
+  return { ...base, publishedAtMeta };
+}
+
 
 export async function extractTextFromUrl(url: string): Promise<string> {
   await assertSafeUrl(url);
@@ -221,7 +365,30 @@ function pickAuthorsFromLd(ld: any[]): string[] {
 }
 
 function pickPublishedFromLd(ld: any[]): Date | null {
-  const byPriority: Array<Array<string | null | undefined>> = [[], [], []];
+  return chooseBestPublishedAtCandidate(
+    extractPublishedAtCandidatesFromLd(ld),
+  )?.date ?? null;
+}
+
+function extractPublishedAtCandidatesFromLd(ld: any[]): PublishedAtCandidate[] {
+  const candidates: PublishedAtCandidate[] = [];
+  const fields: Array<{ field: string; confidence: number; reason: string }> = [
+    {
+      field: "datePublished",
+      confidence: 0.92,
+      reason: "JSON-LD datePublished",
+    },
+    {
+      field: "dateCreated",
+      confidence: 0.82,
+      reason: "JSON-LD dateCreated",
+    },
+    {
+      field: "dateModified",
+      confidence: 0.6,
+      reason: "JSON-LD dateModified fallback",
+    },
+  ];
 
   for (const obj of ld) {
     if (!obj || typeof obj !== "object") continue;
@@ -231,19 +398,23 @@ function pickPublishedFromLd(ld: any[]): Date | null {
 
     for (const t of targets) {
       if (!t || typeof t !== "object") continue;
-      byPriority[0].push((t as any).datePublished);
-      byPriority[1].push((t as any).dateCreated);
-      byPriority[2].push((t as any).dateModified);
+      for (const { field, confidence, reason } of fields) {
+        const raw = (t as any)[field];
+        const date = tryParseDate(raw);
+        if (!date) continue;
+        candidates.push({
+          date,
+          source: "jsonld",
+          confidence,
+          raw: String(raw),
+          locator: { field },
+          reason,
+        });
+      }
     }
   }
 
-  for (const candidates of byPriority) {
-    for (const c of candidates) {
-      const d = tryParseDate(c);
-      if (d) return d;
-    }
-  }
-  return null;
+  return candidates;
 }
 
 function pickMetaContent(doc: Document, selectors: string[]) {
@@ -252,6 +423,198 @@ function pickMetaContent(doc: Document, selectors: string[]) {
     if (v && v.trim()) return v.trim();
   }
   return "";
+}
+
+const MONTH_NUMBER_BY_NAME: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+};
+
+const MONTH_PATTERN =
+  "Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?";
+
+const DATE_EXPRESSION_PATTERN = [
+  "\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}",
+  "\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{2,4}",
+  `\\d{1,2}\\s+(?:${MONTH_PATTERN})\\s+\\d{4}`,
+  `(?:${MONTH_PATTERN})\\s+\\d{1,2},?\\s+\\d{4}`,
+].join("|");
+
+const EXPLICIT_PUBLICATION_CUE_PATTERN =
+  "(?:published(?:\\s+on)?|publication\\s+date|issued(?:\\s+on)?|date\\s+of\\s+issue|order\\s+dated|notification\\s+dated|gazette\\s+date|released(?:\\s+on)?|dated)";
+
+function normalizeTwoDigitYear(year: number) {
+  return year < 100 ? year + 2000 : year;
+}
+
+function monthNumber(raw: string) {
+  return MONTH_NUMBER_BY_NAME[raw.toLowerCase().replace(/\.$/, "")] ?? null;
+}
+
+function parsePublishedDateExpression(raw: string | null | undefined) {
+  const t = String(raw || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!t) return null;
+
+  let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (m) {
+    return dateFromUtcParts(Number(m[1]), Number(m[2]), Number(m[3]));
+  }
+
+  m = t.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (m) {
+    return dateFromUtcParts(Number(m[1]), Number(m[2]), Number(m[3]));
+  }
+
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) {
+    return dateFromUtcParts(
+      normalizeTwoDigitYear(Number(m[3])),
+      Number(m[2]),
+      Number(m[1]),
+    );
+  }
+
+  m = t.match(
+    new RegExp(`^(\\d{1,2})\\s+(${MONTH_PATTERN})\\s+(\\d{4})$`, "i"),
+  );
+  if (m) {
+    const month = monthNumber(m[2]);
+    return month
+      ? dateFromUtcParts(Number(m[3]), month, Number(m[1]))
+      : null;
+  }
+
+  m = t.match(
+    new RegExp(`^(${MONTH_PATTERN})\\s+(\\d{1,2}),?\\s+(\\d{4})$`, "i"),
+  );
+  if (m) {
+    const month = monthNumber(m[1]);
+    return month
+      ? dateFromUtcParts(Number(m[3]), month, Number(m[2]))
+      : null;
+  }
+
+  return tryParseDate(t);
+}
+
+function evidenceWindow(text: string, index: number, rawLength: number) {
+  const start = Math.max(0, index - 70);
+  const end = Math.min(text.length, index + rawLength + 70);
+  return cleanSnippet(text.slice(start, end));
+}
+
+function makeTextCandidate(
+  text: string,
+  matchIndex: number,
+  raw: string,
+  source: Exclude<PublishedAtSource, "unknown">,
+  confidence: number,
+  reason: string,
+  locator?: Record<string, any>,
+): PublishedAtCandidate | null {
+  const date = parsePublishedDateExpression(raw);
+  if (!date) return null;
+
+  return {
+    date,
+    source,
+    confidence,
+    raw,
+    evidenceText: evidenceWindow(text, matchIndex, raw.length),
+    ...(locator ? { locator } : {}),
+    reason,
+  };
+}
+
+export function extractPublishedAtCandidatesFromText(
+  text: string,
+  options: {
+    explicitSource?: Exclude<PublishedAtSource, "unknown">;
+    genericSource?: Exclude<PublishedAtSource, "unknown">;
+    locator?: Record<string, any>;
+    explicitConfidence?: number;
+    genericConfidence?: number;
+    maxGenericCandidates?: number;
+  } = {},
+): PublishedAtCandidate[] {
+  const sourceText = String(text || "");
+  if (!sourceText.trim()) return [];
+
+  const candidates: PublishedAtCandidate[] = [];
+  const explicitSource = options.explicitSource ?? "text_explicit";
+  const genericSource = options.genericSource ?? "text_heuristic";
+  const explicitConfidence = options.explicitConfidence ?? 0.88;
+  const genericConfidence = options.genericConfidence ?? 0.38;
+
+  const explicitRx = new RegExp(
+    `\\b(${EXPLICIT_PUBLICATION_CUE_PATTERN})\\b\\s*[:\\-]?\\s*(${DATE_EXPRESSION_PATTERN})`,
+    "gi",
+  );
+
+  let explicit: RegExpExecArray | null;
+  while ((explicit = explicitRx.exec(sourceText))) {
+    const raw = explicit[2];
+    const c = makeTextCandidate(
+      sourceText,
+      explicit.index,
+      raw,
+      explicitSource,
+      explicitConfidence,
+      "Explicit publication cue in text",
+      options.locator,
+    );
+    if (c) candidates.push(c);
+  }
+
+  const genericRx = new RegExp(`\\b(${DATE_EXPRESSION_PATTERN})\\b`, "gi");
+  const maxGenericCandidates = options.maxGenericCandidates ?? 6;
+  let genericCount = 0;
+  let generic: RegExpExecArray | null;
+  while (
+    genericCount < maxGenericCandidates &&
+    (generic = genericRx.exec(sourceText))
+  ) {
+    const raw = generic[1];
+    const c = makeTextCandidate(
+      sourceText,
+      generic.index,
+      raw,
+      genericSource,
+      genericConfidence,
+      "Date found in text without an explicit publication cue",
+      options.locator,
+    );
+    if (c) {
+      candidates.push(c);
+      genericCount++;
+    }
+  }
+
+  return candidates;
 }
 
 function looksLikePdfBytes(buf: Buffer) {
@@ -295,6 +658,46 @@ function extractPublishedAtFromUrl(url: string): Date | null {
   return dateFromUtcParts(y, mo, d);
 }
 
+function publishedAtCandidateFromUrl(url: string): PublishedAtCandidate | null {
+  const date = extractPublishedAtFromUrl(url);
+  if (!date) return null;
+
+  return {
+    date,
+    source: "url_pattern",
+    confidence: 0.35,
+    raw: url,
+    locator: { url },
+    reason: "Date pattern found in URL",
+  };
+}
+
+function publishedAtCandidateFromFilename(
+  fileName: string | null | undefined,
+): PublishedAtCandidate | null {
+  const baseName = path.basename(String(fileName || "")).trim();
+  if (!baseName) return null;
+
+  const normalized = baseName.replace(/[_\s]+/g, "-");
+  const compactYearFirst = normalized.match(/\b(20\d{2})(\d{2})(\d{2})\b/);
+  const textPattern = new RegExp(`\\b(${DATE_EXPRESSION_PATTERN})\\b`, "i");
+  const m = compactYearFirst || normalized.match(textPattern);
+  if (!m) return null;
+
+  const raw = compactYearFirst ? m[0] : m[1];
+  const date = parsePublishedDateExpression(raw);
+  if (!date) return null;
+
+  return {
+    date,
+    source: "filename_pattern",
+    confidence: 0.34,
+    raw,
+    locator: { fileName: baseName },
+    reason: "Date pattern found in filename",
+  };
+}
+
 function dateFromUtcParts(year: number, month: number, day: number) {
   const dt = new Date(Date.UTC(year, month - 1, day));
   if (
@@ -312,12 +715,11 @@ function publishedAtFallbackFromUrl(url: string): {
   publishedAt: Date | null;
   publishedAtMeta: PublishedAtMeta;
 } {
-  const publishedAt = extractPublishedAtFromUrl(url);
+  const candidate = publishedAtCandidateFromUrl(url);
+  const publishedAt = candidate?.date ?? null;
   return {
     publishedAt,
-    publishedAtMeta: publishedAt
-      ? { source: "url_pattern", confidence: 0.35 }
-      : { source: "unknown", confidence: 0.0 },
+    publishedAtMeta: publishedAtMetaFromCandidates(candidate ? [candidate] : []),
   };
 }
 
@@ -339,162 +741,24 @@ function tryParseDateLoose(s: string | null | undefined): Date | null {
   return tryParseDate(t);
 }
 
-function guessPdfPublishedAtFromText(text: string): Date | null {
-  const t = String(text || "");
-  // Common signals: "Published on", "Publication date", "Date:" "Dated:"
-  const rx =
-    /(published\s+on|publication\s+date|dated)\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,}\s+\d{4}|\d{4}\-\d{2}\-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i;
-
-  const m = t.match(rx);
-  if (!m) return null;
-
-  const cand = m[2];
-  // try parse with Date() for common forms, plus some normalization
-  const d = new Date(cand);
-  if (!Number.isNaN(d.getTime())) return d;
-
-  // normalize dd/mm/yyyy
-  const m2 = cand.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-  if (m2) {
-    const dd = Number(m2[1]);
-    const mm = Number(m2[2]);
-    let yy = Number(m2[3]);
-    if (yy < 100) yy += 2000;
-    const dt = dateFromUtcParts(yy, mm, dd);
-    if (dt) return dt;
-  }
-
-  return null;
-}
-
-function extractPdfDateCandidatesFromPages(
-  pages: { pageNumber: number; text: string }[],
+async function extractPdfPagesFromBuffer(
+  buf: Buffer,
+  pageNumbers?: number[] | ((totalPages: number) => number[]),
 ) {
-  const candidates: { date: Date; score: number; pageNumber: number }[] = [];
-
-  const addCandidate = (date: Date, score: number, pageNumber: number) => {
-    if (Number.isNaN(date.getTime())) return;
-    candidates.push({ date, score, pageNumber });
-  };
-
-  const datePatterns: Array<{
-    rx: RegExp;
-    weight: number;
-    parse: (m: RegExpMatchArray) => Date | null;
-  }> = [
-    // 2021-12-31
-    {
-      rx: /\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/g,
-      weight: 0.7,
-      parse: (m) =>
-        dateFromUtcParts(Number(m[1]), Number(m[2]), Number(m[3])),
-    },
-    // dd/mm/yyyy
-    {
-      rx: /\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/g,
-      weight: 0.6,
-      parse: (m) => {
-        let yy = Number(m[3]);
-        if (yy < 100) yy += 2000;
-        return dateFromUtcParts(yy, Number(m[2]), Number(m[1]));
-      },
-    },
-    // 31 March 2022
-    {
-      rx: /\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(20\d{2})\b/gi,
-      weight: 0.85,
-      parse: (m) => {
-        const monthMap: Record<string, number> = {
-          jan: 0,
-          january: 0,
-          feb: 1,
-          february: 1,
-          mar: 2,
-          march: 2,
-          apr: 3,
-          april: 3,
-          may: 4,
-          jun: 5,
-          june: 5,
-          jul: 6,
-          july: 6,
-          aug: 7,
-          august: 7,
-          sep: 8,
-          sept: 8,
-          september: 8,
-          oct: 9,
-          october: 9,
-          nov: 10,
-          november: 10,
-          dec: 11,
-          december: 11,
-        };
-        const dd = Number(m[1]);
-        const mm = monthMap[m[2].toLowerCase()] ?? 0;
-        const yy = Number(m[3]);
-        return dateFromUtcParts(yy, mm + 1, dd);
-      },
-    },
-  ];
-
-  const contextBoost = (ctx: string) => {
-    const c = ctx.toLowerCase();
-    if (/(published|publication|approved|dated|issued)\b/.test(c)) return 0.6;
-    if (/(annual report|report|statement)\b/.test(c)) return 0.25;
-    return 0;
-  };
-
-  for (const p of pages) {
-    const text = String(p.text || "");
-    const lower = text.toLowerCase();
-
-    // Use a small window around matches to detect context words
-    for (const pat of datePatterns) {
-      let m: RegExpExecArray | null;
-      const rx = new RegExp(pat.rx.source, pat.rx.flags); // reset
-      while ((m = rx.exec(text))) {
-        const raw = m[0];
-        const start = Math.max(0, m.index - 40);
-        const end = Math.min(text.length, m.index + raw.length + 40);
-        const ctx = text.slice(start, end);
-
-        const parsed = pat.parse(m as any);
-        if (!parsed) continue;
-
-        // score = base weight + context + position heuristic
-        // prefer later pages slightly (dates often on last page)
-        const pagePos = pages.length ? p.pageNumber / pages.length : 0;
-        const posBoost = pagePos > 0.8 ? 0.25 : pagePos > 0.5 ? 0.1 : 0;
-
-        const score = pat.weight + contextBoost(ctx) + posBoost;
-
-        // filter out likely junk like far future dates
-        const year = parsed.getUTCFullYear();
-        if (year < 1990 || year > 2100) continue;
-
-        // avoid capturing "financial year 2021-22" as 2021-22 date
-        if (lower.includes("fy") || lower.includes("financial year")) {
-          // but still allow if there's strong "published/approved"
-          if (contextBoost(ctx) < 0.5) continue;
-        }
-
-        addCandidate(parsed, score, p.pageNumber);
-      }
-    }
-  }
-
-  return candidates;
-}
-
-async function extractPdfPagesFromBuffer(buf: Buffer) {
   const loadingTask = pdfjsLib.getDocument({ data: buf });
   const pdfDoc = await loadingTask.promise;
 
   const pages: { pageNumber: number; text: string }[] = [];
   const totalPages = pdfDoc.numPages;
+  const requestedPageNumbers =
+    typeof pageNumbers === "function" ? pageNumbers(totalPages) : pageNumbers;
+  const selectedPageNumbers = requestedPageNumbers?.length
+    ? Array.from(new Set(requestedPageNumbers))
+        .filter((n) => Number.isInteger(n) && n >= 1 && n <= totalPages)
+        .sort((a, b) => a - b)
+    : Array.from({ length: totalPages }, (_, index) => index + 1);
 
-  for (let i = 1; i <= totalPages; i++) {
+  for (const i of selectedPageNumbers) {
     const page = await pdfDoc.getPage(i);
     const content = await page.getTextContent();
 
@@ -506,22 +770,170 @@ async function extractPdfPagesFromBuffer(buf: Buffer) {
     pages.push({ pageNumber: i, text });
   }
 
-  return pages;
+  return { pages, totalPages };
 }
 
-function pickBestPublishedAtFromPdfPages(
+function boundaryPdfPageNumbers(totalPages: number) {
+  return Array.from(new Set([1, 2, totalPages - 1, totalPages])).filter(
+    (pageNumber) => pageNumber >= 1 && pageNumber <= totalPages,
+  );
+}
+
+function remainingPdfPageNumbers(totalPages: number, seen: number[]) {
+  const seenSet = new Set(seen);
+  return Array.from({ length: totalPages }, (_, index) => index + 1).filter(
+    (pageNumber) => !seenSet.has(pageNumber),
+  );
+}
+
+function publishedAtCandidatesFromPdfPages(
   pages: { pageNumber: number; text: string }[],
-): Date | null {
-  const cands = extractPdfDateCandidatesFromPages(pages);
-  if (!cands.length) return null;
+) {
+  return pages.flatMap((page) =>
+    extractPublishedAtCandidatesFromText(page.text, {
+      explicitSource: "pdf_pages",
+      genericSource: "pdf_text_heuristic",
+      explicitConfidence: 0.88,
+      genericConfidence: 0.5,
+      maxGenericCandidates: 3,
+      locator: { pageNumber: page.pageNumber },
+    }),
+  );
+}
 
-  // Best score wins; if tie, prefer latest date
-  cands.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return b.date.getTime() - a.date.getTime();
-  });
+function pdfInfoDateCandidate(
+  infoDate: string,
+  field: string,
+): PublishedAtCandidate | null {
+  const date = tryParseDateLoose(infoDate);
+  if (!date) return null;
+  return {
+    date,
+    source: "pdf_info",
+    confidence: 0.45,
+    raw: infoDate,
+    locator: { field },
+    reason: "PDF internal metadata date; may represent file creation rather than publication",
+  };
+}
 
-  return cands[0].date;
+async function extractPdfBufferMetadata(args: {
+  buf: Buffer;
+  fallbackTitle: string;
+  sourceUrl?: string | null;
+  fileName?: string | null;
+}): Promise<{
+  title: string;
+  snippet: string;
+  authors: string[];
+  publishedAt: Date | null;
+  publishedAtMeta: PublishedAtMeta;
+}> {
+  let out: any;
+  try {
+    out = await pdf(args.buf);
+  } catch {
+    const fallbackCandidates = [
+      ...(args.sourceUrl
+        ? [publishedAtCandidateFromUrl(args.sourceUrl)].filter(
+            (c): c is PublishedAtCandidate => Boolean(c),
+          )
+        : []),
+      publishedAtCandidateFromFilename(args.fileName ?? args.fallbackTitle),
+    ].filter((c): c is PublishedAtCandidate => Boolean(c));
+    const meta = publishedAtMetaFromCandidates(fallbackCandidates);
+    return {
+      title: args.fallbackTitle,
+      snippet: "",
+      authors: [],
+      publishedAt: chooseBestPublishedAtCandidate(fallbackCandidates)?.date ?? null,
+      publishedAtMeta: meta,
+    };
+  }
+
+  const text = String(out?.text || "");
+  const cleaned = cleanSnippet(text);
+
+  const infoTitle = String(out?.info?.Title || "").trim();
+  const titleFromText = titleFromExtractedText(text);
+  const title = (infoTitle || titleFromText || args.fallbackTitle).trim();
+
+  const infoAuthor = String(out?.info?.Author || "").trim();
+  const authors = uniqNonEmpty([...(infoAuthor ? [infoAuthor] : [])]);
+
+  const infoField = out?.info?.CreationDate ? "CreationDate" : "ModDate";
+  const infoDate = String(
+    out?.info?.CreationDate || out?.info?.ModDate || "",
+  ).trim();
+
+  const candidates: PublishedAtCandidate[] = [];
+  const infoCandidate = pdfInfoDateCandidate(infoDate, infoField);
+  if (infoCandidate) candidates.push(infoCandidate);
+
+  let totalPages = 0;
+  let boundaryPages: { pageNumber: number; text: string }[] = [];
+
+  try {
+    const firstPass = await extractPdfPagesFromBuffer(
+      args.buf,
+      boundaryPdfPageNumbers,
+    );
+    totalPages = firstPass.totalPages;
+    boundaryPages = firstPass.pages;
+    candidates.push(...publishedAtCandidatesFromPdfPages(boundaryPages));
+  } catch {
+    candidates.push(
+      ...extractPublishedAtCandidatesFromText(text, {
+        explicitSource: "pdf_pages",
+        genericSource: "pdf_text_heuristic",
+        explicitConfidence: 0.82,
+        genericConfidence: 0.5,
+        locator: { source: "pdf_parse_text" },
+      }),
+    );
+  }
+
+  const bestAfterBoundary = chooseBestPublishedAtCandidate(candidates);
+  if (
+    totalPages > 0 &&
+    totalPages <= 25 &&
+    (!bestAfterBoundary || bestAfterBoundary.confidence < 0.8)
+  ) {
+    try {
+      const fullPass = await extractPdfPagesFromBuffer(
+        args.buf,
+        remainingPdfPageNumbers(
+          totalPages,
+          boundaryPages.map((page) => page.pageNumber),
+        ),
+      );
+      candidates.push(...publishedAtCandidatesFromPdfPages(fullPass.pages));
+    } catch {
+      // Boundary/page extraction is best effort; keep existing candidates.
+    }
+  }
+
+  const filenameCandidate = publishedAtCandidateFromFilename(
+    args.fileName ?? args.fallbackTitle,
+  );
+  if (filenameCandidate) candidates.push(filenameCandidate);
+
+  if (args.sourceUrl) {
+    const urlCandidate = publishedAtCandidateFromUrl(args.sourceUrl);
+    if (urlCandidate) candidates.push(urlCandidate);
+  }
+
+  const best = chooseBestPublishedAtCandidate(candidates);
+  const publishedAtMeta = publishedAtMetaFromCandidates(candidates);
+  const snippet = cleaned.slice(0, PREVIEW_SNIPPET_CHARS);
+
+  return {
+    title,
+    snippet,
+    authors,
+    publishedAt: best?.date ?? null,
+    publishedAtMeta,
+  };
 }
 
 async function extractPdfUrlMetadata(url: string): Promise<{
@@ -574,81 +986,12 @@ async function extractPdfUrlMetadata(url: string): Promise<{
     };
   }
 
-  // pdf-parse gives you text + some metadata in many cases
-  let out: any;
-  try {
-    out = await pdf(buf);
-  } catch {
-    return {
-      title: url,
-      snippet: "",
-      authors: [],
-      ...publishedAtFallbackFromUrl(url),
-    };
-  }
-  const text = String(out?.text || "");
-  const cleaned = cleanSnippet(text);
-
-  const infoTitle = String(out?.info?.Title || "").trim();
-  const titleFromText =
-    cleaned
-      .split(/\n|\.|\|/)
-      .map((x) => x.trim())
-      .find(Boolean) || "";
-  const title = (infoTitle || titleFromText || url).trim();
-
-  const infoAuthor = String(out?.info?.Author || "").trim();
-  const authors = uniqNonEmpty([...(infoAuthor ? [infoAuthor] : [])]);
-
-  const infoDate = String(
-    out?.info?.CreationDate || out?.info?.ModDate || "",
-  ).trim();
-
-  let pages: { pageNumber: number; text: string }[] = [];
-  try {
-    pages = await extractPdfPagesFromBuffer(buf);
-  } catch {
-    pages = [];
-  }
-
-  let publishedAt: Date | null = null;
-  let publishedAtMeta: PublishedAtMeta = { source: "unknown", confidence: 0.0 };
-
-  const infoParsed = tryParseDateLoose(infoDate);
-  if (infoParsed) {
-    publishedAt = infoParsed;
-    publishedAtMeta = {
-      source: "pdf_info",
-      confidence: 0.55,
-      details: { field: out?.info?.CreationDate ? "CreationDate" : "ModDate" },
-    };
-  } else {
-    const fromPages = pickBestPublishedAtFromPdfPages(pages);
-    if (fromPages) {
-      publishedAt = fromPages;
-      publishedAtMeta = {
-        source: "pdf_pages",
-        confidence: 0.85,
-        details: { totalPages: pages.length },
-      };
-    } else {
-      const heuristic = guessPdfPublishedAtFromText(text);
-      if (heuristic) {
-        publishedAt = heuristic;
-        publishedAtMeta = { source: "pdf_text_heuristic", confidence: 0.5 };
-      } else {
-        const urlDate = extractPublishedAtFromUrl(url);
-        publishedAt = urlDate;
-        publishedAtMeta = urlDate
-          ? { source: "url_pattern", confidence: 0.35 }
-          : { source: "unknown", confidence: 0.0 };
-      }
-    }
-  }
-
-  const snippet = cleaned.slice(0, PREVIEW_SNIPPET_CHARS);
-
-  return { title, snippet, authors, publishedAt, publishedAtMeta };
+  return extractPdfBufferMetadata({
+    buf,
+    fallbackTitle: url,
+    sourceUrl: url,
+    fileName: new URL(url).pathname.split("/").pop() || url,
+  });
 }
 
 export async function extractUrlMetadata(url: string): Promise<{
@@ -740,9 +1083,6 @@ export async function extractUrlMetadata(url: string): Promise<{
         ...(byline ? [byline] : []),
       ]);
 
-  // publishedAt: JSON-LD first; fallback to meta tags; fallback to URL pattern
-  const publishedLd = pickPublishedFromLd(ld);
-
   const metaPublished = pickMetaContent(doc, [
     'meta[property="article:published_time"]',
     'meta[name="pubdate"]',
@@ -753,31 +1093,35 @@ export async function extractUrlMetadata(url: string): Promise<{
     'meta[name="dc.date"]',
   ]);
 
-  let publishedAt: Date | null = null;
-  let publishedAtMeta: PublishedAtMeta = { source: "unknown", confidence: 0.0 };
+  const publishedAtCandidates: PublishedAtCandidate[] = [
+    ...extractPublishedAtCandidatesFromLd(ld),
+  ];
 
-  if (publishedLd) {
-    publishedAt = publishedLd;
-    publishedAtMeta = { source: "jsonld", confidence: 0.85 };
-  } else {
-    const metaParsed = tryParseDate(metaPublished);
-    if (metaParsed) {
-      publishedAt = metaParsed;
-      publishedAtMeta = {
-        source: "html_meta",
-        confidence: 0.65,
-        details: { raw: metaPublished || null },
-      };
-    } else {
-      const urlDate = extractPublishedAtFromUrl(url);
-      publishedAt = urlDate;
-      publishedAtMeta = urlDate
-        ? { source: "url_pattern", confidence: 0.35 }
-        : { source: "unknown", confidence: 0.0 };
-    }
+  const metaParsed = tryParseDate(metaPublished);
+  if (metaParsed) {
+    publishedAtCandidates.push({
+      date: metaParsed,
+      source: "html_meta",
+      confidence: 0.65,
+      raw: metaPublished,
+      locator: { selector: "published meta tag" },
+      reason: "HTML publication meta tag",
+    });
   }
 
-  return { title, snippet, authors, publishedAt, publishedAtMeta };
+  const urlCandidate = publishedAtCandidateFromUrl(url);
+  if (urlCandidate) publishedAtCandidates.push(urlCandidate);
+
+  const bestPublishedAt = chooseBestPublishedAtCandidate(publishedAtCandidates);
+  const publishedAtMeta = publishedAtMetaFromCandidates(publishedAtCandidates);
+
+  return {
+    title,
+    snippet,
+    authors,
+    publishedAt: bestPublishedAt?.date ?? null,
+    publishedAtMeta,
+  };
 }
 
 export async function extractPreviewFromUrl(
@@ -908,20 +1252,83 @@ export async function extractTitleFromStoredFile(
   mimeType: string,
 ) {
   const text = await extractTextFromFile(storagePath, mimeType);
-  const cleaned = cleanSnippet(text);
-  const titleFromText =
-    cleaned
-      .split(/\n|\.|\|/)
-      .map((x) => x.trim())
-      .find(Boolean) || "";
+  const titleFromText = titleFromExtractedText(text);
   return titleFromText || path.basename(storagePath);
+}
+
+export async function extractStoredFileMetadata(
+  storagePath: string,
+  mimeType: string,
+  opts: { fileName?: string | null; sourceUrl?: string | null } = {},
+): Promise<{
+  title: string;
+  snippet: string;
+  sourcePublishedAt: Date | null;
+  sourceAuthors: string[];
+  publishedAtMeta: PublishedAtMeta;
+}> {
+  const fileName = opts.fileName?.trim() || path.basename(storagePath);
+  const lowerMime = String(mimeType || "").toLowerCase();
+  const lowerName = fileName.toLowerCase();
+
+  if (lowerMime.includes("pdf") || lowerName.endsWith(".pdf")) {
+    try {
+      const buf = await readFile(storagePath);
+      const meta = await extractPdfBufferMetadata({
+        buf,
+        fallbackTitle: fileName,
+        sourceUrl: opts.sourceUrl ?? null,
+        fileName,
+      });
+      return {
+        title: meta.title,
+        snippet: meta.snippet,
+        sourcePublishedAt: meta.publishedAt,
+        sourceAuthors: meta.authors,
+        publishedAtMeta: meta.publishedAtMeta,
+      };
+    } catch {
+      // fall through to filename/source URL fallback below
+    }
+  }
+
+  const text = await extractTextFromFile(storagePath, mimeType);
+  const cleaned = cleanSnippet(text);
+  const titleFromText = titleFromExtractedText(text);
+
+  const candidates = extractPublishedAtCandidatesFromText(text, {
+    explicitSource: "text_explicit",
+    genericSource: "text_heuristic",
+    explicitConfidence: 0.88,
+    genericConfidence: 0.38,
+    locator: { fileName },
+  });
+
+  const filenameCandidate = publishedAtCandidateFromFilename(fileName);
+  if (filenameCandidate) candidates.push(filenameCandidate);
+
+  if (opts.sourceUrl) {
+    const urlCandidate = publishedAtCandidateFromUrl(opts.sourceUrl);
+    if (urlCandidate) candidates.push(urlCandidate);
+  }
+
+  const best = chooseBestPublishedAtCandidate(candidates);
+  return {
+    title: titleFromText || fileName,
+    snippet: cleaned.slice(0, PREVIEW_SNIPPET_CHARS),
+    sourcePublishedAt: best?.date ?? null,
+    sourceAuthors: [],
+    publishedAtMeta: publishedAtMetaFromCandidates(candidates),
+  };
 }
 
 export async function extractFileMetadata(
   storagePath: string,
   mimeType: string,
 ): Promise<{ title: string; snippet: string }> {
-  const title = await extractTitleFromStoredFile(storagePath, mimeType);
-  const snippet = await extractSnippetFromStoredFile(storagePath, mimeType);
+  const { title, snippet } = await extractStoredFileMetadata(
+    storagePath,
+    mimeType,
+  );
   return { title, snippet };
 }

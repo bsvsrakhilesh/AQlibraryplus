@@ -17,7 +17,7 @@ import {
   countUpdatedSinceReview,
   filterUpdatedSinceReview,
 } from "./savedUrlReview.service";
-import { extractUrlMetadata } from "./extract.service";
+import { extractUrlMetadata, withPublishedAtMeta } from "./extract.service";
 
 const SNAPSHOT_STALE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -67,10 +67,7 @@ export async function enrichUrlCreateRows(
             : metadata.snippet,
         authors: metadata.authors,
         publishedAt: metadata.publishedAt,
-        tagsMeta: {
-          ...(row.tagsMeta ?? {}),
-          publishedAtMeta: metadata.publishedAtMeta,
-        },
+        tagsMeta: withPublishedAtMeta(row.tagsMeta, metadata.publishedAtMeta),
       });
     } catch {
       enriched.push(row);

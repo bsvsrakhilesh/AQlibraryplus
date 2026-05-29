@@ -12,7 +12,11 @@ import yazl from "yazl";
 import crypto from "crypto";
 import unzipper from "unzipper";
 import pdfParse from "pdf-parse";
-import { extractUrlMetadata } from "../services/extract.service";
+import {
+  extractStoredFileMetadata,
+  extractUrlMetadata,
+  withPublishedAtMeta,
+} from "../services/extract.service";
 import {
   getAiTaggingUnavailableMessage,
   getFileCapability,
@@ -90,93 +94,6 @@ function contentDispositionHeader(
     `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
   );
   return `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`;
-}
-
-function parsePdfDate(raw: unknown): Date | null {
-  if (!raw) return null;
-  const s = String(raw).trim();
-  if (!s) return null;
-
-  // pdf-parse often gives "D:YYYYMMDDHHmmSSOHH'mm'" formats
-  // Examples: "D:20220101123000Z", "D:20220101123000+05'30'"
-  const m = s.match(
-    /^D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?(Z|([+\-])(\d{2})'?(\d{2})'?)?/,
-  );
-  if (m) {
-    const year = Number(m[1]);
-    const mon = Number(m[2] || "01");
-    const day = Number(m[3] || "01");
-    const hh = Number(m[4] || "00");
-    const mm = Number(m[5] || "00");
-    const ss = Number(m[6] || "00");
-
-    // Build as UTC first
-    let dt = new Date(Date.UTC(year, mon - 1, day, hh, mm, ss));
-
-    // Apply offset if present
-    const z = m[7];
-    if (z && z !== "Z") {
-      const sign = m[8] === "-" ? -1 : 1;
-      const oh = Number(m[9] || "00");
-      const om = Number(m[10] || "00");
-      const offsetMin = sign * (oh * 60 + om);
-      dt = new Date(dt.getTime() - offsetMin * 60_000);
-    }
-    return dt;
-  }
-
-  // Fall back to Date parsing (handles ISO-like strings)
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function uniqAuthors(input: string[]) {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const a of input) {
-    const t = String(a || "").trim();
-    if (!t) continue;
-    const k = t.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(t);
-  }
-  return out;
-}
-
-async function extractPdfFileMetadata(filePath: string): Promise<{
-  sourcePublishedAt: Date | null;
-  sourceAuthors: string[];
-}> {
-  try {
-    const buf = fs.readFileSync(filePath);
-    const parsed: any = await pdfParse(buf);
-
-    // pdf-parse returns { info, metadata, ... } but shape varies
-    const info = parsed?.info || {};
-    const meta = parsed?.metadata || {};
-
-    const author =
-      info?.Author || info?.author || meta?.Author || meta?.author || null;
-
-    const creation =
-      info?.CreationDate ||
-      info?.creationDate ||
-      meta?.CreationDate ||
-      meta?.creationDate ||
-      null;
-
-    const mod =
-      info?.ModDate || info?.modDate || meta?.ModDate || meta?.modDate || null;
-
-    const sourcePublishedAt = parsePdfDate(creation) || parsePdfDate(mod);
-
-    const sourceAuthors = uniqAuthors(author ? [String(author)] : []);
-
-    return { sourcePublishedAt, sourceAuthors };
-  } catch {
-    return { sourcePublishedAt: null, sourceAuthors: [] };
-  }
 }
 
 const r = Router();
@@ -1604,18 +1521,19 @@ r.post("/files/finalize", async (req, res, next) => {
 
     const sha256 = await sha256File(finalPath);
 
-    // Best-effort file metadata extraction (PDF only)
-    let sourcePublishedAt: Date | null = null;
-    let sourceAuthors: string[] = [];
-
-    if (
-      finalMime.includes("pdf") ||
-      safeFileName.toLowerCase().endsWith(".pdf")
-    ) {
-      const meta = await extractPdfFileMetadata(finalPath);
-      sourcePublishedAt = meta.sourcePublishedAt;
-      sourceAuthors = meta.sourceAuthors;
-    }
+    const metadata = await extractStoredFileMetadata(finalPath, finalMime, {
+      fileName: safeFileName,
+    });
+    const sourcePublishedAt = metadata.sourcePublishedAt;
+    const sourceAuthors = metadata.sourceAuthors;
+    const existingUpload = await prisma.storedFile.findUnique({
+      where: { uploadSessionId: safeUploadSessionId },
+      select: { tagsMeta: true },
+    });
+    const nextTagsMeta = withPublishedAtMeta(
+      existingUpload?.tagsMeta,
+      metadata.publishedAtMeta,
+    );
 
     const updateData: any = {
       uploadSessionId: safeUploadSessionId,
@@ -1631,6 +1549,7 @@ r.post("/files/finalize", async (req, res, next) => {
       sha256,
       contentHash: null,
       taggerVersion: null,
+      tagsMeta: nextTagsMeta,
       taggingStatus: capability.aiTagSupported ? "PENDING" : "NONE",
       taggingJobId: null,
       taggingError: aiTaggingError,
@@ -1650,6 +1569,7 @@ r.post("/files/finalize", async (req, res, next) => {
       sha256,
       contentHash: null,
       taggerVersion: null,
+      tagsMeta: nextTagsMeta,
       taggingStatus: capability.aiTagSupported ? "PENDING" : "NONE",
       taggingJobId: null,
       taggingError: aiTaggingError,
@@ -2299,28 +2219,20 @@ r.post("/files/:id/refresh-metadata", async (req, res, next) => {
       return res.status(410).json({ message: "File was deleted" });
 
     const contentType = inferMimeType(f.fileName, f.mimeType);
-
-    let sourcePublishedAt: Date | null = null;
-    let sourceAuthors: string[] = [];
-
-    // If this is a PDF file stored locally, extract PDF metadata
-    if (
-      contentType.toLowerCase().includes("pdf") ||
-      f.fileName.toLowerCase().endsWith(".pdf")
-    ) {
-      try {
-        const meta = await extractPdfFileMetadata(f.storagePath);
-        sourcePublishedAt = meta.sourcePublishedAt ?? null;
-        sourceAuthors = Array.isArray(meta.sourceAuthors)
-          ? meta.sourceAuthors
-          : [];
-      } catch {
-        // ignore
-      }
-    }
-
-    // If it has a source URL (URL_TEXT / URL_PDF / or manual sourceUrl), refresh from web
     const refreshUrl = (f.sourceUrl || (f as any).url?.url || "").trim();
+
+    const localMeta = await extractStoredFileMetadata(f.storagePath, contentType, {
+      fileName: f.fileName,
+      sourceUrl: refreshUrl || null,
+    });
+
+    let sourcePublishedAt: Date | null = localMeta.sourcePublishedAt ?? null;
+    let sourceAuthors: string[] = Array.isArray(localMeta.sourceAuthors)
+      ? localMeta.sourceAuthors
+      : [];
+    let publishedAtMeta = localMeta.publishedAtMeta;
+
+    // If it has a source URL (URL_TEXT / URL_PDF / or manual sourceUrl), refresh from web.
     if (refreshUrl) {
       try {
         const meta = await extractUrlMetadata(refreshUrl);
@@ -2332,12 +2244,22 @@ r.post("/files/:id/refresh-metadata", async (req, res, next) => {
             data: {
               publishedAt: meta.publishedAt,
               authors: meta.authors ?? [],
+              tagsMeta: withPublishedAtMeta(
+                (f as any).url?.tagsMeta,
+                meta.publishedAtMeta,
+              ) as any,
             },
           });
         }
 
-        // If file fields are empty (or PDF had no metadata), prefer URL metadata
-        if (!sourcePublishedAt) sourcePublishedAt = meta.publishedAt ?? null;
+        if (
+          meta.publishedAt &&
+          (!sourcePublishedAt ||
+            meta.publishedAtMeta.confidence > publishedAtMeta.confidence)
+        ) {
+          sourcePublishedAt = meta.publishedAt;
+          publishedAtMeta = meta.publishedAtMeta;
+        }
         if (!sourceAuthors.length && Array.isArray(meta.authors))
           sourceAuthors = meta.authors;
       } catch {
@@ -2350,6 +2272,7 @@ r.post("/files/:id/refresh-metadata", async (req, res, next) => {
       data: {
         sourcePublishedAt,
         sourceAuthors,
+        tagsMeta: withPublishedAtMeta(f.tagsMeta, publishedAtMeta) as any,
       },
     });
 
@@ -2376,6 +2299,7 @@ r.post("/files/:id/refresh-metadata", async (req, res, next) => {
       id: updated.id,
       sourcePublishedAt: updated.sourcePublishedAt ?? null,
       sourceAuthors: updated.sourceAuthors ?? [],
+      publishedAtMeta,
     });
   } catch (err) {
     next(err);
