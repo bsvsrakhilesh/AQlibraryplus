@@ -358,10 +358,11 @@ Run the backend tests:
 npm -w backend test
 ```
 
-The backend suite includes an optional database integration test for URL
-Collector deduplication through the real `createManyUrls` Prisma write path. It
-is skipped unless `SMARTSCRAPE_TEST_DATABASE_URL` points to a disposable test
-PostgreSQL database with migrations applied:
+The backend suite includes optional database integration tests for URL Collector
+deduplication through the real `createManyUrls` Prisma write path and collector
+purpose save-selection flow. They are skipped unless
+`SMARTSCRAPE_TEST_DATABASE_URL` points to a disposable test PostgreSQL database
+with migrations applied:
 
 ```powershell
 $env:SMARTSCRAPE_TEST_DATABASE_URL="postgresql://postgres:<password>@localhost:5432/SmartScrape_test?schema=public"

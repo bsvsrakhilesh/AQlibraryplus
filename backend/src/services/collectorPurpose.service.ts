@@ -70,6 +70,24 @@ function uniqueText(values: unknown, maxItems = 12) {
   ).slice(0, maxItems);
 }
 
+function dedupeUrlInputsByCanonical(rows: CreateUrlInput[]): CreateUrlInput[] {
+  const seen = new Set<string>();
+  const deduped: CreateUrlInput[] = [];
+
+  for (const row of rows) {
+    const rawUrl = String(row.url || "").trim();
+    if (!rawUrl) continue;
+
+    const key = canonicalizeUrl(rawUrl) || rawUrl;
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    deduped.push({ ...row, url: rawUrl });
+  }
+
+  return deduped;
+}
+
 function normalizePurposeInput(input: CollectorPurposeInput) {
   const title = cleanText(input.title, 160);
   const researchQuestion = cleanText(input.researchQuestion, 1500);
@@ -365,7 +383,9 @@ export async function saveCollectorPurposeSelection(args: {
   rows: CreateUrlInput[];
 }) {
   await requirePurpose(args.ownerId, args.purposeId);
-  const enriched = await enrichUrlCreateRows(args.rows);
+  const enriched = dedupeUrlInputsByCanonical(
+    await enrichUrlCreateRows(args.rows),
+  );
 
   if (args.searchId) {
     const search = await prisma.collectorPurposeSearch.findFirst({
