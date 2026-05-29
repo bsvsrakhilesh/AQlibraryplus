@@ -11,7 +11,7 @@ export function canonicalizeUrl(input: string): string {
     return s;
   }
 
-  u.hostname = u.hostname.toLowerCase();
+  u.hostname = u.hostname.toLowerCase().replace(/\.+$/, "");
 
   if (
     (u.protocol === "http:" && u.port === "80") ||

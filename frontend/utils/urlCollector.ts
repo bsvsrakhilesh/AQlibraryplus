@@ -45,14 +45,17 @@ export function normalizeCollectorWebsite(raw: string): string {
   const v = raw.trim();
   if (!v) return "";
 
+  const cleanHost = (host: string) =>
+    host.trim().toLowerCase().replace(/^\s*www\./i, "").replace(/\.+$/, "");
+
   try {
     const maybeUrl = v.match(/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//)
       ? v
       : `https://${v}`;
     const u = new URL(maybeUrl);
-    return u.hostname.replace(/^\s*www\./i, "").trim();
+    return cleanHost(u.hostname);
   } catch {
-    return v.replace(/^\s*www\./i, "").split(/[\/\s?#]/)[0];
+    return cleanHost(v.split(/[\/\s?#]/)[0]);
   }
 }
 

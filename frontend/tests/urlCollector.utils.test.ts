@@ -18,6 +18,10 @@ test("normalizeCollectorWebsite strips scheme, path, and www prefix", () => {
     "example.com",
   );
   assert.equal(normalizeCollectorWebsite("example.com/reports"), "example.com");
+  assert.equal(
+    normalizeCollectorWebsite("HTTPS://WWW.Example.COM./reports"),
+    "example.com",
+  );
 });
 
 test("normalizeCollectorKeywords keeps AND groups clean and OR groups explicit", () => {

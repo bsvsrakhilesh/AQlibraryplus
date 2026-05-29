@@ -13,5 +13,10 @@
     "types": ["node"],
     "sourceMap": false
   },
-  "include": ["tests/**/*.ts", "utils/urlCollector.ts", "lib/types.ts"]
+  "include": [
+    "tests/**/*.ts",
+    "utils/urlCollector.ts",
+    "utils/urlCanonical.ts",
+    "lib/types.ts"
+  ]
 }
