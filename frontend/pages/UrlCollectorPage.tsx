@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import SearchForm from "../components/urlcollector/SearchForm";
 import ResultsTable from "../components/urlcollector/ResultsTable";
 import Spinner from "../components/urlcollector/Spinner";
 import { SearchResult } from "../lib/types";
 import {
   createCollectorPurpose,
+  deleteCollectorPurpose,
   listCollectorPurposes,
   planPurposeSearch,
   planCollectorQuery,
@@ -24,6 +26,8 @@ import {
   mergeCollectorSearchResults,
   normalizeCollectorKeywords,
 } from "../utils/urlCollector";
+import { useConfirm } from "../components/providers/Confirm";
+import { useToast } from "../components/providers/Toast";
 
 const LS_KEY = "uc:v1";
 
@@ -124,6 +128,8 @@ const UrlCollectorPage: React.FC = () => {
 
   const navigate = useNavigate();
   const loc = useLocation();
+  const { confirm } = useConfirm();
+  const { notify } = useToast();
   const params = new URLSearchParams(loc.search);
   const {
     jobs: collectorJobs,
@@ -159,6 +165,7 @@ const UrlCollectorPage: React.FC = () => {
   const [purposes, setPurposes] = useState<CollectorPurpose[]>([]);
   const [activePurposeId, setActivePurposeId] = useState(urlPurposeId);
   const [purposeBusy, setPurposeBusy] = useState(false);
+  const [purposeDeleting, setPurposeDeleting] = useState(false);
   const [purposeLanes, setPurposeLanes] = useState<CollectorPurposeLane[]>([]);
   const [activeLaneKey, setActiveLaneKey] = useState("");
   const [collectorSearchId, setCollectorSearchId] = useState<string | null>(null);
@@ -1068,6 +1075,46 @@ const UrlCollectorPage: React.FC = () => {
     }
   }, [activePurposeId]);
 
+  const deleteActivePurpose = useCallback(async () => {
+    if (!activePurpose) return;
+
+    const ok = await confirm({
+      title: "Delete research purpose?",
+      description:
+        `This removes "${activePurpose.title}" and its purpose search history. ` +
+        "Saved URLs, captured evidence, and files will not be deleted.",
+      confirmText: "Delete purpose",
+      cancelText: "Keep purpose",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setPurposeDeleting(true);
+    setError(null);
+    try {
+      await deleteCollectorPurpose(activePurpose.id);
+      setPurposes((current) =>
+        current.filter((purpose) => purpose.id !== activePurpose.id),
+      );
+      setActivePurposeId("");
+      setPurposeLanes([]);
+      setActiveLaneKey("");
+      setCollectorSearchId(null);
+
+      const next = new URLSearchParams(loc.search);
+      next.delete("purposeId");
+      navigate({ search: next.toString() ? `?${next.toString()}` : "" }, { replace: true });
+
+      notify("Research purpose deleted. Saved URLs and evidence were kept.", "success");
+    } catch (reason: any) {
+      const message = reason?.message ?? "Could not delete the purpose.";
+      setError(message);
+      notify(message, "error");
+    } finally {
+      setPurposeDeleting(false);
+    }
+  }, [activePurpose, confirm, loc.search, navigate, notify]);
+
   const applyPurposeLane = useCallback((lane: CollectorPurposeLane) => {
     setActiveLaneKey(lane.key);
     setWebsite(lane.website);
@@ -1283,7 +1330,7 @@ const UrlCollectorPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => void createPurpose()}
-                disabled={purposeBusy}
+                disabled={purposeBusy || purposeDeleting}
                 className="btn-primary min-h-[40px] px-4 py-2"
               >
                 {purposeBusy ? "Creating..." : "Create purpose"}
@@ -1332,10 +1379,20 @@ const UrlCollectorPage: React.FC = () => {
                 <button
                   type="button"
                   className="btn-primary min-h-[40px] px-4 py-2"
-                  disabled={purposeBusy}
+                  disabled={purposeBusy || purposeDeleting}
                   onClick={() => void generatePurposeLanes()}
                 >
                   {purposeBusy ? "Generating..." : "Generate search lanes"}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:border-red-800 dark:hover:bg-red-950/50"
+                  disabled={purposeBusy || purposeDeleting}
+                  onClick={() => void deleteActivePurpose()}
+                  title="Delete this research purpose"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  {purposeDeleting ? "Deleting..." : "Delete purpose"}
                 </button>
               </div>
             </div>

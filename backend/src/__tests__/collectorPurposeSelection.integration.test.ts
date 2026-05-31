@@ -88,3 +88,78 @@ test("saveCollectorPurposeSelection deduplicates noisy selected collector rows b
     await prisma.$disconnect();
   }
 });
+
+test("deleteCollectorPurpose removes purpose-only records and keeps saved URLs", async (t) => {
+  const testDatabaseUrl = process.env.SMARTSCRAPE_TEST_DATABASE_URL;
+  if (!testDatabaseUrl) {
+    t.skip("set SMARTSCRAPE_TEST_DATABASE_URL to run the collector purpose delete database integration test");
+    return;
+  }
+
+  process.env.NODE_ENV = "test";
+  process.env.DATABASE_URL = testDatabaseUrl;
+  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+
+  const [{ default: prisma }, { deleteCollectorPurpose }] = await Promise.all([
+    import("../config/database"),
+    import("../services/collectorPurpose.service"),
+  ]);
+
+  const ownerId = `collector-delete-${Date.now()}-${process.pid}`;
+  const canonicalUrl = `https://${ownerId}.example.test/source`;
+  let purposeId = "";
+  let urlId = 0;
+
+  try {
+    const purpose = await prisma.collectorPurpose.create({
+      data: {
+        ownerId,
+        title: "Collector delete integration",
+        researchQuestion: "Does deleting a purpose keep saved URLs?",
+      },
+      select: { id: true },
+    });
+    purposeId = purpose.id;
+
+    const url = await prisma.url.create({
+      data: {
+        url: canonicalUrl,
+        canonical_url: canonicalUrl,
+        normalizedDomain: `${ownerId}.example.test`,
+        title: "Source retained after purpose delete",
+      },
+      select: { id: true },
+    });
+    urlId = url.id;
+
+    const search = await prisma.collectorPurposeSearch.create({
+      data: {
+        purposeId,
+        query: "purpose delete safety",
+        laneKey: "official-record",
+        parameters: { source: "test" },
+        resultCount: 1,
+      },
+      select: { id: true },
+    });
+
+    await prisma.collectorPurposeUrl.create({
+      data: {
+        purposeId,
+        urlId,
+        sourceSearchId: search.id,
+      },
+    });
+
+    assert.deepEqual(await deleteCollectorPurpose(ownerId, purposeId), { ok: true });
+
+    assert.equal(await prisma.collectorPurpose.count({ where: { id: purposeId } }), 0);
+    assert.equal(await prisma.collectorPurposeSearch.count({ where: { purposeId } }), 0);
+    assert.equal(await prisma.collectorPurposeUrl.count({ where: { purposeId } }), 0);
+    assert.equal(await prisma.url.count({ where: { id: urlId } }), 1);
+  } finally {
+    if (purposeId) await prisma.collectorPurpose.deleteMany({ where: { id: purposeId } });
+    if (urlId) await prisma.url.deleteMany({ where: { id: urlId } });
+    await prisma.$disconnect();
+  }
+});

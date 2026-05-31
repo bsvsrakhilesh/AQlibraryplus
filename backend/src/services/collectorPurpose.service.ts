@@ -195,6 +195,12 @@ export async function updateCollectorPurpose(
   );
 }
 
+export async function deleteCollectorPurpose(ownerId: string, purposeId: string) {
+  await requirePurpose(ownerId, purposeId);
+  await prisma.collectorPurpose.delete({ where: { id: purposeId } });
+  return { ok: true as const };
+}
+
 function domainForPreference(value: string) {
   const clean = value.trim().toLowerCase();
   if (clean.includes(".")) return clean.replace(/^https?:\/\//, "").split("/")[0];

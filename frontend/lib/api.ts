@@ -275,6 +275,10 @@ export async function createCollectorPurpose(
   });
 }
 
+export async function deleteCollectorPurpose(id: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>("DELETE", `/api/collector-purposes/${id}`);
+}
+
 export async function planPurposeSearch(
   id: string,
 ): Promise<{ lanes: CollectorPurposeLane[]; generatedAt: string }> {

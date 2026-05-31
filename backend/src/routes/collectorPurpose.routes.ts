@@ -4,6 +4,7 @@ import { validate } from "../middlewares/validate";
 import { ownerIdForRequest } from "../utils/requestOwner";
 import {
   createCollectorPurpose,
+  deleteCollectorPurpose,
   getCollectorPurpose,
   listCollectorPurposes,
   planCollectorPurpose,
@@ -77,6 +78,18 @@ r.patch(
       res.json(
         await updateCollectorPurpose(ownerIdForRequest(req), req.params.id, req.body),
       );
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+r.delete(
+  "/collector-purposes/:id",
+  validate({ params: idParams }),
+  async (req, res, next) => {
+    try {
+      res.json(await deleteCollectorPurpose(ownerIdForRequest(req), req.params.id));
     } catch (error) {
       next(error);
     }
