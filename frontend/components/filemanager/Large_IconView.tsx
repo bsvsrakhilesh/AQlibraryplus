@@ -847,6 +847,9 @@ export default function Large_IconView({
             <div
               key={id}
               className="wg-card wg-card-animate ex-tile group"
+              data-testid={folder ? "folder-tile" : "file-tile"}
+              data-file-id={id}
+              data-file-name={title}
               data-selected={selected ? "true" : "false"}
               data-variant={variant}
               data-density={density}

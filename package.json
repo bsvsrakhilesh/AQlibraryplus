@@ -9,6 +9,7 @@
     "dev:front": "npm -w frontend run dev",
     "dev:back": "npm -w backend run dev",
     "dev": "concurrently -n front,back -c auto \"npm:dev:front\" \"npm:dev:back\"",
+    "test:e2e": "playwright test",
     "dev:clean": "npm run clean && npm install && npm run dev",
     "build": "npm -w frontend run build && npm -w backend run build",
     "start": "concurrently -n back,front -c auto \"npm:run -w backend start\" \"npm:run -w frontend preview\"",
@@ -16,6 +17,7 @@
     "install:all": "npm install && npm -w frontend install && npm -w backend install"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.1.12",
     "concurrently": "^9.0.0",
     "purgecss": "^7.0.2",
