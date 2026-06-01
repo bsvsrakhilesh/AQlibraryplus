@@ -26,6 +26,10 @@ interface ResultsTableProps {
   collectorPurposeId: string;
   collectorPurposeTitle: string;
   collectorSearchId?: string | null;
+  authorityCoverageRisk?: "high" | "medium" | "watch" | "low";
+  authorityCoverageScore?: number;
+  criticalMissingAuthorityCount?: number;
+  missingEvidenceRoles?: string[];
 }
 
 /* ---------------- helpers ---------------- */
@@ -139,6 +143,30 @@ const CONFIDENCE_DOT: Record<string, string> = {
   low: "bg-gray-400",
 };
 
+function purposeReasonBadges(result: SearchResult): string[] {
+  const reasons = [
+    result.purposeRelevance?.reason,
+    ...(result.ranking?.reasons ?? []),
+  ]
+    .filter((reason): reason is string => !!reason?.trim())
+    .flatMap((reason) => reason.split(/(?=Official source match:)/g))
+    .map((reason) => reason.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  return reasons
+    .filter((reason) => {
+      const key = reason.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return (
+        /^official source match:/i.test(reason) ||
+        /^matches purpose terms:/i.test(reason)
+      );
+    })
+    .slice(0, 3);
+}
+
 /* ---------------- component ---------------- */
 
 const ResultsTable: React.FC<ResultsTableProps> = ({
@@ -155,6 +183,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   collectorPurposeId,
   collectorPurposeTitle,
   collectorSearchId,
+  authorityCoverageRisk = "low",
+  authorityCoverageScore = 100,
+  criticalMissingAuthorityCount = 0,
+  missingEvidenceRoles = [],
 }) => {
   const navigate = useNavigate();
   // local selection if parent doesn't control it
@@ -467,6 +499,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
     0,
     selectedLoadedCount - selectedFilteredCount,
   );
+  const showEvidenceRiskWarning =
+    selectable &&
+    selectedFilteredCount > 0 &&
+    (authorityCoverageRisk === "high" || authorityCoverageRisk === "medium");
 
   // When filters/sort/dedupe change, jump back to page 1 so the user doesn't land on an empty page.
   useEffect(() => {
@@ -916,7 +952,29 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {showEvidenceRiskWarning && (
+            <div
+              className={`max-w-[340px] rounded-xl border px-3 py-2 text-xs font-semibold ${
+                authorityCoverageRisk === "high"
+                  ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200"
+                  : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+              }`}
+              role="status"
+            >
+              Official-source coverage is {authorityCoverageScore}%.{" "}
+              {criticalMissingAuthorityCount > 0
+                ? `${criticalMissingAuthorityCount} critical source${
+                    criticalMissingAuthorityCount === 1 ? "" : "s"
+                  } missing.`
+                : "Important sources are still missing."}
+              {missingEvidenceRoles.length > 0
+                ? ` Missing role: ${missingEvidenceRoles.slice(0, 2).join(", ")}${
+                    missingEvidenceRoles.length > 2 ? "..." : ""
+                  }.`
+                : ""}
+            </div>
+          )}
           {selectable && (
             <button
               onClick={saveSelected}
@@ -1016,6 +1074,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
           const collectionCount = getUrlCollections(r.url).length;
           const detectedYear = getResultYear(r);
           const savedToPurpose = purposeStatus[r.url];
+          const relevanceBadges = purposeReasonBadges(r);
           return (
             <StaggerItem
               as="li"
@@ -1150,6 +1209,28 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                       </span>
                     )}
                   </div>
+
+                  {relevanceBadges.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {relevanceBadges.map((reason) => {
+                        const official = /^official source match:/i.test(reason);
+                        return (
+                          <span
+                            key={reason}
+                            className={[
+                              "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
+                              official
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-violet-200 bg-violet-50 text-violet-700",
+                            ].join(" ")}
+                            title={reason}
+                          >
+                            {official ? reason : "Purpose match"}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {r.snippet && (
                     <p className="mt-2 text-[13.5px] leading-6 text-gray-700 line-clamp-3">

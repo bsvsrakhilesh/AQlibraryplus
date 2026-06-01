@@ -15,6 +15,7 @@
   },
   "include": [
     "tests/**/*.ts",
+    "utils/collectorAuthorityCoverage.ts",
     "utils/urlCollector.ts",
     "utils/urlCanonical.ts",
     "lib/types.ts"

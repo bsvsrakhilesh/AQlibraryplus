@@ -1,6 +1,80 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+test("collector purpose authority inference finds CAQM for GRAP Stage IV questions", async () => {
+  process.env.NODE_ENV = "test";
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
+  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+
+  const { authoritySourceForUrl, fallbackPurposeLanes, inferAuthoritySources } = await import(
+    "../services/collectorPurpose.service"
+  );
+
+  const purpose = {
+    title: "GRAP Stage IV orders",
+    researchQuestion: "Find GRAP 4 orders and revocation orders for Delhi NCR.",
+    jurisdiction: "Delhi NCR",
+    region: "Delhi",
+    yearFrom: null,
+    yearTo: null,
+    sourcePreferences: [],
+    targetActors: [],
+  };
+
+  const sources = inferAuthoritySources(purpose);
+  assert.equal(sources[0].domain, "caqm.nic.in");
+  assert.ok(
+    (sources.find((source) => source.domain === "caqm.nic.in")?.confidence ?? 0) >
+      (sources.find((source) => source.domain === "cpcb.nic.in")?.confidence ?? 0),
+  );
+  assert.ok(sources.some((source) => source.domain === "cpcb.nic.in"));
+  assert.ok(sources.some((source) => source.domain === "hspcb.gov.in"));
+  assert.ok(sources.some((source) => source.domain === "uppcb.com"));
+  assert.ok(sources.some((source) => source.domain === "environment.rajasthan.gov.in"));
+  assert.equal(
+    authoritySourceForUrl(
+      sources,
+      "https://caqm.nic.in/WriteReadData/LINKS/GRAP%20stage%20IV%20order.pdf",
+    )?.label,
+    "CAQM",
+  );
+
+  const lanes = fallbackPurposeLanes(purpose);
+  assert.ok(
+    lanes.some(
+      (lane) => lane.website === "caqm.nic.in" && lane.format === "pdfOnly",
+    ),
+  );
+});
+
+test("collector purpose authority inference covers stubble and forecast evidence sources", async () => {
+  process.env.NODE_ENV = "test";
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
+  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+
+  const { inferAuthoritySources } = await import(
+    "../services/collectorPurpose.service"
+  );
+
+  const sources = inferAuthoritySources({
+    title: "Stubble burning and Delhi AQI",
+    researchQuestion:
+      "Find official evidence on Punjab paddy stubble burning contribution to Delhi NCR AQI forecast and air quality.",
+    jurisdiction: "Delhi NCR",
+    region: "Punjab and Delhi",
+    yearFrom: null,
+    yearTo: null,
+    sourcePreferences: [],
+    targetActors: [],
+  });
+
+  assert.ok(sources.some((source) => source.domain === "ppcb.punjab.gov.in"));
+  assert.ok(sources.some((source) => source.domain === "mausam.imd.gov.in"));
+  assert.ok(sources.some((source) => source.domain === "safar.tropmet.res.in"));
+});
+
 test("saveCollectorPurposeSelection deduplicates noisy selected collector rows before linking", async (t) => {
   const testDatabaseUrl = process.env.SMARTSCRAPE_TEST_DATABASE_URL;
   if (!testDatabaseUrl) {

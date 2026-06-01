@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import SearchForm from "../components/urlcollector/SearchForm";
 import ResultsTable from "../components/urlcollector/ResultsTable";
@@ -12,6 +12,7 @@ import {
   planCollectorQuery,
   rerankSearchResults,
   searchWeb,
+  type CollectorAuthoritySource,
   type CollectorPurpose,
   type CollectorPurposeLane,
   type SearchWebOptions,
@@ -26,6 +27,7 @@ import {
   mergeCollectorSearchResults,
   normalizeCollectorKeywords,
 } from "../utils/urlCollector";
+import { summarizeCollectorAuthorityCoverage } from "../utils/collectorAuthorityCoverage";
 import { useConfirm } from "../components/providers/Confirm";
 import { useToast } from "../components/providers/Toast";
 
@@ -103,6 +105,17 @@ function toYYYY(s: string): string {
   return m ? m[1] : "";
 }
 
+function splitPurposeList(value: string): string[] {
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(/[,;\n]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 12);
+}
+
 const UrlCollectorPage: React.FC = () => {
   // ---------- Persistence guardrails (avoid localStorage quota issues) ----------
   const MAX_PERSIST_RESULTS = 100; // cap stored results
@@ -175,6 +188,8 @@ const UrlCollectorPage: React.FC = () => {
     jurisdiction: "",
     region: "",
     outputGoal: "",
+    sourcePreferences: "",
+    targetActors: "",
   });
   const [purposeMenuOpen, setPurposeMenuOpen] = useState(false);
   const purposeSelectRef = useRef<HTMLDivElement>(null);
@@ -235,6 +250,7 @@ const UrlCollectorPage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [aiAssistLoading, setAiAssistLoading] = useState(false);
+  const [isRecoveringSources, setIsRecoveringSources] = useState(false);
   const [aiAssistRationale, setAiAssistRationale] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -259,6 +275,24 @@ const UrlCollectorPage: React.FC = () => {
 
   // Page-level controlled sort (passed to ResultsTable)
   const [sortKey, setSortKey] = useState<SortKey>("original");
+
+  const authorityCoverageSummary = useMemo(
+    () =>
+      summarizeCollectorAuthorityCoverage(
+        activePurpose?.authoritySources ?? [],
+        searchResults,
+      ),
+    [activePurpose?.authoritySources, searchResults],
+  );
+  const authorityCoverage = authorityCoverageSummary.coverage;
+  const missingAuthorityCount = authorityCoverageSummary.missingCount;
+  const criticalMissingAuthorityCount = authorityCoverageSummary.criticalMissingCount;
+  const authorityCoverageScore = authorityCoverageSummary.score;
+  const authorityCoverageRisk = authorityCoverageSummary.risk;
+  const authorityCoverageRiskLabel = authorityCoverageSummary.riskLabel;
+  const missingAuthoritySources = authorityCoverageSummary.missingSources;
+  const evidenceRoleCoverage = authorityCoverageSummary.roleCoverage;
+  const missingEvidenceRoles = authorityCoverageSummary.missingRoles;
 
   // Abort in-flight searches when a new one starts
   const fetchAbortRef = useRef<AbortController | null>(null);
@@ -476,7 +510,7 @@ const UrlCollectorPage: React.FC = () => {
 
   /* ---------- Search handler (working fetch + abort) ---------- */
   const handleSearch = useCallback(
-    async (siteArg?: string, kwArg?: string) => {
+    async (siteArg?: string, kwArg?: string, scopeArg?: CollectorScope) => {
       if (!activePurpose) {
         setError("Select or create a purpose before searching.");
         setHasSearched(false);
@@ -484,9 +518,10 @@ const UrlCollectorPage: React.FC = () => {
       }
       const site = (siteArg ?? website).trim();
       const kws = normalizeCollectorKeywords(kwArg ?? keywords);
+      const effectiveScope = scopeArg ?? scope;
 
-      const yFrom = toYYYY(scope.yearFrom);
-      const yTo = toYYYY(scope.yearTo);
+      const yFrom = toYYYY(effectiveScope.yearFrom);
+      const yTo = toYYYY(effectiveScope.yearTo);
       if (yFrom && yTo && Number(yFrom) > Number(yTo)) {
         setError("Year from must be ≤ Year to.");
         setHasSearched(true);
@@ -539,7 +574,7 @@ const UrlCollectorPage: React.FC = () => {
         meta: {
           site,
           keywords: kws,
-          scope,
+          scope: effectiveScope,
         },
       });
       collectorJobActions.updateJob(jobId, {
@@ -561,11 +596,11 @@ const UrlCollectorPage: React.FC = () => {
       setTotalResults(null);
 
       // keep URL in sync (shareable)
-      syncUrl(site, kws, scope);
+      syncUrl(site, kws, effectiveScope);
 
       try {
         const q = buildCollectorSearchQuery(kws);
-        const searchOpts = buildSearchOpts(site, scope);
+        const searchOpts = buildSearchOpts(site, effectiveScope);
         setLastSearchOpts(searchOpts);
 
         // Helper to fetch a specific page from the backend
@@ -757,6 +792,161 @@ const UrlCollectorPage: React.FC = () => {
       void handleSearch(siteArg, kwArg);
     };
   }, [handleSearch]);
+
+  const buildAuthorityKeywords = useCallback(
+    (source: CollectorAuthoritySource) =>
+      [
+        activePurpose?.researchQuestion ?? "",
+        source.queryHints.slice(0, 4).join(" | "),
+        source.documentTerms.slice(0, 4).join(" | "),
+      ]
+        .filter(Boolean)
+        .join(", "),
+    [activePurpose?.researchQuestion],
+  );
+
+  const searchAuthoritySource = useCallback(
+    (source: CollectorAuthoritySource) => {
+      const nextKeywords = buildAuthorityKeywords(source);
+      const nextScope: CollectorScope = { ...scope, format: "pdfOnly" };
+      setWebsite(source.domain);
+      setKeywords(nextKeywords);
+      setScope(nextScope);
+      setActiveLaneKey("");
+      void handleSearch(source.domain, nextKeywords, nextScope);
+    },
+    [buildAuthorityKeywords, handleSearch, scope],
+  );
+
+  const recoverMissingAuthoritySources = useCallback(async () => {
+    const targets = missingAuthoritySources.slice(0, 3);
+    if (!activePurpose || targets.length === 0) return;
+
+    const now = Date.now();
+    if (now < rateLimitUntilRef.current) {
+      const secs = Math.ceil((rateLimitUntilRef.current - now) / 1000);
+      setError(`Rate limit hit. Please wait ${secs}s and try again.`);
+      return;
+    }
+
+    try {
+      fetchAbortRef.current?.abort();
+    } catch {}
+    const requestEpoch = ++resultsRequestEpochRef.current;
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const assertCurrentResultsRequest = () => {
+      if (requestEpoch !== resultsRequestEpochRef.current) {
+        throw Object.assign(new Error("AbortError"), { name: "AbortError" });
+      }
+    };
+
+    const jobId = collectorJobActions.startJob({
+      kind: "search",
+      title: "Official source recovery",
+      targetLabel: targets.map((source) => source.label).join(", "),
+      stage: "queued",
+      message: `Preparing ${targets.length} missing source search${
+        targets.length === 1 ? "" : "es"
+      }`,
+      progressPct: 0,
+      retryable: true,
+      cancelable: true,
+      onRetry: () => void recoverMissingAuthoritySources(),
+      onCancel: () => controller.abort(),
+      meta: {
+        sources: targets.map((source) => source.domain),
+      },
+    });
+
+    setIsRecoveringSources(true);
+    setError(null);
+
+    try {
+      let merged = searchResults;
+      let added = 0;
+
+      for (let index = 0; index < targets.length; index += 1) {
+        const source = targets[index];
+        const nextScope: CollectorScope = { ...scope, format: "pdfOnly" };
+        const query = buildCollectorSearchQuery(buildAuthorityKeywords(source));
+        const opts = {
+          ...buildSearchOpts(source.domain, nextScope),
+          laneKey: `recover-${source.key}`.slice(0, 40),
+        };
+
+        collectorJobActions.updateJob(jobId, {
+          status: "running",
+          stage: `source-${index + 1}`,
+          message: `Searching ${source.domain}`,
+          progressPct: Math.max(8, Math.round((index / targets.length) * 58)),
+          startedAt: new Date().toISOString(),
+        });
+
+        const response = await searchWeb(query, 1, controller.signal, opts);
+        assertCurrentResultsRequest();
+        added += response.rows.length;
+        merged = mergeCollectorSearchResults(merged, response.rows, {
+          limit: INITIAL_RESULTS_TARGET,
+        }).rows;
+        setSearchResults([...merged]);
+      }
+
+      collectorJobActions.updateJob(jobId, {
+        stage: "reranking",
+        message: "Reranking recovered official-source results",
+        progressPct: 82,
+      });
+
+      const reranked = await applyMergedRerank(
+        lastQuery || activePurpose.researchQuestion,
+        merged,
+        lastSearchOpts ?? undefined,
+        controller.signal,
+      );
+      assertCurrentResultsRequest();
+      setSearchResults(reranked);
+      setHasSearched(true);
+      setSelectedUrls(new Set());
+      setNextPage(null);
+
+      collectorJobActions.succeedJob(
+        jobId,
+        added
+          ? `Recovered ${added} official-source result${added === 1 ? "" : "s"}`
+          : "No additional official-source results returned",
+      );
+    } catch (e: any) {
+      if (isAbortLike(e)) {
+        collectorJobActions.cancelJob(jobId, "Official source recovery canceled");
+      } else if (e?.message === "RATE_LIMITED") {
+        rateLimitUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+        setError(
+          "Rate limit reached during official source recovery. Please wait ~60 seconds and try again.",
+        );
+        collectorJobActions.failJob(jobId, "Rate limit reached", {
+          stage: "rate-limited",
+        });
+      } else {
+        const msg = userSearchErrorMessage(e, "Official source recovery failed");
+        setError(msg);
+        collectorJobActions.failJob(jobId, msg);
+      }
+    } finally {
+      if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
+      setIsRecoveringSources(false);
+    }
+  }, [
+    activePurpose,
+    applyMergedRerank,
+    buildAuthorityKeywords,
+    collectorJobActions,
+    lastQuery,
+    lastSearchOpts,
+    missingAuthoritySources,
+    scope,
+    searchResults,
+  ]);
 
   const handleAiAssist = useCallback(
     async (draft: {
@@ -1042,6 +1232,8 @@ const UrlCollectorPage: React.FC = () => {
         jurisdiction: purposeDraft.jurisdiction || null,
         region: purposeDraft.region || null,
         outputGoal: purposeDraft.outputGoal || null,
+        sourcePreferences: splitPurposeList(purposeDraft.sourcePreferences),
+        targetActors: splitPurposeList(purposeDraft.targetActors),
       });
       setPurposes((current) => [created, ...current]);
       selectPurpose(created.id);
@@ -1051,6 +1243,8 @@ const UrlCollectorPage: React.FC = () => {
         jurisdiction: "",
         region: "",
         outputGoal: "",
+        sourcePreferences: "",
+        targetActors: "",
       });
       const plan = await planPurposeSearch(created.id);
       setPurposeLanes(plan.lanes);
@@ -1324,6 +1518,46 @@ const UrlCollectorPage: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <div className="uc-filter-item uc-purpose-field--sources">
+                <label className="uc-filter-label" htmlFor="collector-purpose-sources">
+                  Official sources or domains
+                </label>
+                <div className="input-gradient-shell bg-landing-gradient rounded-full p-[1.5px]">
+                  <input
+                    id="collector-purpose-sources"
+                    className="md3-input input-pill uc-purpose-input w-full"
+                    placeholder="caqm.nic.in, CPCB, DPCC..."
+                    value={purposeDraft.sourcePreferences}
+                    onChange={(event) =>
+                      setPurposeDraft((current) => ({
+                        ...current,
+                        sourcePreferences: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="uc-filter-item uc-purpose-field--actors">
+                <label className="uc-filter-label" htmlFor="collector-purpose-actors">
+                  Agencies, actors, or institutions
+                </label>
+                <div className="input-gradient-shell bg-landing-gradient rounded-full p-[1.5px]">
+                  <input
+                    id="collector-purpose-actors"
+                    className="md3-input input-pill uc-purpose-input w-full"
+                    placeholder="CAQM, Delhi Environment Department..."
+                    value={purposeDraft.targetActors}
+                    onChange={(event) =>
+                      setPurposeDraft((current) => ({
+                        ...current,
+                        targetActors: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="uc-purpose-create-actions">
@@ -1352,6 +1586,36 @@ const UrlCollectorPage: React.FC = () => {
                     ))}
                 </div>
               )}
+              {activePurpose.authoritySources?.length ? (
+                <div className="uc-authority-sources" aria-label="Suggested official source coverage">
+                  <div className="uc-authority-sources-head">
+                    <span className="uc-authority-sources-kicker">Suggested official domains</span>
+                    <span className="uc-authority-sources-copy">
+                      Matched from the question, jurisdiction, actors, and seeded sources.
+                    </span>
+                  </div>
+                  <div className="uc-authority-source-grid">
+                    {activePurpose.authoritySources.slice(0, 6).map((source) => (
+                      <button
+                        key={source.key}
+                        type="button"
+                        className="uc-authority-source"
+                        onClick={() => searchAuthoritySource(source)}
+                        title={source.reason}
+                      >
+                        <span className="uc-authority-source-main">
+                          <strong>{source.label}</strong>
+                          <span>{source.domain}</span>
+                          <em>{source.evidenceRole}</em>
+                        </span>
+                        <span className="uc-authority-source-score">
+                          {source.confidence}% match
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="uc-purpose-summary-side">
@@ -1621,10 +1885,119 @@ const UrlCollectorPage: React.FC = () => {
                   AI-reranked {aiRerankedCount} result
                   {aiRerankedCount === 1 ? "" : "s"}
                 </span>
-              )}
+            )}
             {/* announce sort to screen readers */}
             <span className="sr-only">Sorted by {sortKey}</span>
           </div>
+
+          {activePurpose && hasSearched && authorityCoverage.length > 0 && (
+            <div className="uc-source-coverage" aria-label="Official source coverage after search">
+              <div className="uc-source-coverage-head">
+                <div>
+                  <p className="uc-filters-kicker">Coverage check</p>
+                  <h3 className="uc-source-coverage-title">
+                    {missingAuthorityCount === 0
+                      ? "All suggested official sources appeared in results"
+                      : criticalMissingAuthorityCount > 0
+                        ? `${criticalMissingAuthorityCount} critical official-source gap${
+                            criticalMissingAuthorityCount === 1 ? "" : "s"
+                          } in results`
+                        : `${missingAuthorityCount} suggested official source${
+                            missingAuthorityCount === 1 ? "" : "s"
+                          } missing from results`}
+                  </h3>
+                </div>
+                <div className="uc-source-coverage-head-actions">
+                  <div
+                    className={`uc-source-coverage-score is-${authorityCoverageRisk}`}
+                    aria-label={`Official source coverage score ${authorityCoverageScore} percent, ${authorityCoverageRiskLabel}`}
+                  >
+                    <span>{authorityCoverageScore}%</span>
+                    <strong>{authorityCoverageRiskLabel}</strong>
+                  </div>
+                  {missingAuthorityCount > 0 && (
+                    <button
+                      type="button"
+                      className="uc-source-coverage-action"
+                      onClick={() => void recoverMissingAuthoritySources()}
+                      disabled={isLoading || isRecoveringSources}
+                    >
+                      {isRecoveringSources ? "Recovering..." : "Search missing sources"}
+                    </button>
+                  )}
+                  <span className="uc-source-coverage-count">
+                    {authorityCoverage.length - missingAuthorityCount}/{authorityCoverage.length} covered
+                  </span>
+                </div>
+              </div>
+
+              {evidenceRoleCoverage.length > 0 && (
+                <div className="uc-source-role-grid" aria-label="Evidence role completeness">
+                  {evidenceRoleCoverage.slice(0, 6).map((role) => (
+                    <div
+                      key={role.role}
+                      className={`uc-source-role ${
+                        role.covered > 0 ? "is-covered" : "is-missing"
+                      }`}
+                    >
+                      <span>{role.covered > 0 ? "Role covered" : "Role missing"}</span>
+                      <strong>{role.role}</strong>
+                      <em>
+                        {role.covered}/{role.total} source
+                        {role.total === 1 ? "" : "s"}
+                      </em>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="uc-source-coverage-grid">
+                {authorityCoverage.slice(0, 8).map((source) => (
+                  <div
+                    key={source.key}
+                    className={`uc-source-coverage-item ${
+                      source.covered
+                        ? "is-covered"
+                        : source.gapSeverity === "critical"
+                          ? "is-critical"
+                          : "is-missing"
+                    }`}
+                  >
+                    <div className="uc-source-coverage-main">
+                      <span className="uc-source-coverage-status">
+                        {source.covered
+                          ? "Found"
+                          : source.gapSeverity === "critical"
+                            ? "Critical gap"
+                            : source.gapSeverity === "important"
+                              ? "Important gap"
+                              : "Missing"}
+                      </span>
+                      <strong>{source.label}</strong>
+                      <span>{source.domain}</span>
+                      <em>{source.evidenceRole}</em>
+                    </div>
+                    <div className="uc-source-coverage-side">
+                      {source.covered ? (
+                        <span className="uc-source-coverage-result">
+                          {source.resultCount} result{source.resultCount === 1 ? "" : "s"}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="uc-source-coverage-action"
+                          onClick={() => searchAuthoritySource(source)}
+                          disabled={isLoading || isRecoveringSources}
+                        >
+                          Search source
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </SmartCard>
       </section>
 
@@ -1675,6 +2048,10 @@ const UrlCollectorPage: React.FC = () => {
                   collectorPurposeId={activePurposeId}
                   collectorPurposeTitle={activePurpose?.title ?? "selected purpose"}
                   collectorSearchId={collectorSearchId}
+                  authorityCoverageRisk={authorityCoverageRisk}
+                  authorityCoverageScore={authorityCoverageScore}
+                  criticalMissingAuthorityCount={criticalMissingAuthorityCount}
+                  missingEvidenceRoles={missingEvidenceRoles}
                 />
 
                 {hasSearched && searchResults.length > 0 && (

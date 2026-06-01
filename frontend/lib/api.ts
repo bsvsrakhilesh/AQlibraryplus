@@ -219,6 +219,17 @@ export type CollectorPurposeSummary = {
   governanceReadyDocumentCount: number;
 };
 
+export type CollectorAuthoritySource = {
+  key: string;
+  label: string;
+  domain: string;
+  evidenceRole: string;
+  reason: string;
+  confidence: number;
+  queryHints: string[];
+  documentTerms: string[];
+};
+
 export type CollectorPurpose = {
   id: string;
   title: string;
@@ -232,6 +243,7 @@ export type CollectorPurpose = {
   outputGoal?: string | null;
   status: string;
   summary: CollectorPurposeSummary;
+  authoritySources?: CollectorAuthoritySource[];
 };
 
 export type CollectorPurposeLane = {

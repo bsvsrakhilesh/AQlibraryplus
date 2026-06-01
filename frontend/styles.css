@@ -2821,6 +2821,11 @@ body,
   grid-column: span 4 / span 4;
 }
 
+.uc-purpose-field--sources,
+.uc-purpose-field--actors {
+  grid-column: span 6 / span 6;
+}
+
 .uc-purpose-textarea {
   min-height: 96px;
   border: 0;
@@ -2880,6 +2885,370 @@ body,
   font-size: 12px;
   font-weight: 600;
   padding: 0 10px;
+}
+
+.uc-authority-sources {
+  margin-top: 14px;
+  max-width: 860px;
+}
+
+.uc-authority-sources-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.uc-authority-sources-kicker {
+  color: hsl(var(--text));
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.uc-authority-sources-copy {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.uc-authority-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.uc-authority-source {
+  display: flex;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 14px;
+  border: 1px solid hsl(var(--border) / 0.78);
+  background: color-mix(in oklab, hsl(var(--surface)) 95%, white 5%);
+  padding: 9px 10px;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 180ms ease;
+}
+
+.uc-authority-source:hover {
+  transform: translateY(-1px);
+  border-color: hsl(var(--accent) / 0.38);
+  background: hsl(var(--surface));
+}
+
+.uc-authority-source-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.uc-authority-source-main strong,
+.uc-authority-source-main span,
+.uc-authority-source-main em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uc-authority-source-main strong {
+  color: hsl(var(--text));
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.uc-authority-source-main span {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.uc-authority-source-main em {
+  color: hsl(var(--accent));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.uc-authority-source-score {
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  background: color-mix(in oklab, hsl(var(--accent)) 12%, transparent);
+  color: hsl(var(--accent-foreground, var(--text)));
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 7px;
+}
+
+.uc-source-coverage {
+  margin-top: 16px;
+  border-top: 1px dashed hsl(var(--border) / 0.78);
+  padding-top: 14px;
+}
+
+.uc-source-coverage-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.uc-source-coverage-head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.uc-source-coverage-title {
+  margin: 2px 0 0;
+  color: hsl(var(--text));
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.uc-source-coverage-count,
+.uc-source-coverage-result {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border) / 0.72);
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.uc-source-coverage-score {
+  display: inline-grid;
+  min-height: 40px;
+  min-width: 126px;
+  align-content: center;
+  justify-items: end;
+  border-radius: 14px;
+  border: 1px solid hsl(var(--border) / 0.72);
+  background: hsl(var(--surface));
+  padding: 6px 10px;
+  text-align: right;
+}
+
+.uc-source-coverage-score span {
+  color: hsl(var(--text));
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.uc-source-coverage-score strong {
+  margin-top: 3px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.uc-source-coverage-score.is-low {
+  border-color: color-mix(in oklab, #059669 34%, hsl(var(--border)));
+  background: color-mix(in oklab, #ecfdf5 58%, hsl(var(--surface)));
+}
+
+.uc-source-coverage-score.is-watch {
+  border-color: color-mix(in oklab, #d97706 32%, hsl(var(--border)));
+  background: color-mix(in oklab, #fef3c7 50%, hsl(var(--surface)));
+}
+
+.uc-source-coverage-score.is-medium,
+.uc-source-coverage-score.is-high {
+  border-color: color-mix(in oklab, #dc2626 42%, hsl(var(--border)));
+  background: color-mix(in oklab, #fee2e2 34%, hsl(var(--surface)));
+}
+
+.uc-source-role-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.uc-source-role {
+  display: inline-grid;
+  min-width: 132px;
+  max-width: 190px;
+  gap: 2px;
+  border-radius: 14px;
+  border: 1px solid hsl(var(--border) / 0.72);
+  background: hsl(var(--surface));
+  padding: 8px 10px;
+}
+
+.uc-source-role span,
+.uc-source-role strong,
+.uc-source-role em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uc-source-role span {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.uc-source-role strong {
+  color: hsl(var(--text));
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.uc-source-role em {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.uc-source-role.is-covered {
+  border-color: color-mix(in oklab, #059669 30%, hsl(var(--border)));
+}
+
+.uc-source-role.is-covered span {
+  color: #047857;
+}
+
+.uc-source-role.is-missing {
+  border-color: color-mix(in oklab, #dc2626 34%, hsl(var(--border)));
+  background: color-mix(in oklab, #fee2e2 24%, hsl(var(--surface)));
+}
+
+.uc-source-role.is-missing span {
+  color: #b91c1c;
+}
+
+.uc-source-coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.uc-source-coverage-item {
+  display: flex;
+  min-width: 0;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 14px;
+  border: 1px solid hsl(var(--border) / 0.74);
+  background: color-mix(in oklab, hsl(var(--surface)) 94%, white 6%);
+  padding: 10px;
+}
+
+.uc-source-coverage-item.is-covered {
+  border-color: color-mix(in oklab, #059669 34%, hsl(var(--border)));
+}
+
+.uc-source-coverage-item.is-missing {
+  border-color: color-mix(in oklab, #dc2626 28%, hsl(var(--border)));
+  background: color-mix(in oklab, #fee2e2 22%, hsl(var(--surface)));
+}
+
+.uc-source-coverage-item.is-critical {
+  border-color: color-mix(in oklab, #dc2626 52%, hsl(var(--border)));
+  background: color-mix(in oklab, #fee2e2 38%, hsl(var(--surface)));
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+
+.uc-source-coverage-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.uc-source-coverage-main strong,
+.uc-source-coverage-main span,
+.uc-source-coverage-main em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uc-source-coverage-main strong {
+  color: hsl(var(--text));
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.uc-source-coverage-main span {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.uc-source-coverage-main em {
+  color: hsl(var(--accent));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.uc-source-coverage-status {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.uc-source-coverage-item.is-covered .uc-source-coverage-status {
+  color: #047857;
+}
+
+.uc-source-coverage-item.is-missing .uc-source-coverage-status {
+  color: #b91c1c;
+}
+
+.uc-source-coverage-item.is-critical .uc-source-coverage-status {
+  color: #991b1b;
+}
+
+.uc-source-coverage-side {
+  flex: 0 0 auto;
+}
+
+.uc-source-coverage-action {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border) / 0.78);
+  background: hsl(var(--surface));
+  color: hsl(var(--text));
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.uc-source-coverage-action:hover:not(:disabled) {
+  border-color: hsl(var(--accent) / 0.42);
+  background: color-mix(in oklab, hsl(var(--accent)) 10%, hsl(var(--surface)));
+}
+
+.uc-source-coverage-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .uc-purpose-summary-side {
@@ -2969,10 +3338,47 @@ body,
 }
 
 .dark .uc-purpose-meta-row span,
+.dark .uc-authority-source,
+.dark .uc-source-coverage-score,
+.dark .uc-source-coverage-item,
 .dark .uc-purpose-stat,
 .dark .uc-purpose-lane {
   background: rgba(15, 23, 42, 0.58);
   border-color: hsl(var(--border) / 0.78);
+}
+
+.dark .uc-authority-source:hover {
+  background: rgba(30, 41, 59, 0.86);
+}
+
+.dark .uc-source-coverage-item.is-missing {
+  background: rgba(127, 29, 29, 0.22);
+}
+
+.dark .uc-source-coverage-item.is-critical {
+  background: rgba(127, 29, 29, 0.34);
+}
+
+.dark .uc-source-coverage-score.is-low {
+  background: rgba(6, 78, 59, 0.24);
+}
+
+.dark .uc-source-coverage-score.is-watch {
+  background: rgba(120, 53, 15, 0.26);
+}
+
+.dark .uc-source-coverage-score.is-medium,
+.dark .uc-source-coverage-score.is-high {
+  background: rgba(127, 29, 29, 0.3);
+}
+
+.dark .uc-source-role {
+  background: rgba(15, 23, 42, 0.58);
+  border-color: hsl(var(--border) / 0.78);
+}
+
+.dark .uc-source-role.is-missing {
+  background: rgba(127, 29, 29, 0.24);
 }
 
 .dark .uc-purpose-lane:hover {
@@ -3000,7 +3406,9 @@ body,
   .uc-purpose-field--title,
   .uc-purpose-field--area,
   .uc-purpose-field--question,
-  .uc-purpose-field--output {
+  .uc-purpose-field--output,
+  .uc-purpose-field--sources,
+  .uc-purpose-field--actors {
     grid-column: span 12 / span 12;
   }
 
@@ -3018,9 +3426,25 @@ body,
   .uc-purpose-lanes {
     grid-template-columns: 1fr;
   }
+
+  .uc-authority-source-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .uc-source-coverage-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
+  .uc-source-coverage-head {
+    flex-direction: column;
+  }
+
+  .uc-source-coverage-head-actions {
+    justify-content: flex-start;
+  }
+
   .uc-purpose-actions,
   .uc-purpose-create-actions {
     flex-direction: column;
