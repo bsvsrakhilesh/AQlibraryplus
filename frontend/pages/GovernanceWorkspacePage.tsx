@@ -72,6 +72,14 @@ type GovernanceQueryType =
   | "contradiction_review"
   | "question_review";
 
+type QuestionBuilderType =
+  | "actions_taken"
+  | "factors_considered"
+  | "agency_responsibility"
+  | "timeline"
+  | "compliance_follow_up"
+  | "contradictions_gaps";
+
 const workspaceIntentModeOptions: Array<{
   value: WorkspaceIntakeMode;
   label: string;
@@ -84,17 +92,17 @@ const workspaceIntentModeOptions: Array<{
   },
   {
     value: "landscape",
-    label: "Landscape Mapping",
+    label: "Landscape mapping",
     help: "Use this for broad governance scoping, active directions, and agency mapping.",
   },
   {
     value: "case_trace",
-    label: "Case Tracing",
+    label: "Case tracing",
     help: "Use this for one unit, one dispute, one timeline, or contradiction review.",
   },
   {
     value: "question_review",
-    label: "Question Review",
+    label: "Question review",
     help: "Use this for why, factors, evidence, actions, responsibility, or follow-up questions.",
   },
 ];
@@ -105,28 +113,84 @@ const governancePromptExamples: Array<{
   prompt: string;
 }> = [
   {
-    label: "In-force policy view",
-    mode: "landscape",
-    prompt: "What is currently in force for industrial emissions in Faridabad?",
-  },
-  {
-    label: "Jurisdiction and gaps",
-    mode: "landscape",
-    prompt:
-      "Map the active agencies, directions, follow-up actions, and compliance gaps for stone crushers in Bhiwadi.",
-  },
-  {
-    label: "Evidence-backed why",
+    label: "Actions since 1990",
     mode: "question_review",
     prompt:
-      "Why does this unit appear restricted in one record and permitted in another?",
+      "What actions were taken on industrial emissions in Faridabad since 1990?",
   },
   {
-    label: "Actions and responsibility",
+    label: "GRAP IV factors",
     mode: "question_review",
     prompt:
-      "What actions followed the 2022 order, and which agencies were responsible?",
+      "What factors did CAQM consider before activating GRAP IV in previous years?",
   },
+  {
+    label: "Agency follow-up",
+    mode: "question_review",
+    prompt:
+      "Which agencies were responsible for follow-up after this direction?",
+  },
+  {
+    label: "Compliance contradictions",
+    mode: "question_review",
+    prompt:
+      "Where do documents contradict each other on compliance status?",
+  },
+];
+
+const questionTypeOptions: Array<{
+  value: QuestionBuilderType;
+  label: string;
+  stem: string;
+}> = [
+  {
+    value: "actions_taken",
+    label: "Actions taken",
+    stem: "What actions were taken",
+  },
+  {
+    value: "factors_considered",
+    label: "Factors considered",
+    stem: "What factors were considered",
+  },
+  {
+    value: "agency_responsibility",
+    label: "Agency responsibility",
+    stem: "Which agencies were responsible",
+  },
+  {
+    value: "timeline",
+    label: "Timeline",
+    stem: "What is the timeline",
+  },
+  {
+    value: "compliance_follow_up",
+    label: "Compliance/follow-up",
+    stem: "What compliance or follow-up actions were recorded",
+  },
+  {
+    value: "contradictions_gaps",
+    label: "Contradictions/gaps",
+    stem: "Where do documents show contradictions or gaps",
+  },
+];
+
+const issueHintOptions = [
+  "Industrial emissions",
+  "GRAP",
+  "Dust",
+  "Vehicles",
+  "Stubble burning",
+  "Waste burning",
+  "Construction",
+];
+
+const timeHintOptions = [
+  "Current",
+  "Since 1990",
+  "Since 2020",
+  "Between 2020 and 2024",
+  "Past decisions",
 ];
 
 function normalizeWorkspaceIntentMode(
@@ -151,6 +215,69 @@ function formatWorkspaceIntentModeLabel(mode: WorkspaceIntakeMode) {
     default:
       return "Auto-detect";
   }
+}
+
+function formatQuestionBuilderTypeLabel(value: QuestionBuilderType | "") {
+  if (!value) return "Not selected";
+  return (
+    questionTypeOptions.find((option) => option.value === value)?.label ??
+    "Question"
+  );
+}
+
+function normalizeQuestionDraft(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function buildQuestionBuilderDraft(input: {
+  questionType: QuestionBuilderType | "";
+  issueHint: string;
+  locationHint: string;
+  timeHint: string;
+}) {
+  if (
+    !input.questionType &&
+    !input.issueHint.trim() &&
+    !input.locationHint.trim() &&
+    !input.timeHint.trim()
+  ) {
+    return "";
+  }
+
+  const type = questionTypeOptions.find(
+    (option) => option.value === input.questionType,
+  );
+  const stem = type?.stem ?? "What should be reviewed";
+  const issue = normalizeQuestionDraft(input.issueHint);
+  const location = normalizeQuestionDraft(input.locationHint);
+  const time = normalizeQuestionDraft(input.timeHint);
+
+  const parts = [stem];
+
+  if (issue) {
+    parts.push(
+      input.questionType === "agency_responsibility"
+        ? `for ${issue}`
+        : `on ${issue}`,
+    );
+  }
+
+  if (location) {
+    parts.push(`in ${location}`);
+  }
+
+  if (time) {
+    const lower = time.toLowerCase();
+    if (lower === "current") {
+      parts.push("currently");
+    } else if (lower.startsWith("since") || lower.startsWith("between")) {
+      parts.push(time);
+    } else {
+      parts.push(`for ${time.toLowerCase()}`);
+    }
+  }
+
+  return `${parts.join(" ")}?`.replace(/\s+\?/g, "?");
 }
 
 function formatQueryTypeLabel(type: GovernanceQueryType) {
@@ -1044,6 +1171,12 @@ export default function GovernanceWorkspacePage() {
     useState<GovernanceWorkspaceIntent | null>(null);
   const [documentInput, setDocumentInput] = useState("");
   const [workspaceQuestion, setWorkspaceQuestion] = useState("");
+  const [questionType, setQuestionType] =
+    useState<QuestionBuilderType | "">("");
+  const [issueHint, setIssueHint] = useState("");
+  const [locationHint, setLocationHint] = useState("");
+  const [timeHint, setTimeHint] = useState("");
+  const lastQuestionBuilderDraftRef = useRef("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [workspaceIntentMode, setWorkspaceIntentMode] =
     useState<WorkspaceIntakeMode>("auto");
@@ -1164,6 +1297,76 @@ export default function GovernanceWorkspacePage() {
       };
     });
   }, []);
+
+  const questionBuilderDraft = useMemo(
+    () =>
+      buildQuestionBuilderDraft({
+        questionType,
+        issueHint,
+        locationHint,
+        timeHint,
+      }),
+    [issueHint, locationHint, questionType, timeHint],
+  );
+
+  const hasQuestionBuilderInput =
+    Boolean(questionType) ||
+    Boolean(issueHint.trim()) ||
+    Boolean(locationHint.trim()) ||
+    Boolean(timeHint.trim());
+
+  const showQuestionBuilderSuggestion =
+    hasQuestionBuilderInput &&
+    normalizeQuestionDraft(workspaceQuestion) !==
+      normalizeQuestionDraft(questionBuilderDraft);
+
+  const applyQuestionBuilderDraft = React.useCallback(
+    (draft = questionBuilderDraft) => {
+      if (!draft.trim()) return;
+      lastQuestionBuilderDraftRef.current = draft;
+      setWorkspaceQuestion(draft);
+      questionInputRef.current?.focus();
+    },
+    [questionBuilderDraft],
+  );
+
+  const updateQuestionBuilder = React.useCallback(
+    (next: Partial<{
+      questionType: QuestionBuilderType | "";
+      issueHint: string;
+      locationHint: string;
+      timeHint: string;
+    }>) => {
+      const nextQuestionType =
+        next.questionType !== undefined ? next.questionType : questionType;
+      const nextIssueHint =
+        next.issueHint !== undefined ? next.issueHint : issueHint;
+      const nextLocationHint =
+        next.locationHint !== undefined ? next.locationHint : locationHint;
+      const nextTimeHint = next.timeHint !== undefined ? next.timeHint : timeHint;
+      const nextDraft = buildQuestionBuilderDraft({
+        questionType: nextQuestionType,
+        issueHint: nextIssueHint,
+        locationHint: nextLocationHint,
+        timeHint: nextTimeHint,
+      });
+
+      if (next.questionType !== undefined) setQuestionType(next.questionType);
+      if (next.issueHint !== undefined) setIssueHint(next.issueHint);
+      if (next.locationHint !== undefined) setLocationHint(next.locationHint);
+      if (next.timeHint !== undefined) setTimeHint(next.timeHint);
+
+      setWorkspaceQuestion((current) => {
+        const trimmed = current.trim();
+        if (!trimmed || trimmed === lastQuestionBuilderDraftRef.current) {
+          lastQuestionBuilderDraftRef.current = nextDraft;
+          return nextDraft;
+        }
+        return current;
+      });
+    },
+    [issueHint, locationHint, questionType, timeHint],
+  );
 
   const clearAdvancedFilters = React.useCallback(() => {
     setDocumentInput("");
@@ -2181,10 +2384,10 @@ export default function GovernanceWorkspacePage() {
             <div className="rounded-[26px] border border-white/70 bg-white/88 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Governance question
+                  Question Builder
                 </div>
                 <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                  Retrieval anchor intake
+                  Evidence-first intake
                 </span>
               </div>
 
@@ -2198,6 +2401,160 @@ export default function GovernanceWorkspacePage() {
                   className="block min-h-[92px] max-h-44 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
+
+              <div className="mt-3 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-3 py-2 text-xs leading-5 text-emerald-900">
+                Evidence is retrieved first. Answers are generated only from
+                the retrieved and cited document set.
+              </div>
+
+              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr),230px]">
+                <div className="rounded-2xl border border-slate-200/80 bg-white/75 p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Question type
+                    </div>
+                    {questionType ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateQuestionBuilder({ questionType: "" })
+                        }
+                        className="text-[11px] font-medium text-slate-500 transition hover:text-slate-900"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {questionTypeOptions.map((option) => {
+                      const active = option.value === questionType;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            updateQuestionBuilder({
+                              questionType: active ? "" : option.value,
+                            })
+                          }
+                          className={[
+                            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                            active
+                              ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                              : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white hover:text-slate-950",
+                          ].join(" ")}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white/75 p-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Time window
+                  </div>
+                  <select
+                    value={timeHint}
+                    onChange={(e) =>
+                      updateQuestionBuilder({ timeHint: e.target.value })
+                    }
+                    className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-slate-400 focus:bg-white"
+                  >
+                    <option value="">Any period</option>
+                    {timeHintOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200/80 bg-white/75 p-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Issue hint
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {issueHintOptions.map((option) => {
+                      const active =
+                        option.toLowerCase() === issueHint.trim().toLowerCase();
+
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() =>
+                            updateQuestionBuilder({
+                              issueHint: active ? "" : option,
+                            })
+                          }
+                          className={[
+                            "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                            active
+                              ? "border-sky-300 bg-sky-100 text-sky-900"
+                              : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white",
+                          ].join(" ")}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input
+                    value={issueHint}
+                    onChange={(e) =>
+                      updateQuestionBuilder({ issueHint: e.target.value })
+                    }
+                    placeholder="Or type another issue"
+                    className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white/75 p-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Location hint
+                  </div>
+                  <div className="mt-3 flex min-h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 transition focus-within:border-slate-400 focus-within:bg-white">
+                    {locationHint.trim() ? (
+                      <span className="mr-2 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
+                        {locationHint.trim()}
+                      </span>
+                    ) : null}
+                    <input
+                      value={locationHint}
+                      onChange={(e) =>
+                        updateQuestionBuilder({ locationHint: e.target.value })
+                      }
+                      placeholder="District, city, state, or airshed"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    Use place names like Faridabad, Bhiwadi, Delhi NCR, or a
+                    state name.
+                  </p>
+                </div>
+              </div>
+
+              {showQuestionBuilderSuggestion ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-950">
+                  <div className="min-w-0">
+                    <span className="font-semibold">Suggested question: </span>
+                    <span>{questionBuilderDraft}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => applyQuestionBuilderDraft()}
+                    className="shrink-0 rounded-full border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900 transition hover:bg-amber-100"
+                  >
+                    Use suggestion
+                  </button>
+                </div>
+              ) : null}
 
               <div className="mt-3 text-xs leading-5 text-slate-500">
                 File Manager documents and Saved URLs act as anchor evidence.
@@ -2246,6 +2603,7 @@ export default function GovernanceWorkspacePage() {
                           onClick={() => {
                             setWorkspaceQuestion(example.prompt);
                             setWorkspaceIntentMode(example.mode);
+                            lastQuestionBuilderDraftRef.current = "";
                           }}
                           className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-950"
                         >
@@ -2258,14 +2616,18 @@ export default function GovernanceWorkspacePage() {
                   <div className="rounded-2xl border border-slate-200/80 bg-white/75 p-3 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Query understanding
+                        Retrieval preview
                       </div>
                       <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
-                        {formatQueryTypeLabel(queryUnderstanding.queryType)}
+                        {formatQuestionBuilderTypeLabel(questionType)}
                       </span>
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        Detected type:{" "}
+                        {formatQueryTypeLabel(queryUnderstanding.queryType)}
+                      </span>
                       {queryUnderstanding.locationHints.map((item) => (
                         <span
                           key={`location-${item}`}
@@ -2343,8 +2705,9 @@ export default function GovernanceWorkspacePage() {
                       </div>
                     ) : (
                       <p className="mt-3 text-sm leading-6 text-slate-500">
-                        Once retrieval runs, the workspace will show detected
-                        issue, agency, time, and location signals here.
+                        Click Find evidence to identify issue, location, time,
+                        agency, and question-type signals from the retrieved
+                        document set.
                       </p>
                     )}
                   </div>
