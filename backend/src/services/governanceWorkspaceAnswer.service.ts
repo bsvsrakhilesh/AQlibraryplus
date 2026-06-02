@@ -98,7 +98,7 @@ type ValidationReport = {
   droppedClaims: string[];
 };
 
-const GOVERNANCE_ANSWER_PROMPT_VERSION = "governance-workspace-answer-v1";
+const GOVERNANCE_ANSWER_PROMPT_VERSION = "governance-workspace-answer-v2";
 
 const CitationSchema = z.object({
   evidenceId: z.string().min(1),
@@ -1166,6 +1166,17 @@ async function generateAnswerOnce(p: {
     "Every factual claim in the answer must appear in claimCitations with at least one citation.",
     "Each citation must use an allowed evidenceId and quote a verbatim substring from that evidence TEXT.",
     "Allowed general suggestions are permitted only inside caveats with kind=suggestion, clearly labeled as not directly established by evidence.",
+    "The answer field must be concise markdown using these exact H2 sections in this order:",
+    "## Short answer",
+    "## Key findings",
+    "## Timeline",
+    "## Agencies involved",
+    "## Directions / orders",
+    "## Compliance or follow-up",
+    "## Contradictions / gaps",
+    "## Evidence used",
+    "If a section lacks evidence, write a short 'Not found in the retrieved evidence' statement instead of inventing content.",
+    "Keep bullets short. Do not include uncited factual claims in any section.",
     "Return only JSON matching the schema.",
   ].join("\n");
 
@@ -1181,10 +1192,11 @@ async function generateAnswerOnce(p: {
       ? [
           "The previous structured answer had invalid or weak citations.",
           "Repair it by removing unsupported factual claims or moving non-evidentiary guidance into caveats/suggestions.",
+          "Keep the answer field in the exact governance-brief H2 section format.",
           "PREVIOUS_JSON:",
           JSON.stringify(p.repairFrom),
         ].join("\n")
-      : "Produce a direct answer, claim-level citations, evidence cards, caveats, openQuestions, and 3-6 suggestedFollowUps.",
+      : "Produce the governance-brief answer, claim-level citations, evidence cards, caveats, openQuestions, and 3-6 suggestedFollowUps.",
   ].join("\n");
 
   const input = [

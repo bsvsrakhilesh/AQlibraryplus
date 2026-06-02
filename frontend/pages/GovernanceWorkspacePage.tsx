@@ -948,6 +948,67 @@ function toNotebookClaimLink(
   };
 }
 
+type AnswerSection = {
+  key: string;
+  title: string;
+  body: string;
+};
+
+const answerSectionOrder = [
+  "Short answer",
+  "Key findings",
+  "Timeline",
+  "Agencies involved",
+  "Directions / orders",
+  "Compliance or follow-up",
+  "Contradictions / gaps",
+  "Evidence used",
+];
+
+function normalizeSectionTitle(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function parseAnswerSections(markdown: string): AnswerSection[] {
+  const text = markdown.trim();
+  if (!text) return [];
+
+  const matches = Array.from(text.matchAll(/^##\s+(.+?)\s*$/gm));
+  if (!matches.length) {
+    return [{ key: "answer", title: "Answer", body: text }];
+  }
+
+  return matches
+    .map((match, index) => {
+      const start = (match.index ?? 0) + match[0].length;
+      const end =
+        index + 1 < matches.length ? matches[index + 1].index ?? text.length : text.length;
+      const title = match[1].trim();
+
+      return {
+        key: normalizeSectionTitle(title),
+        title,
+        body: text.slice(start, end).trim(),
+      };
+    })
+    .filter((section) => section.body.length > 0);
+}
+
+function orderAnswerSections(sections: AnswerSection[]) {
+  const order = new Map(
+    answerSectionOrder.map((title, index) => [
+      normalizeSectionTitle(title),
+      index,
+    ]),
+  );
+
+  return [...sections].sort((a, b) => {
+    const aOrder = order.get(a.key) ?? 999;
+    const bOrder = order.get(b.key) ?? 999;
+    return aOrder - bOrder;
+  });
+}
+
 function GovernanceAnswerPanel({
   run,
   draftText,
@@ -980,6 +1041,8 @@ function GovernanceAnswerPanel({
   const answerText = run?.answer || draftText;
   const citations = run?.citations ?? [];
   const hasAnswer = Boolean(answerText.trim()) || Boolean(run);
+  const answerSections = orderAnswerSections(parseAnswerSections(answerText));
+  const claimCitations = run?.claimCitations ?? [];
 
   return (
     <div className="rounded-[26px] border border-indigo-100 bg-white/90 p-4 shadow-[0_18px_44px_rgba(79,70,229,0.10)] backdrop-blur-sm">
@@ -1018,9 +1081,33 @@ function GovernanceAnswerPanel({
         ) : null}
 
         {hasAnswer ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <div className="whitespace-pre-wrap text-sm leading-7 text-slate-800">
-              {answerText}
+          <div className="space-y-3">
+            <div className="grid gap-3 lg:grid-cols-2">
+              {answerSections.map((section, index) => (
+                <div
+                  key={`${section.key}-${index}`}
+                  className={[
+                    "rounded-2xl border bg-white p-4 shadow-sm",
+                    section.key === "short answer"
+                      ? "border-indigo-200 bg-indigo-50/40 lg:col-span-2"
+                      : "border-slate-200",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      {section.title}
+                    </div>
+                    {section.key === "short answer" ? (
+                      <span className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-700">
+                        Brief
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-800">
+                    {section.body}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : (
@@ -1029,6 +1116,55 @@ function GovernanceAnswerPanel({
             body="Find evidence first, then generate an answer from the retrieved and cited source set."
           />
         )}
+
+        {claimCitations.length ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">
+                  Claim support ledger
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Each factual claim is linked to preserved evidence quotes.
+                </div>
+              </div>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">
+                {claimCitations.length} supported claims
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {claimCitations.slice(0, 10).map((item, index) => (
+                <div
+                  key={`${item.claim}-${index}`}
+                  className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
+                >
+                  <div className="text-sm leading-6 text-slate-800">
+                    {item.claim}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.citations.slice(0, 4).map((citation, citeIndex) => (
+                      <button
+                        key={`${citation.evidenceId}-${citeIndex}`}
+                        type="button"
+                        onClick={() => openGovernanceCitation(citation)}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700"
+                        title={citation.quote}
+                      >
+                        <span className="max-w-[14rem] truncate">
+                          {citation.sourceLabel ||
+                            citation.fileName ||
+                            citation.evidenceId}
+                        </span>
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {citations.length ? (
           <div className="space-y-2">
