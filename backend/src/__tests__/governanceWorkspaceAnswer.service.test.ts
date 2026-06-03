@@ -57,3 +57,65 @@ test("purpose evidence generation fails when any final card escapes the allowlis
     ),
   );
 });
+
+test("answer quality summary marks verified cited answers as strong", async () => {
+  const { buildGovernanceAnswerQualitySummary } = await loadAnswerScopeHelpers();
+
+  assert.deepEqual(
+    buildGovernanceAnswerQualitySummary({
+      status: "verified",
+      validCitationCount: 3,
+      invalidCitationCount: 0,
+      repaired: false,
+      droppedClaims: [],
+      supportedClaimCount: 2,
+      evidenceCardCount: 2,
+    }),
+    {
+      supportedClaimCount: 2,
+      citationCount: 3,
+      evidenceCardCount: 2,
+      droppedClaimCount: 0,
+      invalidCitationCount: 0,
+      repaired: false,
+      qualityBand: "strong",
+      recommendedAction: "use",
+    },
+  );
+});
+
+test("answer quality summary routes partial repaired answers to inspection", async () => {
+  const { buildGovernanceAnswerQualitySummary } = await loadAnswerScopeHelpers();
+
+  const summary = buildGovernanceAnswerQualitySummary({
+    status: "partially_supported",
+    validCitationCount: 3,
+    invalidCitationCount: 1,
+    repaired: true,
+    droppedClaims: ["Unsupported claim"],
+    supportedClaimCount: 2,
+    evidenceCardCount: 1,
+  });
+
+  assert.equal(summary.qualityBand, "usable");
+  assert.equal(summary.recommendedAction, "inspect");
+  assert.equal(summary.droppedClaimCount, 1);
+  assert.equal(summary.repaired, true);
+});
+
+test("answer quality summary marks unsupported answers as unsafe", async () => {
+  const { buildGovernanceAnswerQualitySummary } = await loadAnswerScopeHelpers();
+
+  const summary = buildGovernanceAnswerQualitySummary({
+    status: "unsupported",
+    validCitationCount: 0,
+    invalidCitationCount: 0,
+    repaired: false,
+    droppedClaims: [],
+    supportedClaimCount: 0,
+    evidenceCardCount: 0,
+  });
+
+  assert.equal(summary.qualityBand, "unsafe");
+  assert.equal(summary.recommendedAction, "broaden_evidence");
+});

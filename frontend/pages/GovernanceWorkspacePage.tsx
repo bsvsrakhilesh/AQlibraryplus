@@ -14,6 +14,7 @@ import {
   Network,
   RefreshCcw,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   X,
@@ -709,6 +710,136 @@ function compactText(value?: string | null, fallback = "—") {
   return text || fallback;
 }
 
+type AnswerQualityBand = "strong" | "usable" | "thin" | "unsafe";
+type AnswerQualityAction = "use" | "inspect" | "deep_review" | "broaden_evidence";
+
+function asFiniteNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function deriveAnswerQuality(run: GovernanceAnswerRun | null) {
+  const validation = (run?.validation ?? {}) as Record<string, unknown>;
+  const status = String(
+    validation.status || run?.groundingStatus || (run?.citations?.length ? "verified" : "unsupported"),
+  );
+  const supportedClaimCount = asFiniteNumber(
+    validation.supportedClaimCount,
+    run?.claimCitations?.length ?? 0,
+  );
+  const citationCount = asFiniteNumber(
+    validation.citationCount,
+    validation.validCitationCount != null
+      ? asFiniteNumber(validation.validCitationCount)
+      : (run?.citations?.length ?? 0),
+  );
+  const evidenceCardCount = asFiniteNumber(
+    validation.evidenceCardCount,
+    run?.evidence?.length ?? 0,
+  );
+  const droppedClaimCount = asFiniteNumber(
+    validation.droppedClaimCount,
+    Array.isArray(validation.droppedClaims) ? validation.droppedClaims.length : 0,
+  );
+  const invalidCitationCount = asFiniteNumber(validation.invalidCitationCount);
+  const repaired = Boolean(validation.repaired);
+
+  let qualityBand = String(validation.qualityBand || "") as AnswerQualityBand;
+  if (!["strong", "usable", "thin", "unsafe"].includes(qualityBand)) {
+    if (status === "unsupported" || citationCount === 0) {
+      qualityBand = "unsafe";
+    } else if (
+      status === "verified" &&
+      invalidCitationCount === 0 &&
+      droppedClaimCount === 0
+    ) {
+      qualityBand = "strong";
+    } else if (supportedClaimCount >= 2 && citationCount >= 2 && evidenceCardCount >= 1) {
+      qualityBand = "usable";
+    } else {
+      qualityBand = "thin";
+    }
+  }
+
+  let recommendedAction = String(validation.recommendedAction || "") as AnswerQualityAction;
+  if (!["use", "inspect", "deep_review", "broaden_evidence"].includes(recommendedAction)) {
+    recommendedAction =
+      qualityBand === "strong"
+        ? "use"
+        : qualityBand === "usable"
+          ? "inspect"
+          : qualityBand === "thin"
+            ? "deep_review"
+            : "broaden_evidence";
+  }
+
+  return {
+    status,
+    supportedClaimCount,
+    citationCount,
+    evidenceCardCount,
+    droppedClaimCount,
+    invalidCitationCount,
+    repaired,
+    qualityBand,
+    recommendedAction,
+    droppedClaims: Array.isArray(validation.droppedClaims)
+      ? validation.droppedClaims.map(String).filter(Boolean)
+      : [],
+  };
+}
+
+const answerQualityStyles: Record<
+  AnswerQualityBand,
+  {
+    label: string;
+    border: string;
+    bg: string;
+    text: string;
+    badge: string;
+    description: string;
+  }
+> = {
+  strong: {
+    label: "Strong",
+    border: "border-emerald-200",
+    bg: "bg-emerald-50/70",
+    text: "text-emerald-950",
+    badge: "border-emerald-200 bg-white text-emerald-700",
+    description: "Claims are grounded in valid retrieved citations.",
+  },
+  usable: {
+    label: "Usable",
+    border: "border-indigo-200",
+    bg: "bg-indigo-50/70",
+    text: "text-indigo-950",
+    badge: "border-indigo-200 bg-white text-indigo-700",
+    description: "Answer is cited, but inspect support before relying on fine details.",
+  },
+  thin: {
+    label: "Thin",
+    border: "border-amber-200",
+    bg: "bg-amber-50/70",
+    text: "text-amber-950",
+    badge: "border-amber-200 bg-white text-amber-800",
+    description: "Support exists, but the answer needs deeper review or stronger evidence.",
+  },
+  unsafe: {
+    label: "Unsafe",
+    border: "border-rose-200",
+    bg: "bg-rose-50/80",
+    text: "text-rose-950",
+    badge: "border-rose-200 bg-white text-rose-700",
+    description: "The answer is not sufficiently grounded for use.",
+  },
+};
+
+const answerActionLabel: Record<AnswerQualityAction, string> = {
+  use: "Trust with citations",
+  inspect: "Inspect citations",
+  deep_review: "Run deep review",
+  broaden_evidence: "Broaden evidence",
+};
+
 function confidencePct(value?: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const normalized = value <= 1 ? value * 100 : value;
@@ -1039,6 +1170,125 @@ function orderAnswerSections(sections: AnswerSection[]) {
   });
 }
 
+function AnswerQualityGate({
+  run,
+  loading,
+  onDeepReview,
+}: {
+  run: GovernanceAnswerRun | null;
+  loading: boolean;
+  onDeepReview: () => void;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  if (!run) return null;
+
+  const quality = deriveAnswerQuality(run);
+  const tone = answerQualityStyles[quality.qualityBand];
+  const needsDeepReview = quality.recommendedAction === "deep_review";
+
+  const metrics = [
+    ["Grounding", humanizeEnumValue(quality.status, "Unknown")],
+    ["Supported claims", String(quality.supportedClaimCount)],
+    ["Citations", String(quality.citationCount)],
+    ["Evidence cards", String(quality.evidenceCardCount)],
+    [
+      "Issues",
+      quality.invalidCitationCount || quality.droppedClaimCount
+        ? `${quality.invalidCitationCount + quality.droppedClaimCount}`
+        : "0",
+    ],
+  ];
+
+  return (
+    <div className={`rounded-2xl border ${tone.border} ${tone.bg} p-4`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className={`rounded-2xl border ${tone.badge} p-2`}>
+            <ShieldCheck className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className={`text-sm font-semibold ${tone.text}`}>Answer quality</div>
+            <div className="mt-1 text-sm leading-6 text-slate-700">
+              {tone.description}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${tone.badge}`}>
+            {tone.label}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+            {answerActionLabel[quality.recommendedAction]}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        {metrics.map(([label, value]) => (
+          <div key={label} className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              {label}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-slate-950">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {quality.repaired ? (
+          <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-medium text-amber-800">
+            Citations repaired
+          </span>
+        ) : null}
+        {quality.droppedClaimCount ? (
+          <span className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-medium text-rose-700">
+            {quality.droppedClaimCount} dropped claim{quality.droppedClaimCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+        {needsDeepReview ? (
+          <button
+            type="button"
+            onClick={onDeepReview}
+            disabled={loading}
+            className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Run deep review
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+        >
+          {expanded ? "Hide rating details" : "Why this rating?"}
+        </button>
+      </div>
+
+      {expanded ? (
+        <div className="mt-3 rounded-2xl border border-white/80 bg-white p-3 text-sm leading-6 text-slate-700">
+          <p>
+            This rating is computed from backend citation validation: valid retrieved
+            quotes, invalid citation attempts, dropped unsupported claims, evidence
+            coverage, and whether the answer required citation repair.
+          </p>
+          {quality.droppedClaims.length ? (
+            <ul className="mt-2 space-y-1">
+              {quality.droppedClaims.slice(0, 4).map((claim) => (
+                <li key={claim}>- Dropped: {claim}</li>
+              ))}
+            </ul>
+          ) : null}
+          {quality.recommendedAction === "broaden_evidence" ? (
+            <p className="mt-2 font-medium text-rose-800">
+              Broaden or refresh retrieved evidence before relying on this answer.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AnswerSessionPanel({
   session,
   loading,
@@ -1233,6 +1483,14 @@ function GovernanceAnswerPanel({
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800">
             {error}
           </div>
+        ) : null}
+
+        {run ? (
+          <AnswerQualityGate
+            run={run}
+            loading={loading}
+            onDeepReview={onDeepReview}
+          />
         ) : null}
 
         {hasAnswer ? (

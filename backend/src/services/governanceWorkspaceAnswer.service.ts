@@ -96,7 +96,64 @@ type ValidationReport = {
   invalidCitationCount: number;
   repaired: boolean;
   droppedClaims: string[];
+  supportedClaimCount: number;
+  citationCount: number;
+  evidenceCardCount: number;
+  droppedClaimCount: number;
+  qualityBand: "strong" | "usable" | "thin" | "unsafe";
+  recommendedAction: "use" | "inspect" | "deep_review" | "broaden_evidence";
 };
+
+export function buildGovernanceAnswerQualitySummary(p: {
+  status: ValidationReport["status"];
+  validCitationCount: number;
+  invalidCitationCount: number;
+  repaired: boolean;
+  droppedClaims?: string[] | null;
+  supportedClaimCount: number;
+  evidenceCardCount: number;
+}) {
+  const citationCount = Math.max(0, p.validCitationCount);
+  const invalidCitationCount = Math.max(0, p.invalidCitationCount);
+  const supportedClaimCount = Math.max(0, p.supportedClaimCount);
+  const evidenceCardCount = Math.max(0, p.evidenceCardCount);
+  const droppedClaimCount = Math.max(0, p.droppedClaims?.length ?? 0);
+
+  let qualityBand: ValidationReport["qualityBand"];
+  if (p.status === "unsupported" || citationCount === 0) {
+    qualityBand = "unsafe";
+  } else if (
+    p.status === "verified" &&
+    invalidCitationCount === 0 &&
+    droppedClaimCount === 0
+  ) {
+    qualityBand = "strong";
+  } else if (supportedClaimCount >= 2 && citationCount >= 2 && evidenceCardCount >= 1) {
+    qualityBand = "usable";
+  } else {
+    qualityBand = "thin";
+  }
+
+  const recommendedAction: ValidationReport["recommendedAction"] =
+    qualityBand === "strong"
+      ? "use"
+      : qualityBand === "usable"
+        ? "inspect"
+        : qualityBand === "thin"
+          ? "deep_review"
+          : "broaden_evidence";
+
+  return {
+    supportedClaimCount,
+    citationCount,
+    evidenceCardCount,
+    droppedClaimCount,
+    invalidCitationCount,
+    repaired: p.repaired,
+    qualityBand,
+    recommendedAction,
+  };
+}
 
 const GOVERNANCE_ANSWER_PROMPT_VERSION = "governance-workspace-answer-v2";
 
@@ -1141,9 +1198,16 @@ function validateStructuredAnswer(
     validation: {
       status,
       validCitationCount,
-      invalidCitationCount,
-      repaired,
       droppedClaims,
+      ...buildGovernanceAnswerQualitySummary({
+        status,
+        validCitationCount,
+        invalidCitationCount,
+        repaired,
+        droppedClaims,
+        supportedClaimCount: claimCitations.length,
+        evidenceCardCount: evidence.length,
+      }),
     } satisfies ValidationReport,
   };
 }
@@ -1397,9 +1461,16 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       const validation: ValidationReport = {
         status: "unsupported",
         validCitationCount: 0,
-        invalidCitationCount: 0,
-        repaired: false,
         droppedClaims: [],
+        ...buildGovernanceAnswerQualitySummary({
+          status: "unsupported",
+          validCitationCount: 0,
+          invalidCitationCount: 0,
+          repaired: false,
+          droppedClaims: [],
+          supportedClaimCount: 0,
+          evidenceCardCount: 0,
+        }),
       };
       const latencyMs = await completeRun({
         runId,
