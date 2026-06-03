@@ -23,6 +23,7 @@ import SmartCard from "../components/ui/SmartCard";
 import CaseWorkspacePanel from "../components/governance/CaseWorkspacePanel";
 import {
   apiUrl,
+  evaluateGovernanceAnswer,
   getAuditLogs,
   getDocumentGovernance,
   getGovernanceAgenciesDirectory,
@@ -34,6 +35,7 @@ import {
   getUrlRevisions,
   listGovernanceAnswerSessions,
   queryGovernanceWorkspaceEvidence,
+  sendGovernanceAnswerFeedback,
   streamGovernanceWorkspaceAnswer,
   type AuditLogRow,
   type GovernanceAgency,
@@ -41,6 +43,10 @@ import {
   type GovernanceProvenance,
   type GovernanceRelationType,
   type GovernanceAnswerCitation,
+  type GovernanceAnswerEvaluation,
+  type GovernanceAnswerFeedbackRating,
+  type GovernanceAnswerMultiStepResearch,
+  type GovernanceAnswerRetrievalTraceSummary,
   type GovernanceAnswerRun,
   type GovernanceAnswerSession,
   type GovernanceAnswerSessionSummary,
@@ -81,10 +87,13 @@ type GovernanceQueryType =
 type QuestionBuilderType =
   | "actions_taken"
   | "factors_considered"
+  | "official_source_review"
   | "agency_responsibility"
   | "timeline"
   | "compliance_follow_up"
-  | "contradictions_gaps";
+  | "contradictions_gaps"
+  | "policy_order_comparison"
+  | "field_action_prep";
 
 const workspaceIntentModeOptions: Array<{
   value: WorkspaceIntakeMode;
@@ -142,6 +151,18 @@ const governancePromptExamples: Array<{
     prompt:
       "Where do documents contradict each other on compliance status?",
   },
+  {
+    label: "Official source review",
+    mode: "question_review",
+    prompt:
+      "Which official orders, notices, or inspection records support the current air quality action?",
+  },
+  {
+    label: "Field action prep",
+    mode: "case_trace",
+    prompt:
+      "What should an officer review before taking field action on this air quality issue?",
+  },
 ];
 
 const questionTypeOptions: Array<{
@@ -158,6 +179,11 @@ const questionTypeOptions: Array<{
     value: "factors_considered",
     label: "Factors considered",
     stem: "What factors were considered",
+  },
+  {
+    value: "official_source_review",
+    label: "Official sources",
+    stem: "Which official sources support the position",
   },
   {
     value: "agency_responsibility",
@@ -179,6 +205,16 @@ const questionTypeOptions: Array<{
     label: "Contradictions/gaps",
     stem: "Where do documents show contradictions or gaps",
   },
+  {
+    value: "policy_order_comparison",
+    label: "Compare orders",
+    stem: "What changed between the relevant orders or action plans",
+  },
+  {
+    value: "field_action_prep",
+    label: "Field prep",
+    stem: "What should an officer review before field action",
+  },
 ];
 
 const issueHintOptions = [
@@ -186,9 +222,13 @@ const issueHintOptions = [
   "GRAP",
   "Dust",
   "Vehicles",
+  "PM2.5",
+  "PM10",
   "Stubble burning",
   "Waste burning",
   "Construction",
+  "Show-cause notice",
+  "Closure direction",
 ];
 
 const timeHintOptions = [
@@ -1614,14 +1654,82 @@ function runSelectedEvidenceDocumentIds(run: GovernanceAnswerRun | null) {
     : [];
 }
 
+const officerWorkflowLabels: Record<string, string> = {
+  quick_answer: "Quick Answer",
+  official_source_review: "Official Source Review",
+  agency_responsibility: "Agency Responsibility",
+  case_timeline: "Case Timeline",
+  contradiction_brief: "Contradiction Brief",
+  enforcement_gap_review: "Enforcement Gap Review",
+  policy_order_comparison: "Policy / Order Comparison",
+  field_action_prep: "Field Action Prep",
+};
+
+const answerStageLabels: Record<string, string> = {
+  "Understanding air-quality governance question": "Understanding question",
+  "Retrieving hybrid governance evidence": "Retrieving evidence",
+  "Ranking official sources and evidence lanes": "Ranking sources",
+  "Drafting officer brief": "Drafting officer brief",
+  "Checking claim citations": "Checking citations",
+  "Repairing citations": "Repairing citations",
+  "Saving answer": "Saving answer",
+};
+
+const officerFeedbackOptions: Array<{
+  rating: GovernanceAnswerFeedbackRating;
+  label: string;
+}> = [
+  { rating: "useful", label: "Useful" },
+  { rating: "wrong_citation", label: "Wrong citation" },
+  { rating: "missing_source", label: "Missing source" },
+  { rating: "hallucinated_claim", label: "Hallucinated claim" },
+  { rating: "needs_deeper_review", label: "Needs review" },
+];
+
+function officerWorkflowLabel(value?: string | null) {
+  if (!value) return "Officer Brief";
+  return officerWorkflowLabels[value] ?? humanizeEnumValue(value, "Officer Brief");
+}
+
+function answerStageLabel(value?: string | null) {
+  if (!value) return "Answer ready";
+  return answerStageLabels[value] ?? value;
+}
+
+function compactStringList(items?: unknown[] | null) {
+  return Array.isArray(items)
+    ? items.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
+function runStructuredValue<T>(
+  run: GovernanceAnswerRun | null,
+  key: string,
+  fallback: T,
+): T {
+  const direct = (run as any)?.[key];
+  if (direct !== undefined && direct !== null) return direct as T;
+  const structured = run?.structuredAnswer;
+  if (structured && typeof structured === "object" && key in structured) {
+    return structured[key] as T;
+  }
+  return fallback;
+}
+
 function GovernanceAnswerPanel({
   run,
   draftText,
   status,
   loading,
   error,
+  evaluation,
+  evaluationLoading,
+  feedbackLoading,
+  feedbackMessage,
   followUpQuestion,
   setFollowUpQuestion,
+  onEvaluate,
+  onFeedback,
   onSubmitFollowUp,
   onRegenerate,
   onDeepReview,
@@ -1634,8 +1742,14 @@ function GovernanceAnswerPanel({
   status: string | null;
   loading: boolean;
   error: string | null;
+  evaluation: GovernanceAnswerEvaluation | null;
+  evaluationLoading: boolean;
+  feedbackLoading: boolean;
+  feedbackMessage: string | null;
   followUpQuestion: string;
   setFollowUpQuestion: (value: string) => void;
+  onEvaluate: () => void;
+  onFeedback: (rating: GovernanceAnswerFeedbackRating) => void;
   onSubmitFollowUp: () => void;
   onRegenerate: () => void;
   onDeepReview: () => void;
@@ -1648,6 +1762,54 @@ function GovernanceAnswerPanel({
   const hasAnswer = Boolean(answerText.trim()) || Boolean(run);
   const answerSections = orderAnswerSections(parseAnswerSections(answerText));
   const claimCitations = run?.claimCitations ?? [];
+  const officerQueryType = runStructuredValue<string | null>(
+    run,
+    "queryType",
+    null,
+  );
+  const officerSummary = runStructuredValue<string | null>(run, "summary", null);
+  const officerJurisdiction = runStructuredValue<string | null>(
+    run,
+    "jurisdiction",
+    null,
+  );
+  const officerAgencies = compactStringList(
+    runStructuredValue<unknown[]>(run, "agencies", []),
+  );
+  const officerPollutants = compactStringList(
+    runStructuredValue<unknown[]>(run, "pollutants", []),
+  );
+  const officerTimeRange = runStructuredValue<string | null>(
+    run,
+    "timeRange",
+    null,
+  );
+  const officerFindings = runStructuredValue<any[]>(run, "findings", []);
+  const officerConflicts = runStructuredValue<any[]>(run, "conflicts", []);
+  const evidenceGaps = compactStringList(
+    runStructuredValue<unknown[]>(run, "evidenceGaps", []),
+  );
+  const recommendedNextSteps = compactStringList(
+    runStructuredValue<unknown[]>(run, "recommendedNextSteps", []),
+  );
+  const confidence = runStructuredValue<any | null>(run, "confidence", null);
+  const retrievalProfile =
+    run?.retrievalMetadata?.officerQueryProfile &&
+    typeof run.retrievalMetadata.officerQueryProfile === "object"
+      ? run.retrievalMetadata.officerQueryProfile
+      : null;
+  const retrievalTrace =
+    run?.retrievalMetadata?.retrievalTraceSummary &&
+    typeof run.retrievalMetadata.retrievalTraceSummary === "object"
+      ? (run.retrievalMetadata
+          .retrievalTraceSummary as GovernanceAnswerRetrievalTraceSummary)
+      : null;
+  const multiStepResearch =
+    run?.retrievalMetadata?.multiStepResearch &&
+    typeof run.retrievalMetadata.multiStepResearch === "object"
+      ? (run.retrievalMetadata
+          .multiStepResearch as GovernanceAnswerMultiStepResearch)
+      : null;
   const [selectedCitation, setSelectedCitation] =
     React.useState<GovernanceAnswerCitation | null>(null);
 
@@ -1684,7 +1846,7 @@ function GovernanceAnswerPanel({
         {loading || status ? (
           <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            <span>{status ?? "Answer ready"}</span>
+            <span>{answerStageLabel(status)}</span>
           </div>
         ) : null}
 
@@ -1700,6 +1862,458 @@ function GovernanceAnswerPanel({
             loading={loading}
             onDeepReview={onDeepReview}
           />
+        ) : null}
+
+        {run ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">
+                  RAG evaluation loop
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Retrieval, citation, coverage, conflict surfacing, and officer feedback.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onEvaluate}
+                disabled={evaluationLoading || loading}
+                className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {evaluationLoading ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Evaluate
+              </button>
+            </div>
+
+            {evaluation ? (
+              <div className="mt-4 space-y-3">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    ["Overall", evaluation.scores.overall],
+                    ["Retrieval", evaluation.scores.retrieval],
+                    ["Citations", evaluation.scores.citation],
+                    ["Coverage", evaluation.scores.coverage],
+                    ["Conflicts", evaluation.scores.conflict],
+                  ].map(([label, score]) => (
+                    <div
+                      key={String(label)}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                    >
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        {label}
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-950">
+                        {score}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-2 lg:grid-cols-2">
+                  {evaluation.checks.map((check) => (
+                    <div
+                      key={check.key}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {check.label}
+                        </div>
+                        <span
+                          className={[
+                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                            check.status === "pass"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                              : check.status === "warn"
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : "border-rose-200 bg-rose-50 text-rose-800",
+                          ].join(" ")}
+                        >
+                          {check.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs leading-5 text-slate-500">
+                        {check.detail}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  Officer feedback recorded: {evaluation.officerFeedbackCount}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                Run evaluation to score the current answer after generation.
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {officerFeedbackOptions.map((option) => (
+                <button
+                  key={option.rating}
+                  type="button"
+                  onClick={() => onFeedback(option.rating)}
+                  disabled={feedbackLoading || loading}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {feedbackMessage ? (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+                {feedbackMessage}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {run ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">
+                  Air quality officer brief
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {officerWorkflowLabel(officerQueryType)}
+                  {confidence?.level ? ` · ${String(confidence.level)} confidence` : ""}
+                </div>
+              </div>
+              {confidence?.evidenceCoverage ? (
+                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-semibold text-sky-800">
+                  Coverage: {humanizeEnumValue(String(confidence.evidenceCoverage), "Evidence")}
+                </span>
+              ) : null}
+            </div>
+
+            {officerSummary ? (
+              <p className="mt-3 text-sm leading-6 text-slate-700">
+                {officerSummary}
+              </p>
+            ) : null}
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {officerJurisdiction ? (
+                <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-medium text-emerald-800">
+                  Jurisdiction: {officerJurisdiction}
+                </span>
+              ) : null}
+              {officerTimeRange ? (
+                <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-800">
+                  Time: {officerTimeRange}
+                </span>
+              ) : null}
+              {officerAgencies.slice(0, 4).map((item) => (
+                <span
+                  key={`officer-agency-${item}`}
+                  className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-xs font-medium text-violet-800"
+                >
+                  {item}
+                </span>
+              ))}
+              {officerPollutants.slice(0, 4).map((item) => (
+                <span
+                  key={`officer-pollutant-${item}`}
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"
+                >
+                  {item}
+                </span>
+              ))}
+              {retrievalProfile?.sourcePriorities?.slice?.(0, 3)?.map(
+                (item: string) => (
+                  <span
+                    key={`source-priority-${item}`}
+                    className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-xs font-medium text-sky-800"
+                  >
+                    {item}
+                  </span>
+                ),
+              )}
+            </div>
+
+            {confidence?.rationale ? (
+              <div className="mt-3 rounded-xl border border-white bg-white/80 px-3 py-2 text-xs leading-5 text-slate-600">
+                {confidence.rationale}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {retrievalTrace ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">
+                  Retrieval trace summary
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Hybrid lanes, coverage families, and official-source evidence selected for this answer.
+                </div>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                {retrievalTrace.selectedEvidenceCardCount} evidence cards
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["Candidates", retrievalTrace.candidateCount],
+                ["Documents", retrievalTrace.selectedDocumentCount],
+                ["Official candidates", retrievalTrace.officialSourceCandidateCount],
+                ["Official evidence", retrievalTrace.officialSourceEvidenceCount],
+              ].map(([label, value]) => (
+                <div
+                  key={String(label)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {label}
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-slate-950">
+                    {value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Retrieval lanes
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {Object.entries(retrievalTrace.laneCounts).length ? (
+                    Object.entries(retrievalTrace.laneCounts).map(([lane, count]) => (
+                      <span
+                        key={lane}
+                        className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"
+                      >
+                        {humanizeEnumValue(lane, "Lane")} {count}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-slate-500">No lane counts recorded.</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Coverage families
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {Object.entries(retrievalTrace.coverageCounts).length ? (
+                    Object.entries(retrievalTrace.coverageCounts).map(([family, count]) => (
+                      <span
+                        key={family}
+                        className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"
+                      >
+                        {humanizeEnumValue(family, "Coverage")} {count}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-slate-500">No coverage counts recorded.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {retrievalTrace.topReasons.length ? (
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Why evidence ranked
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {retrievalTrace.topReasons.slice(0, 6).map((item) => (
+                    <span
+                      key={item.reason}
+                      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {item.reason} {item.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {multiStepResearch?.enabled ? (
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">
+                  Multi-step research lanes
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {multiStepResearch.rationale}
+                </div>
+              </div>
+              <span className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-800">
+                {multiStepResearch.steps.length} lanes
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {multiStepResearch.steps.map((step) => (
+                <div
+                  key={step.id}
+                  className="rounded-xl border border-white bg-white/90 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-950">
+                        {step.label}
+                      </div>
+                      <div className="mt-1 text-xs leading-5 text-slate-500">
+                        {step.purpose}
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                      {step.candidateCount} candidates
+                    </span>
+                  </div>
+
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+                    {step.question}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {step.retrievalLanes.slice(0, 4).map((lane) => (
+                      <span
+                        key={`${step.id}-${lane}`}
+                        className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+                      >
+                        {humanizeEnumValue(lane, "Lane")}
+                      </span>
+                    ))}
+                    {step.coverageFamilies.slice(0, 4).map((family) => (
+                      <span
+                        key={`${step.id}-${family}`}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700"
+                      >
+                        {humanizeEnumValue(family, "Coverage")}
+                      </span>
+                    ))}
+                  </div>
+
+                  {step.topSources.length ? (
+                    <div className="mt-3 space-y-2">
+                      {step.topSources.slice(0, 3).map((source, index) => (
+                        <div
+                          key={`${step.id}-source-${source.documentId ?? index}`}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-semibold text-slate-900">
+                                {source.title}
+                              </div>
+                              {source.sourceLabel ? (
+                                <div className="mt-0.5 truncate text-[11px] text-slate-500">
+                                  {source.sourceLabel}
+                                </div>
+                              ) : null}
+                            </div>
+                            {source.matchScore !== null ? (
+                              <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                                {source.matchScore}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {officerFindings.length || officerConflicts.length ? (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {officerFindings.length ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm">
+                <div className="text-sm font-semibold text-emerald-950">
+                  Officer findings
+                </div>
+                <div className="mt-3 space-y-3">
+                  {officerFindings.slice(0, 5).map((item, index) => (
+                    <div
+                      key={`${item.title || "finding"}-${index}`}
+                      className="rounded-xl border border-white bg-white/85 p-3"
+                    >
+                      <div className="text-sm font-semibold text-slate-950">
+                        {item.title || `Finding ${index + 1}`}
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">
+                        {item.finding}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(item.citations ?? []).slice(0, 3).map(
+                          (citation: GovernanceAnswerCitation, citeIndex: number) => (
+                            <button
+                              key={`${citation.evidenceId}-${citeIndex}`}
+                              type="button"
+                              onClick={() => inspectCitation(citation)}
+                              className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-800"
+                            >
+                              Source {citeIndex + 1}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {officerConflicts.length ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 shadow-sm">
+                <div className="text-sm font-semibold text-amber-950">
+                  Conflicts or tensions
+                </div>
+                <div className="mt-3 space-y-3">
+                  {officerConflicts.slice(0, 5).map((item, index) => (
+                    <div
+                      key={`${item.title || "conflict"}-${index}`}
+                      className="rounded-xl border border-white bg-white/85 p-3"
+                    >
+                      <div className="text-sm font-semibold text-slate-950">
+                        {item.title || `Conflict ${index + 1}`}
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">
+                        {item.finding}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(item.citations ?? []).slice(0, 3).map(
+                          (citation: GovernanceAnswerCitation, citeIndex: number) => (
+                            <button
+                              key={`${citation.evidenceId}-${citeIndex}`}
+                              type="button"
+                              onClick={() => inspectCitation(citation)}
+                              className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800"
+                            >
+                              Source {citeIndex + 1}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {hasAnswer ? (
@@ -1950,6 +2564,36 @@ function GovernanceAnswerPanel({
           </div>
         ) : null}
 
+        {evidenceGaps.length || recommendedNextSteps.length ? (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {evidenceGaps.length ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-3">
+                <div className="text-sm font-semibold text-rose-950">
+                  Evidence gaps
+                </div>
+                <ul className="mt-2 space-y-2 text-sm leading-6 text-rose-900">
+                  {evidenceGaps.slice(0, 6).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {recommendedNextSteps.length ? (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-3">
+                <div className="text-sm font-semibold text-sky-950">
+                  Recommended next steps
+                </div>
+                <ul className="mt-2 space-y-2 text-sm leading-6 text-sky-900">
+                  {recommendedNextSteps.slice(0, 6).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {run?.suggestedFollowUps?.length ? (
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -2076,6 +2720,12 @@ export default function GovernanceWorkspacePage() {
   const [answerLoading, setAnswerLoading] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [answerExporting, setAnswerExporting] = useState(false);
+  const [answerEvaluation, setAnswerEvaluation] =
+    useState<GovernanceAnswerEvaluation | null>(null);
+  const [answerEvaluationLoading, setAnswerEvaluationLoading] = useState(false);
+  const [answerFeedbackLoading, setAnswerFeedbackLoading] = useState(false);
+  const [answerFeedbackMessage, setAnswerFeedbackMessage] =
+    useState<string | null>(null);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
   const [investigationSearch, setInvestigationSearch] = useState("");
   const [investigationSourceScope, setInvestigationSourceScope] =
@@ -2605,6 +3255,8 @@ export default function GovernanceWorkspacePage() {
       setAnswerError(null);
       setAnswerStatus("Retrieving evidence");
       setAnswerDraft("");
+      setAnswerEvaluation(null);
+      setAnswerFeedbackMessage(null);
 
       let finalSeen = false;
 
@@ -2717,6 +3369,8 @@ export default function GovernanceWorkspacePage() {
   const restoreAnswerRun = React.useCallback((run: GovernanceAnswerRun) => {
     setAnswerRun(run);
     setAnswerDraft(run.answer ?? "");
+    setAnswerEvaluation(null);
+    setAnswerFeedbackMessage(null);
     setAnswerError(null);
     setAnswerStatus(null);
   }, []);
@@ -2731,6 +3385,8 @@ export default function GovernanceWorkspacePage() {
       setAnswerSessionId(session.id);
       setAnswerRun(run);
       setAnswerDraft(run?.answer ?? "");
+      setAnswerEvaluation(null);
+      setAnswerFeedbackMessage(null);
       setAnswerStatus(null);
       setFollowUpQuestion("");
       setWorkspaceQuestion(run?.question || session.question || "");
@@ -2833,6 +3489,44 @@ export default function GovernanceWorkspacePage() {
         : runSelectedEvidenceDocumentIds(answerRun),
     });
   }, [answerRun, lockedEvidenceDocumentIds, startGovernanceAnswer, workspaceQuestion]);
+
+  const evaluateCurrentAnswer = React.useCallback(async () => {
+    if (!answerRun?.id) return;
+    setAnswerEvaluationLoading(true);
+    setAnswerError(null);
+    try {
+      const evaluation = await evaluateGovernanceAnswer(answerRun.id);
+      setAnswerEvaluation(evaluation);
+    } catch (err: any) {
+      setAnswerError(err?.message || "Could not evaluate the RAG answer.");
+    } finally {
+      setAnswerEvaluationLoading(false);
+    }
+  }, [answerRun?.id]);
+
+  const sendAnswerFeedback = React.useCallback(
+    async (rating: GovernanceAnswerFeedbackRating) => {
+      if (!answerRun?.id) return;
+      setAnswerFeedbackLoading(true);
+      setAnswerFeedbackMessage(null);
+      setAnswerError(null);
+      try {
+        const out = await sendGovernanceAnswerFeedback({
+          runId: answerRun.id,
+          rating,
+          target: "answer",
+        });
+        setAnswerEvaluation(out.evaluation);
+        setAnswerFeedbackMessage("Officer feedback saved for this answer.");
+        void answerSessionQuery.refetch();
+      } catch (err: any) {
+        setAnswerError(err?.message || "Could not save answer feedback.");
+      } finally {
+        setAnswerFeedbackLoading(false);
+      }
+    },
+    [answerRun?.id, answerSessionQuery.refetch],
+  );
 
   const copyAnswer = React.useCallback(() => {
     const text = answerRun?.answer || answerDraft;
@@ -3442,17 +4136,15 @@ export default function GovernanceWorkspacePage() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/75 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 shadow-sm">
               <Sparkles className="h-3.5 w-3.5" />
-              Governance Workspace
+              Air Quality Governance Intelligence
             </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
-              Institutional mapping, contradictions, and evidence-grade
-              provenance
+              Ask official-source questions across air quality evidence
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
-              This workspace turns your captured documents into a governance
-              map: agencies, mandates, case events, actor positions,
-              coordination gaps, and contradiction trails — all with
-              source-linked provenance.
+              Built for officers, regulators, and analysts reviewing orders,
+              notices, agency responsibility, enforcement gaps, timelines, and
+              contradiction trails with source-linked provenance.
             </p>
           </div>
 
@@ -3460,10 +4152,10 @@ export default function GovernanceWorkspacePage() {
             <div className="rounded-[26px] border border-white/70 bg-white/88 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Question Builder
+                  Officer Question Builder
                 </div>
                 <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                  Evidence-first intake
+                  Official-source intake
                 </span>
               </div>
 
@@ -3473,14 +4165,14 @@ export default function GovernanceWorkspacePage() {
                   value={workspaceQuestion}
                   onChange={(e) => setWorkspaceQuestion(e.target.value)}
                   rows={1}
-                  placeholder="Ask a governance question"
+                  placeholder="Ask an air quality governance question"
                   className="block min-h-[92px] max-h-44 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
 
               <div className="mt-3 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-3 py-2 text-xs leading-5 text-emerald-900">
                 Evidence is retrieved first. Answers are generated only from
-                the retrieved and cited document set.
+                the retrieved and cited official-source document set.
               </div>
 
               <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr),230px]">
@@ -4196,8 +4888,14 @@ export default function GovernanceWorkspacePage() {
             status={answerStatus}
             loading={answerLoading}
             error={answerError}
+            evaluation={answerEvaluation}
+            evaluationLoading={answerEvaluationLoading}
+            feedbackLoading={answerFeedbackLoading}
+            feedbackMessage={answerFeedbackMessage}
             followUpQuestion={followUpQuestion}
             setFollowUpQuestion={setFollowUpQuestion}
+            onEvaluate={evaluateCurrentAnswer}
+            onFeedback={sendAnswerFeedback}
             onSubmitFollowUp={submitFollowUpAnswer}
             onRegenerate={regenerateAnswer}
             onDeepReview={deepReviewAnswer}

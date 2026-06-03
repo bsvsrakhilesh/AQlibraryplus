@@ -162,6 +162,126 @@ test("answer session summary maps latest quality and recovery counts", async () 
   assert.equal(summary.collectorPurposeId, "purpose-1");
 });
 
+test("air quality query profile detects officer workflow and domain signals", async () => {
+  const { buildAirQualityQueryProfile } = await loadAnswerScopeHelpers();
+
+  const profile = buildAirQualityQueryProfile(
+    "Which agency is responsible for PM2.5 GRAP inspection follow-up in Delhi NCR since 2024?",
+  );
+
+  assert.equal(profile.domain, "air_quality_governance");
+  assert.equal(profile.queryType, "agency_responsibility");
+  assert.equal(profile.jurisdiction, "Delhi NCR");
+  assert.deepEqual(profile.pollutants, ["PM2.5"]);
+  assert.ok(profile.orderTypes.includes("GRAP"));
+  assert.ok(profile.enforcementSignals.includes("Inspection"));
+  assert.ok(profile.sourcePriorities.includes("Official orders and directions"));
+});
+
+test("multi-step research planner decomposes complex officer questions", async () => {
+  const { buildAirQualityQueryProfile, buildMultiStepResearchPlan } =
+    await loadAnswerScopeHelpers();
+  const question =
+    "Which agency is responsible, what is the timeline, and where do orders contradict each other on PM2.5 GRAP enforcement in Delhi NCR since 2024?";
+  const profile = buildAirQualityQueryProfile(question);
+
+  const plan = buildMultiStepResearchPlan({
+    question,
+    profile,
+    deepReview: true,
+  });
+
+  assert.equal(plan.enabled, true);
+  assert.ok(plan.steps.some((step: any) => step.id === "agency_responsibility"));
+  assert.ok(plan.steps.some((step: any) => step.id === "timeline"));
+  assert.ok(plan.steps.some((step: any) => step.id === "conflicts"));
+  assert.ok(plan.steps.length <= 5);
+});
+
+test("multi-step research planner keeps narrow questions single pass", async () => {
+  const { buildAirQualityQueryProfile, buildMultiStepResearchPlan } =
+    await loadAnswerScopeHelpers();
+  const question = "What does this CPCB order say about PM10?";
+  const profile = buildAirQualityQueryProfile(question);
+
+  const plan = buildMultiStepResearchPlan({
+    question,
+    profile,
+    deepReview: false,
+  });
+
+  assert.equal(plan.enabled, false);
+  assert.deepEqual(plan.steps, []);
+});
+
+test("answer run evaluation scores retrieval, citations, coverage, and feedback", async () => {
+  const { buildAnswerEvaluationFromRun } = await loadAnswerScopeHelpers();
+
+  const evaluation = buildAnswerEvaluationFromRun({
+    id: "run-1",
+    sessionId: "session-1",
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:10:00.000Z"),
+    createdBy: null,
+    requestId: null,
+    status: "SUCCEEDED",
+    question: "Which agency is responsible?",
+    answer: "Answer",
+    citations: [{ evidenceId: "chunk:1", quote: "Official quote" }],
+    evidence: [{ evidenceId: "chunk:1" }],
+    caveats: [],
+    openQuestions: [],
+    suggestedFollowUps: [],
+    structuredAnswer: {
+      claimCitations: [{ claim: "CPCB issued a direction", citations: [] }],
+      evidenceGaps: [],
+      conflicts: [{ title: "Tension", finding: "Two sources differ", citations: [] }],
+    },
+    model: "model",
+    assistModel: "assist",
+    openaiResponseId: null,
+    previousResponseId: null,
+    previousRunId: null,
+    anchorDocumentIds: [],
+    anchorUrlIds: [],
+    sourceScope: "all",
+    requestedWorkflowMode: "question_review",
+    resolvedWorkflowMode: "question_review",
+    selectedIssueId: null,
+    selectedAgencyId: null,
+    collectorPurposeId: null,
+    candidateDocumentIds: ["doc-1", "doc-2"],
+    finalEvidenceChunkIds: ["chunk-1"],
+    sourceRevisionIds: [],
+    documentRevisionIds: [],
+    pipelineConfigIds: [],
+    retrievalMetadata: {
+      totalCandidates: 8,
+      retrievalDecision: { confidence: "high" },
+    },
+    groundingStatus: "verified",
+    validation: {
+      status: "verified",
+      qualityBand: "strong",
+      recommendedAction: "use",
+      validCitationCount: 4,
+      invalidCitationCount: 0,
+      supportedClaimCount: 3,
+      evidenceCardCount: 2,
+      officerFeedback: [{ id: "feedback-1" }],
+    },
+    error: null,
+    latencyMs: 1234,
+  } as any);
+
+  assert.equal(evaluation.runId, "run-1");
+  assert.equal(evaluation.qualityBand, "strong");
+  assert.equal(evaluation.recommendedAction, "use");
+  assert.equal(evaluation.officerFeedbackCount, 1);
+  assert.ok(evaluation.scores.overall >= 70);
+  assert.equal(evaluation.checks.find((item) => item.key === "citations")?.status, "pass");
+});
+
 test("selected answer evidence restricts candidate documents", async () => {
   const { resolveAnswerCandidateDocumentIds } = await loadAnswerScopeHelpers();
 

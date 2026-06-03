@@ -156,7 +156,106 @@ export function buildGovernanceAnswerQualitySummary(p: {
   };
 }
 
-const GOVERNANCE_ANSWER_PROMPT_VERSION = "governance-workspace-answer-v2";
+const GOVERNANCE_ANSWER_PROMPT_VERSION = "air-quality-governance-answer-v3";
+
+type AirQualityOfficerQueryType =
+  | "quick_answer"
+  | "official_source_review"
+  | "agency_responsibility"
+  | "case_timeline"
+  | "contradiction_brief"
+  | "enforcement_gap_review"
+  | "policy_order_comparison"
+  | "field_action_prep";
+
+type AirQualityQueryProfile = {
+  domain: "air_quality_governance";
+  queryType: AirQualityOfficerQueryType;
+  jurisdiction: string | null;
+  agencies: string[];
+  pollutants: string[];
+  sectors: string[];
+  orderTypes: string[];
+  enforcementSignals: string[];
+  timeRange: string | null;
+  sourcePriorities: string[];
+  generationStages: string[];
+};
+
+type MultiStepResearchStep = {
+  id: string;
+  label: string;
+  question: string;
+  purpose: string;
+};
+
+type MultiStepResearchResult = {
+  enabled: boolean;
+  rationale: string;
+  steps: Array<
+    MultiStepResearchStep & {
+      candidateCount: number;
+      documentIds: string[];
+      topSources: Array<{
+        documentId: string | null;
+        title: string;
+        sourceLabel: string | null;
+        matchScore: number | null;
+        whyRanked: string[];
+      }>;
+      retrievalDecision: unknown;
+      queryUnderstanding: unknown;
+      coverageFamilies: string[];
+      retrievalLanes: string[];
+    }
+  >;
+};
+
+const AIR_QUALITY_POLLUTANT_PATTERNS: Array<[RegExp, string]> = [
+  [/\bpm\s*2\.?5\b|\bpm2\.?5\b/i, "PM2.5"],
+  [/\bpm\s*10\b|\bpm10\b/i, "PM10"],
+  [/\baqi\b/i, "AQI"],
+  [/\bnox?\b|\bnitrogen oxides?\b/i, "NOx"],
+  [/\bso2\b|\bsulphur dioxide\b|\bsulfur dioxide\b/i, "SO2"],
+  [/\bozone\b|\bo3\b/i, "Ozone"],
+  [/\bco\b|\bcarbon monoxide\b/i, "CO"],
+];
+
+const AIR_QUALITY_AGENCY_PATTERNS: Array<[RegExp, string]> = [
+  [/\bcpcb\b|central pollution control board/i, "CPCB"],
+  [/\bspcb\b|state pollution control board/i, "SPCB"],
+  [/\bdpcc\b|delhi pollution control committee/i, "DPCC"],
+  [/\bcaqm\b|commission for air quality management/i, "CAQM"],
+  [/\bmoefcc\b|environment ministry|ministry of environment/i, "MoEFCC"],
+  [/\bngt\b|national green tribunal/i, "NGT"],
+  [/\bsupreme court\b|\bhigh court\b|\bcourt\b/i, "Court"],
+  [/\bmunicipal\b|\bmunicipality\b|\bmc\b|\bmcd\b/i, "Municipal body"],
+  [/\bdistrict magistrate\b|\bdm\b|\bdistrict administration\b/i, "District administration"],
+];
+
+const AIR_QUALITY_SECTOR_PATTERNS: Array<[RegExp, string]> = [
+  [/\bconstruction\b|\bdust\b|\bc&d\b/i, "Construction and dust"],
+  [/\bindustr(y|ial)\b|\bfactory\b|\bplant\b/i, "Industry"],
+  [/\btransport\b|\bvehicle\b|\bdiesel\b|\btraffic\b/i, "Transport"],
+  [/\bstubble\b|\bcrop residue\b|\bburning\b/i, "Stubble or open burning"],
+  [/\bthermal\b|\bpower plant\b|\bcoal\b/i, "Power generation"],
+  [/\bwaste\b|\blandfill\b|\bgarbage\b/i, "Waste management"],
+];
+
+const AIR_QUALITY_ORDER_PATTERNS: Array<[RegExp, string]> = [
+  [/\bgrap\b/i, "GRAP"],
+  [/\bshow[-\s]?cause\b/i, "Show-cause notice"],
+  [/\bclosure\b|\bclose(d|ure)? direction\b/i, "Closure direction"],
+  [/\bdirection\b|\border\b|\bnotification\b|\bcircular\b/i, "Direction/order"],
+  [/\baction plan\b|\bclean air action plan\b|\bncap\b/i, "Action plan"],
+  [/\binspection\b|\bsite visit\b/i, "Inspection record"],
+  [/\bcompliance report\b|\bstatus report\b/i, "Compliance/status report"],
+];
+
+const OFFICIAL_SOURCE_PATTERNS = [
+  /\b(cpcb|spcb|dpcc|caqm|moefcc|ngt|tribunal|court|commission|authority|ministry|municipal|gov|nic\.in)\b/i,
+  /\.(gov|nic)\.in\b/i,
+];
 
 const CitationSchema = z.object({
   evidenceId: z.string().min(1),
@@ -181,7 +280,37 @@ const CaveatSchema = z.object({
   citations: z.array(CitationSchema).max(6).optional(),
 });
 
+const OfficerFindingSchema = z.object({
+  title: z.string().min(3).max(160),
+  finding: z.string().min(8).max(900),
+  citations: z.array(CitationSchema).min(1).max(6),
+});
+
+const ConfidenceSchema = z.object({
+  level: z.enum(["high", "medium", "low"]),
+  rationale: z.string().min(8).max(700),
+  evidenceCoverage: z.enum(["strong", "adequate", "thin", "missing"]),
+});
+
 const GovernanceAnswerSchema = z.object({
+  queryType: z
+    .enum([
+      "quick_answer",
+      "official_source_review",
+      "agency_responsibility",
+      "case_timeline",
+      "contradiction_brief",
+      "enforcement_gap_review",
+      "policy_order_comparison",
+      "field_action_prep",
+    ])
+    .describe("Officer workflow chosen for this answer."),
+  jurisdiction: z.string().nullable().describe("Detected jurisdiction or location, if evidence supports one."),
+  agencies: z.array(z.string().min(1).max(120)).max(12),
+  pollutants: z.array(z.string().min(1).max(60)).max(12),
+  timeRange: z.string().nullable(),
+  summary: z.string().min(1).max(1200),
+  findings: z.array(OfficerFindingSchema).max(10),
   answer: z
     .string()
     .describe("Readable markdown answer. Every factual claim must be covered by claimCitations."),
@@ -196,6 +325,10 @@ const GovernanceAnswerSchema = z.object({
     .array(CaveatSchema)
     .max(8)
     .describe("Limitations, clearly labelled inferences, or general suggestions not directly established by evidence."),
+  conflicts: z.array(OfficerFindingSchema).max(8),
+  evidenceGaps: z.array(z.string().min(1).max(500)).max(10),
+  recommendedNextSteps: z.array(z.string().min(1).max(320)).max(8),
+  confidence: ConfidenceSchema,
   openQuestions: z.array(z.string().min(1).max(500)).max(8),
   suggestedFollowUps: z.array(z.string().min(1).max(240)).min(0).max(6),
 });
@@ -274,6 +407,40 @@ type GovernanceAnswerSessionSummaryRow = GovernanceAnswerSessionRow & {
   latestRunCreatedAt: Date | null;
   latestGroundingStatus: string | null;
   latestValidation: unknown;
+};
+
+type GovernanceAnswerFeedbackInput = {
+  runId: string;
+  rating: "useful" | "wrong_citation" | "missing_source" | "hallucinated_claim" | "needs_deeper_review";
+  target?: "answer" | "claim" | "citation" | "evidence" | null;
+  claim?: string | null;
+  evidenceId?: string | null;
+  citationQuote?: string | null;
+  comment?: string | null;
+  requestId?: string | null;
+  createdBy?: string | null;
+};
+
+type GovernanceAnswerEvaluation = {
+  runId: string;
+  status: string;
+  qualityBand: string;
+  recommendedAction: string;
+  scores: {
+    retrieval: number;
+    citation: number;
+    coverage: number;
+    conflict: number;
+    overall: number;
+  };
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "pass" | "warn" | "fail";
+    detail: string;
+  }>;
+  officerFeedbackCount: number;
+  updatedAt: string;
 };
 
 function asJson(value: unknown): Prisma.Sql {
@@ -364,7 +531,429 @@ function extractKeywords(input: string) {
     .slice(0, 18);
 }
 
-function evidenceScore(card: EvidenceCard, keywords: string[], rankByDoc: Map<string, number>) {
+function collectPatternMatches(
+  text: string,
+  patterns: Array<[RegExp, string]>,
+) {
+  return uniq(
+    patterns
+      .filter(([pattern]) => pattern.test(text))
+      .map(([, label]) => label),
+  );
+}
+
+function detectJurisdiction(question: string) {
+  const text = question.replace(/\s+/g, " ").trim();
+  const hints = [
+    /\b(delhi ncr|ncr|delhi|faridabad|gurugram|gurgaon|noida|ghaziabad|bhiwadi|sonipat|panipat|haryana|punjab|uttar pradesh|rajasthan)\b/i,
+    /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+(?:district|city|state|airshed)\b/,
+  ];
+
+  for (const pattern of hints) {
+    const match = pattern.exec(text);
+    if (match?.[1]) return match[1].trim();
+  }
+
+  return null;
+}
+
+function detectTimeRange(question: string) {
+  const text = question.replace(/\s+/g, " ").trim();
+  const range = /\b(20\d{2})(?:\s*(?:-|to|through)\s*(20\d{2}))?\b/i.exec(text);
+  if (range?.[1]) return range[2] ? `${range[1]}-${range[2]}` : range[1];
+  const phrase =
+    /\b(last\s+\d+\s+(?:days|weeks|months|years)|last\s+year|this\s+year|current|recent|today|yesterday)\b/i.exec(
+      text,
+    );
+  return phrase?.[1] ?? null;
+}
+
+function inferOfficerQueryType(question: string): AirQualityOfficerQueryType {
+  const q = question.toLowerCase();
+  if (/\b(compare|changed|difference|amendment|versus|vs\.?)\b/.test(q)) {
+    return "policy_order_comparison";
+  }
+  if (/\b(conflict|contradict|override|inconsistent|tension)\b/.test(q)) {
+    return "contradiction_brief";
+  }
+  if (/\b(timeline|chronology|sequence|when did|case trail)\b/.test(q)) {
+    return "case_timeline";
+  }
+  if (/\b(who|which agency|responsib|mandate|jurisdiction|coordinate)\b/.test(q)) {
+    return "agency_responsibility";
+  }
+  if (/\b(gap|missing|failure|not complied|non[-\s]?compliance|enforcement)\b/.test(q)) {
+    return "enforcement_gap_review";
+  }
+  if (/\b(order|notice|direction|notification|official source|source supports|citation)\b/.test(q)) {
+    return "official_source_review";
+  }
+  if (/\b(inspect|field|site visit|prepare|check before|action)\b/.test(q)) {
+    return "field_action_prep";
+  }
+  return "quick_answer";
+}
+
+export function buildAirQualityQueryProfile(question: string): AirQualityQueryProfile {
+  const text = question.toLowerCase();
+  const queryType = inferOfficerQueryType(question);
+  const pollutants = collectPatternMatches(question, AIR_QUALITY_POLLUTANT_PATTERNS);
+  const agencies = collectPatternMatches(question, AIR_QUALITY_AGENCY_PATTERNS);
+  const sectors = collectPatternMatches(question, AIR_QUALITY_SECTOR_PATTERNS);
+  const orderTypes = collectPatternMatches(question, AIR_QUALITY_ORDER_PATTERNS);
+  const enforcementSignals = collectPatternMatches(question, [
+    [/\bviolation\b|\bnon[-\s]?compliance\b/i, "Violation/non-compliance"],
+    [/\bpenalty\b|\bfine\b|\bprosecution\b/i, "Penalty/prosecution"],
+    [/\bclosure\b|\bsealing\b|\bshut\b/i, "Closure/sealing"],
+    [/\binspection\b|\bsite visit\b/i, "Inspection"],
+    [/\bfollow[-\s]?up\b|\bstatus report\b/i, "Follow-up/status"],
+  ]);
+
+  const sourcePriorities = uniq([
+    "Official orders and directions",
+    "Court/tribunal records",
+    "Inspection, compliance, and status reports",
+    "Agency mandates and responsibility statements",
+    queryType === "contradiction_brief" ? "Conflicting or override evidence" : "",
+    text.includes("grap") ? "GRAP-stage evidence" : "",
+  ].filter(Boolean));
+
+  return {
+    domain: "air_quality_governance",
+    queryType,
+    jurisdiction: detectJurisdiction(question),
+    agencies,
+    pollutants,
+    sectors,
+    orderTypes,
+    enforcementSignals,
+    timeRange: detectTimeRange(question),
+    sourcePriorities,
+    generationStages: [
+      "understand_air_quality_question",
+      "retrieve_hybrid_governance_evidence",
+      "rank_official_sources",
+      "validate_claim_citations",
+      "draft_officer_brief",
+    ],
+  };
+}
+
+function officialSourceScore(text: string) {
+  return OFFICIAL_SOURCE_PATTERNS.some((pattern) => pattern.test(text)) ? 10 : 0;
+}
+
+function airQualityDomainScore(text: string, profile: AirQualityQueryProfile) {
+  const haystack = text.toLowerCase();
+  let score = officialSourceScore(haystack);
+  for (const token of [
+    "aqi",
+    "pm2.5",
+    "pm10",
+    "grap",
+    "emission",
+    "dust",
+    "stubble",
+    "inspection",
+    "show-cause",
+    "closure",
+    "action plan",
+    "compliance report",
+  ]) {
+    if (haystack.includes(token)) score += 2;
+  }
+  for (const value of [
+    ...profile.pollutants,
+    ...profile.agencies,
+    ...profile.sectors,
+    ...profile.orderTypes,
+    ...profile.enforcementSignals,
+  ]) {
+    if (value && haystack.includes(value.toLowerCase())) score += 4;
+  }
+  if (profile.jurisdiction && haystack.includes(profile.jurisdiction.toLowerCase())) {
+    score += 5;
+  }
+  return score;
+}
+
+function incrementCount(map: Map<string, number>, key: string | null | undefined) {
+  if (!key) return;
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function mapCounts(map: Map<string, number>) {
+  return Object.fromEntries(
+    Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+  );
+}
+
+function buildAnswerRetrievalTraceSummary(args: {
+  evidenceResponse: any;
+  evidenceCards: EvidenceCard[];
+  selectedDocumentIds: string[];
+  profile: AirQualityQueryProfile;
+}) {
+  const candidates = Array.isArray(args.evidenceResponse?.candidates)
+    ? args.evidenceResponse.candidates
+    : [];
+  const selectedDocumentSet = new Set(args.selectedDocumentIds);
+  const laneCounts = new Map<string, number>();
+  const coverageCounts = new Map<string, number>();
+  const reasonCounts = new Map<string, number>();
+  let officialSourceCandidateCount = 0;
+
+  for (const candidate of candidates) {
+    for (const lane of candidate.retrievalLanes ?? []) incrementCount(laneCounts, lane);
+    for (const family of candidate.coverageFamilies ?? []) {
+      incrementCount(coverageCounts, family);
+    }
+    for (const reason of candidate.whyRanked ?? []) incrementCount(reasonCounts, reason);
+    const officialCue = officialSourceScore(
+      `${candidate.title ?? ""} ${candidate.sourceLabel ?? ""}`,
+    );
+    if (officialCue > 0) officialSourceCandidateCount += 1;
+  }
+
+  const selectedEvidence = args.evidenceCards.slice(0, 18).map((card) => ({
+    evidenceId: card.evidenceId,
+    kind: card.kind,
+    documentId: card.documentId,
+    title: card.title,
+    sourceLabel: card.sourceLabel ?? card.title,
+    officialSource: officialSourceScore(
+      `${card.title} ${card.sourceLabel ?? ""} ${card.sourceUrl ?? ""}`,
+    ) > 0,
+    airQualityScore: airQualityDomainScore(`${card.title}\n${card.text}`, args.profile),
+  }));
+
+  return {
+    candidateCount: candidates.length,
+    selectedDocumentCount: selectedDocumentSet.size,
+    selectedEvidenceCardCount: args.evidenceCards.length,
+    officialSourceCandidateCount,
+    officialSourceEvidenceCount: selectedEvidence.filter((item) => item.officialSource).length,
+    laneCounts: mapCounts(laneCounts),
+    coverageCounts: mapCounts(coverageCounts),
+    topReasons: Array.from(reasonCounts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 8)
+      .map(([reason, count]) => ({ reason, count })),
+    selectedEvidence,
+  };
+}
+
+export function buildMultiStepResearchPlan(args: {
+  question: string;
+  profile: AirQualityQueryProfile;
+  deepReview?: boolean;
+}): { enabled: boolean; rationale: string; steps: MultiStepResearchStep[] } {
+  const steps: MultiStepResearchStep[] = [];
+  const profile = args.profile;
+  const baseContext = [
+    profile.jurisdiction ? `in ${profile.jurisdiction}` : "",
+    profile.pollutants.length ? `for ${profile.pollutants.join(", ")}` : "",
+    profile.timeRange ? `during ${profile.timeRange}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const complex =
+    args.deepReview ||
+    args.question.length > 180 ||
+    [
+      "agency_responsibility",
+      "case_timeline",
+      "contradiction_brief",
+      "enforcement_gap_review",
+      "policy_order_comparison",
+      "field_action_prep",
+    ].includes(profile.queryType);
+
+  if (!complex) {
+    return {
+      enabled: false,
+      rationale:
+        "The question is narrow enough for single-pass hybrid retrieval.",
+      steps,
+    };
+  }
+
+  if (
+    profile.queryType === "agency_responsibility" ||
+    /\b(who|agency|responsib|mandate|jurisdiction|coordinate)\b/i.test(args.question)
+  ) {
+    steps.push({
+      id: "agency_responsibility",
+      label: "Agency responsibility",
+      purpose: "Identify mandates, responsible agencies, and coordination duties.",
+      question: `Which agencies, mandates, and coordination duties are relevant ${baseContext || "to this air quality issue"}?`,
+    });
+  }
+
+  if (
+    profile.queryType === "case_timeline" ||
+    /\b(timeline|chronology|sequence|since|between|when)\b/i.test(args.question)
+  ) {
+    steps.push({
+      id: "timeline",
+      label: "Timeline",
+      purpose: "Retrieve dated orders, events, inspections, and status changes.",
+      question: `What is the chronology of orders, inspections, actions, and status changes ${baseContext || "for this air quality issue"}?`,
+    });
+  }
+
+  if (
+    profile.queryType === "contradiction_brief" ||
+    /\b(conflict|contradict|override|inconsistent|tension|supersede)\b/i.test(args.question)
+  ) {
+    steps.push({
+      id: "conflicts",
+      label: "Conflicts and overrides",
+      purpose: "Find contradictions, tensions, overrides, and superseding directions.",
+      question: `Which records conflict, override, reinforce, or supersede each other ${baseContext || "for this air quality issue"}?`,
+    });
+  }
+
+  if (
+    profile.queryType === "enforcement_gap_review" ||
+    /\b(gap|missing|failure|non[-\s]?compliance|enforcement|follow[-\s]?up)\b/i.test(args.question)
+  ) {
+    steps.push({
+      id: "gaps",
+      label: "Enforcement gaps",
+      purpose: "Identify missing follow-up, accountability, compliance, and evidence gaps.",
+      question: `What enforcement, compliance, accountability, or evidence gaps are recorded ${baseContext || "for this air quality issue"}?`,
+    });
+  }
+
+  if (
+    profile.queryType === "policy_order_comparison" ||
+    /\b(compare|changed|difference|amendment|order|notice|direction|action plan)\b/i.test(args.question)
+  ) {
+    steps.push({
+      id: "orders",
+      label: "Orders and policy comparison",
+      purpose: "Retrieve official orders, notices, action plans, and changes between them.",
+      question: `Which official orders, notices, directions, or action plans apply, and what changed between them ${baseContext || "for this air quality issue"}?`,
+    });
+  }
+
+  if (!steps.length) {
+    steps.push({
+      id: "official_sources",
+      label: "Official-source review",
+      purpose: "Prioritize official-source records before synthesis.",
+      question: `Which official-source records support the answer to: ${args.question}`,
+    });
+  }
+
+  return {
+    enabled: true,
+    rationale:
+      "The question needs multi-step retrieval across responsibility, chronology, conflicts, gaps, or official-source comparisons.",
+    steps: steps.slice(0, args.deepReview ? 5 : 3),
+  };
+}
+
+function documentIdsFromEvidenceResponse(response: any) {
+  return uniq(
+    ((response as any)?.candidates ?? []).flatMap((candidate: any) =>
+      Array.isArray(candidate.clusterDocumentIds) && candidate.clusterDocumentIds.length
+        ? candidate.clusterDocumentIds
+        : [candidate.documentId],
+    ),
+  ).filter(Boolean) as string[];
+}
+
+function summarizeResearchStep(step: MultiStepResearchStep, response: any) {
+  const candidates = Array.isArray(response?.candidates)
+    ? response.candidates
+    : [];
+  const coverageFamilies = uniq(
+    candidates.flatMap((candidate: any) => candidate.coverageFamilies ?? []),
+  ).filter(Boolean) as string[];
+  const retrievalLanes = uniq(
+    candidates.flatMap((candidate: any) => candidate.retrievalLanes ?? []),
+  ).filter(Boolean) as string[];
+
+  return {
+    ...step,
+    candidateCount: Number(response?.totalCandidates ?? candidates.length ?? 0),
+    documentIds: documentIdsFromEvidenceResponse(response),
+    topSources: candidates.slice(0, 5).map((candidate: any) => ({
+      documentId: candidate.documentId ?? null,
+      title: String(candidate.title ?? "Untitled evidence"),
+      sourceLabel: candidate.sourceLabel ?? null,
+      matchScore:
+        typeof candidate.matchScore === "number" ? candidate.matchScore : null,
+      whyRanked: Array.isArray(candidate.whyRanked)
+        ? candidate.whyRanked.slice(0, 4)
+        : [],
+    })),
+    retrievalDecision: response?.retrievalDecision ?? null,
+    queryUnderstanding: response?.queryUnderstanding ?? null,
+    coverageFamilies,
+    retrievalLanes,
+  };
+}
+
+async function runMultiStepResearch(args: {
+  question: string;
+  profile: AirQualityQueryProfile;
+  deepReview?: boolean;
+  anchorDocumentIds: string[];
+  anchorUrlIds: number[];
+  sourceScope: "all" | "files" | "urls" | "mixed";
+  requestedWorkflowMode: "auto" | "landscape" | "case_trace" | "question_review";
+  collectorPurposeId?: string | null;
+  ownerId: string;
+}) {
+  const plan = buildMultiStepResearchPlan({
+    question: args.question,
+    profile: args.profile,
+    deepReview: args.deepReview,
+  });
+
+  if (!plan.enabled) {
+    return {
+      enabled: false,
+      rationale: plan.rationale,
+      steps: [],
+    } satisfies MultiStepResearchResult;
+  }
+
+  const steps: MultiStepResearchResult["steps"] = [];
+  for (const step of plan.steps) {
+    const response = await queryGovernanceWorkspaceEvidence({
+      question: step.question,
+      anchorDocumentIds: args.anchorDocumentIds,
+      anchorUrlIds: args.anchorUrlIds,
+      sourceScope: args.sourceScope,
+      workflowMode:
+        step.id === "timeline" || step.id === "conflicts"
+          ? "case_trace"
+          : args.requestedWorkflowMode,
+      limit: args.deepReview ? 8 : 5,
+      collectorPurposeId: args.collectorPurposeId ?? null,
+      ownerId: args.ownerId,
+    });
+    steps.push(summarizeResearchStep(step, response));
+  }
+
+  return {
+    enabled: true,
+    rationale: plan.rationale,
+    steps,
+  } satisfies MultiStepResearchResult;
+}
+
+function evidenceScore(
+  card: EvidenceCard,
+  keywords: string[],
+  rankByDoc: Map<string, number>,
+  profile: AirQualityQueryProfile,
+) {
   const text = `${card.title}\n${card.text}`.toLowerCase();
   let score = 0;
   for (const token of keywords) {
@@ -376,6 +965,10 @@ function evidenceScore(card: EvidenceCard, keywords: string[], rankByDoc: Map<st
   if (card.kind === "source_chunk") score += 4;
   if (card.kind === "claim") score += 3;
   if (card.kind === "relation") score += 3;
+  if (card.kind === "event" && profile.queryType === "case_timeline") score += 5;
+  if (card.kind === "gap" && profile.queryType === "enforcement_gap_review") score += 6;
+  if (card.kind === "relation" && profile.queryType === "agency_responsibility") score += 5;
+  score += airQualityDomainScore(text, profile);
   return score;
 }
 
@@ -605,6 +1198,10 @@ async function previousResponseIdFromRun(previousRunId?: string | null) {
 }
 
 function mapRun(row: GovernanceAnswerRunRow) {
+  const structured =
+    row.structuredAnswer && typeof row.structuredAnswer === "object"
+      ? (row.structuredAnswer as Record<string, unknown>)
+      : {};
   return {
     id: row.id,
     sessionId: row.sessionId,
@@ -621,6 +1218,25 @@ function mapRun(row: GovernanceAnswerRunRow) {
       ? row.suggestedFollowUps
       : [],
     structuredAnswer: row.structuredAnswer ?? null,
+    queryType: typeof structured.queryType === "string" ? structured.queryType : null,
+    jurisdiction:
+      typeof structured.jurisdiction === "string" ? structured.jurisdiction : null,
+    agencies: Array.isArray(structured.agencies) ? structured.agencies : [],
+    pollutants: Array.isArray(structured.pollutants) ? structured.pollutants : [],
+    timeRange: typeof structured.timeRange === "string" ? structured.timeRange : null,
+    summary: typeof structured.summary === "string" ? structured.summary : null,
+    findings: Array.isArray(structured.findings) ? structured.findings : [],
+    conflicts: Array.isArray(structured.conflicts) ? structured.conflicts : [],
+    evidenceGaps: Array.isArray(structured.evidenceGaps)
+      ? structured.evidenceGaps
+      : [],
+    recommendedNextSteps: Array.isArray(structured.recommendedNextSteps)
+      ? structured.recommendedNextSteps
+      : [],
+    confidence:
+      structured.confidence && typeof structured.confidence === "object"
+        ? structured.confidence
+        : null,
     model: row.model,
     assistModel: row.assistModel,
     openaiResponseId: row.openaiResponseId,
@@ -810,6 +1426,193 @@ export async function getGovernanceAnswerSession(sessionId: string) {
   return mapSession(session, runs);
 }
 
+async function getGovernanceAnswerRunOrThrow(runId: string) {
+  const rows = await prisma.$queryRaw<GovernanceAnswerRunRow[]>`
+    SELECT * FROM "GovernanceAnswerRun" WHERE "id" = ${runId} LIMIT 1
+  `;
+  const run = rows[0];
+  if (!run) {
+    const err: any = new Error("Governance answer run not found");
+    err.status = 404;
+    throw err;
+  }
+  return run;
+}
+
+function numberFrom(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function objectFrom(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : {};
+}
+
+function arrayFrom(value: unknown): any[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+export function buildAnswerEvaluationFromRun(row: GovernanceAnswerRunRow): GovernanceAnswerEvaluation {
+  const validation = objectFrom(row.validation);
+  const retrievalMetadata = objectFrom(row.retrievalMetadata);
+  const structured = objectFrom(row.structuredAnswer);
+  const retrievalDecision = objectFrom(retrievalMetadata.retrievalDecision);
+  const officerFeedback = arrayFrom(validation.officerFeedback);
+  const citationCount = numberFrom(
+    validation.validCitationCount ?? validation.citationCount,
+    arrayFrom(row.citations).length,
+  );
+  const invalidCitationCount = numberFrom(validation.invalidCitationCount, 0);
+  const supportedClaimCount = numberFrom(
+    validation.supportedClaimCount,
+    arrayFrom((structured as any).claimCitations).length,
+  );
+  const evidenceCardCount = numberFrom(
+    validation.evidenceCardCount,
+    arrayFrom(row.evidence).length,
+  );
+  const totalCandidates = numberFrom(retrievalMetadata.totalCandidates, 0);
+  const confidence =
+    typeof retrievalDecision.confidence === "string"
+      ? retrievalDecision.confidence
+      : "low";
+  const evidenceGaps = arrayFrom(structured.evidenceGaps);
+  const conflicts = arrayFrom(structured.conflicts);
+  const retrievalScore = clampScore(
+    (confidence === "high" ? 72 : confidence === "medium" ? 54 : 34) +
+      Math.min(18, totalCandidates * 2) +
+      Math.min(10, evidenceCardCount),
+  );
+  const citationScore = clampScore(
+    citationCount > 0
+      ? 70 + Math.min(20, citationCount * 2) - invalidCitationCount * 10
+      : 10,
+  );
+  const coverageScore = clampScore(
+    30 +
+      Math.min(32, supportedClaimCount * 6) +
+      Math.min(18, evidenceCardCount * 3) -
+      Math.min(30, evidenceGaps.length * 5),
+  );
+  const conflictScore = clampScore(
+    conflicts.length > 0 || evidenceGaps.length > 0
+      ? 72 + Math.min(18, conflicts.length * 4)
+      : 52,
+  );
+  const overall = clampScore(
+    retrievalScore * 0.25 +
+      citationScore * 0.35 +
+      coverageScore * 0.25 +
+      conflictScore * 0.15,
+  );
+
+  const checks: GovernanceAnswerEvaluation["checks"] = [
+    {
+      key: "retrieval",
+      label: "Retrieved evidence strength",
+      status: retrievalScore >= 70 ? "pass" : retrievalScore >= 45 ? "warn" : "fail",
+      detail:
+        totalCandidates > 0
+          ? `${totalCandidates} candidates with ${confidence} retrieval confidence.`
+          : "No retrieval candidates were recorded.",
+    },
+    {
+      key: "citations",
+      label: "Citation integrity",
+      status: citationScore >= 70 ? "pass" : citationScore >= 45 ? "warn" : "fail",
+      detail:
+        citationCount > 0
+          ? `${citationCount} valid citations, ${invalidCitationCount} invalid citations.`
+          : "No valid citations were available.",
+    },
+    {
+      key: "coverage",
+      label: "Officer answer coverage",
+      status: coverageScore >= 70 ? "pass" : coverageScore >= 45 ? "warn" : "fail",
+      detail:
+        evidenceGaps.length > 0
+          ? `${evidenceGaps.length} evidence gaps remain.`
+          : `${supportedClaimCount} supported claims/findings with no explicit evidence gaps.`,
+    },
+    {
+      key: "conflicts",
+      label: "Conflict and gap surfacing",
+      status: conflictScore >= 70 ? "pass" : "warn",
+      detail:
+        conflicts.length > 0
+          ? `${conflicts.length} conflicts or tensions surfaced.`
+          : "No conflicts surfaced; inspect if the question required contradiction review.",
+    },
+  ];
+
+  return {
+    runId: row.id,
+    status: String(validation.status ?? row.groundingStatus ?? "unknown"),
+    qualityBand: String(validation.qualityBand ?? "unsafe"),
+    recommendedAction: String(validation.recommendedAction ?? "broaden_evidence"),
+    scores: {
+      retrieval: retrievalScore,
+      citation: citationScore,
+      coverage: coverageScore,
+      conflict: conflictScore,
+      overall,
+    },
+    checks,
+    officerFeedbackCount: officerFeedback.length,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function evaluateGovernanceAnswerRun(runId: string) {
+  const row = await getGovernanceAnswerRunOrThrow(runId);
+  return buildAnswerEvaluationFromRun(row);
+}
+
+export async function recordGovernanceAnswerFeedback(
+  input: GovernanceAnswerFeedbackInput,
+) {
+  const row = await getGovernanceAnswerRunOrThrow(input.runId);
+  const validation = objectFrom(row.validation);
+  const officerFeedback = arrayFrom(validation.officerFeedback);
+  const feedback = {
+    id: randomUUID(),
+    rating: input.rating,
+    target: input.target ?? "answer",
+    claim: input.claim?.trim() || null,
+    evidenceId: input.evidenceId?.trim() || null,
+    citationQuote: input.citationQuote?.trim().slice(0, 500) || null,
+    comment: input.comment?.trim().slice(0, 1200) || null,
+    requestId: input.requestId ?? null,
+    createdBy: input.createdBy ?? null,
+    createdAt: new Date().toISOString(),
+  };
+
+  const nextValidation = {
+    ...validation,
+    officerFeedback: [...officerFeedback, feedback].slice(-100),
+    latestOfficerFeedback: feedback,
+  };
+
+  await prisma.$executeRaw`
+    UPDATE "GovernanceAnswerRun"
+    SET "updatedAt" = NOW(),
+        "validation" = ${asJson(nextValidation)}
+    WHERE "id" = ${input.runId}
+  `;
+
+  const updated = await getGovernanceAnswerRunOrThrow(input.runId);
+  return {
+    feedback,
+    evaluation: buildAnswerEvaluationFromRun(updated),
+  };
+}
+
 export function claimTextWithinEvidenceScope(
   claim:
     | {
@@ -922,6 +1725,7 @@ async function loadEvidenceCards(p: {
 
   const rankByDoc = new Map(candidateDocumentIds.map((id, index) => [id, index]));
   const keywords = extractKeywords(p.question);
+  const profile = buildAirQualityQueryProfile(p.question);
 
   const chunks = await prisma.sourceChunk.findMany({
     where: {
@@ -1195,7 +1999,7 @@ async function loadEvidenceCards(p: {
   });
 
   return uniqueCards
-    .map((card) => ({ card, score: evidenceScore(card, keywords, rankByDoc) }))
+    .map((card) => ({ card, score: evidenceScore(card, keywords, rankByDoc, profile) }))
     .sort((a, b) => b.score - a.score)
     .map((entry) => entry.card)
     .slice(0, p.maxCards ?? 32);
@@ -1203,6 +2007,7 @@ async function loadEvidenceCards(p: {
 
 async function maybeRerankEvidenceWithAssistModel(p: {
   question: string;
+  profile: AirQualityQueryProfile;
   cards: EvidenceCard[];
   finalLimit: number;
   signal?: AbortSignal;
@@ -1231,11 +2036,18 @@ async function maybeRerankEvidenceWithAssistModel(p: {
           {
             role: "system" as const,
             content:
-              "You are a strict evidence reranker. Return only evidence IDs that directly help answer the user question. Prefer legally/governance-relevant facts and contradiction evidence.",
+              "You are a strict air-quality governance evidence reranker for government officers. Return only evidence IDs that directly help answer the user question. Prefer official sources, orders, directions, court/tribunal records, agency responsibility evidence, enforcement records, timelines, and contradiction/gap evidence.",
           },
           {
             role: "user" as const,
-            content: [`QUESTION:\n${p.question}`, "", "EVIDENCE:", items].join("\n"),
+            content: [
+              `QUESTION:\n${p.question}`,
+              "",
+              `OFFICER_QUERY_PROFILE:\n${JSON.stringify(p.profile)}`,
+              "",
+              "EVIDENCE:",
+              items,
+            ].join("\n"),
           },
         ],
         text: { format: zodTextFormat(RerankSchema, "governance_evidence_rerank") },
@@ -1254,7 +2066,7 @@ async function maybeRerankEvidenceWithAssistModel(p: {
   }
 }
 
-function formatEvidencePack(cards: EvidenceCard[]) {
+function formatEvidencePack(cards: EvidenceCard[], profile: AirQualityQueryProfile) {
   if (!cards.length) return "NO_GOVERNANCE_EVIDENCE_AVAILABLE";
 
   return cards
@@ -1265,6 +2077,8 @@ function formatEvidencePack(cards: EvidenceCard[]) {
         `KIND: ${card.kind}`,
         `DOCUMENT_ID: ${card.documentId ?? "unknown"}`,
         `SOURCE: ${card.sourceLabel ?? card.title}`,
+        `OFFICIAL_SOURCE_CUE: ${officialSourceScore(`${card.title} ${card.sourceLabel ?? ""} ${card.sourceUrl ?? ""}`) > 0 ? "yes" : "no"}`,
+        `AIR_QUALITY_SCORE: ${airQualityDomainScore(`${card.title}\n${card.text}`, profile)}`,
         `TITLE: ${card.title}`,
         "TEXT:",
         card.text,
@@ -1351,7 +2165,38 @@ function validateStructuredAnswer(
     };
   });
 
-  const validCitationCount = flattenValidCitations(claimCitations).length;
+  const validateFindingGroup = (
+    items: Array<z.infer<typeof OfficerFindingSchema>>,
+  ) =>
+    items
+      .map((item) => {
+        const citations = item.citations
+          .map(validateOne)
+          .filter(Boolean) as ValidatedCitation[];
+        if (!citations.length) {
+          droppedClaims.push(item.finding);
+          return null;
+        }
+        return {
+          title: item.title,
+          finding: item.finding,
+          citations,
+        };
+      })
+      .filter(Boolean) as Array<{
+      title: string;
+      finding: string;
+      citations: ValidatedCitation[];
+    }>;
+
+  const findings = validateFindingGroup(raw.findings ?? []);
+  const conflicts = validateFindingGroup(raw.conflicts ?? []);
+
+  const validCitationCount = flattenValidCitations([
+    ...claimCitations,
+    ...findings,
+    ...conflicts,
+  ]).length;
   const status: ValidationReport["status"] =
     validCitationCount > 0 && invalidCitationCount === 0
       ? "verified"
@@ -1362,9 +2207,11 @@ function validateStructuredAnswer(
   return {
     structured: {
       ...raw,
+      findings,
       claimCitations,
       evidence,
       caveats,
+      conflicts,
     },
     validation: {
       status,
@@ -1376,7 +2223,7 @@ function validateStructuredAnswer(
         invalidCitationCount,
         repaired,
         droppedClaims,
-        supportedClaimCount: claimCitations.length,
+        supportedClaimCount: claimCitations.length + findings.length + conflicts.length,
         evidenceCardCount: evidence.length,
       }),
     } satisfies ValidationReport,
@@ -1388,6 +2235,8 @@ async function generateAnswerOnce(p: {
   history: Array<{ role: "user" | "assistant"; content: string }>;
   evidencePack: string;
   evidenceCards: EvidenceCard[];
+  profile: AirQualityQueryProfile;
+  multiStepResearch?: MultiStepResearchResult | null;
   model: string;
   previousResponseId?: string | null;
   repairFrom?: GovernanceAnswerStructured | null;
@@ -1395,11 +2244,15 @@ async function generateAnswerOnce(p: {
 }) {
   const allowedIds = p.evidenceCards.map((card) => card.evidenceId).join(", ");
   const system = [
-    "You are the Governance Workspace answer synthesizer.",
+    "You are the Air Quality Governance Intelligence Workspace answer synthesizer.",
+    "Your user is a government officer, regulator, analyst, field-enforcement reviewer, or public-sector decision maker.",
     "Answer only from the supplied GOVERNANCE_EVIDENCE. Conversation history is context, not evidence.",
     "Do not use outside knowledge for factual claims. If evidence is weak or missing, say so.",
     "Every factual claim in the answer must appear in claimCitations with at least one citation.",
     "Each citation must use an allowed evidenceId and quote a verbatim substring from that evidence TEXT.",
+    "Prioritize official-source evidence from pollution boards, CAQM, environment departments, courts/tribunals, municipal bodies, district administrations, orders, directions, inspections, compliance reports, and action plans.",
+    "Return the officer workflow metadata fields: queryType, jurisdiction, agencies, pollutants, timeRange, summary, findings, conflicts, evidenceGaps, recommendedNextSteps, and confidence.",
+    "Findings and conflicts must be citation-backed. Evidence gaps and recommended next steps may be uncited but must be phrased as review actions, not factual conclusions.",
     "Allowed general suggestions are permitted only inside caveats with kind=suggestion, clearly labeled as not directly established by evidence.",
     "The answer field must be concise markdown using these exact H2 sections in this order:",
     "## Short answer",
@@ -1418,6 +2271,11 @@ async function generateAnswerOnce(p: {
   const user = [
     `QUESTION:\n${p.question}`,
     "",
+    `OFFICER_QUERY_PROFILE:\n${JSON.stringify(p.profile)}`,
+    "",
+    p.multiStepResearch?.enabled
+      ? `MULTI_STEP_RESEARCH_TRACE:\n${JSON.stringify(p.multiStepResearch)}\n`
+      : "",
     `ALLOWED_EVIDENCE_IDS:\n${allowedIds}`,
     "",
     "GOVERNANCE_EVIDENCE:",
@@ -1460,7 +2318,7 @@ async function generateAnswerOnce(p: {
   };
 }
 
-function unsupportedFallback(question: string): GovernanceAnswerStructured {
+function unsupportedFallback(question: string): any {
   return {
     answer:
       `I could not verify an evidence-backed answer to “${question}” from the retrieved governance evidence. ` +
@@ -1486,14 +2344,82 @@ function unsupportedFallback(question: string): GovernanceAnswerStructured {
   };
 }
 
-function buildRetrievalMetadata(evidenceResponse: any, evidenceCards: EvidenceCard[]) {
+function unsupportedAirQualityFallback(
+  question: string,
+  profile: AirQualityQueryProfile = buildAirQualityQueryProfile(question),
+): GovernanceAnswerStructured {
+  return {
+    queryType: profile.queryType,
+    jurisdiction: profile.jurisdiction,
+    agencies: profile.agencies,
+    pollutants: profile.pollutants,
+    timeRange: profile.timeRange,
+    summary:
+      "The retrieved evidence did not support a safe officer-grade answer.",
+    findings: [],
+    answer:
+      `I could not verify an evidence-backed answer to "${question}" from the retrieved air-quality governance evidence. ` +
+      "The safest next step is to inspect the retrieved candidate documents and ask a narrower question tied to a specific order, agency, location, pollutant, or date.",
+    claimCitations: [],
+    evidence: [],
+    caveats: [
+      {
+        kind: "limitation",
+        text: "No factual answer is provided because the available evidence did not pass citation validation.",
+      },
+    ],
+    conflicts: [],
+    evidenceGaps: [
+      "No retrieved evidence passed citation validation for the officer brief.",
+      "A narrower source, agency, location, pollutant, or date may be needed.",
+    ],
+    recommendedNextSteps: [
+      "Broaden evidence retrieval to official orders, directions, inspection records, and compliance/status reports.",
+      "Ask a narrower question tied to one agency, issue, location, or date range.",
+    ],
+    confidence: {
+      level: "low",
+      rationale:
+        "No citation-backed factual claim could be verified from the retrieved evidence.",
+      evidenceCoverage: "missing",
+    },
+    openQuestions: [
+      "Which official order, direction, inspection record, or status report should be treated as the primary source?",
+      "Which agency, jurisdiction, pollutant, and date range should the review focus on?",
+      "Are there conflicting records that refer to the same issue, location, and period?",
+    ],
+    suggestedFollowUps: [
+      "Show official-source evidence only",
+      "Compare the two strongest records",
+      "List missing checks before an officer can rely on this",
+    ],
+  };
+}
+
+function buildRetrievalMetadata(
+  evidenceResponse: any,
+  evidenceCards: EvidenceCard[],
+  profile: AirQualityQueryProfile,
+  selectedDocumentIds: string[] = [],
+  multiStepResearch?: MultiStepResearchResult | null,
+) {
   return {
     promptVersion: GOVERNANCE_ANSWER_PROMPT_VERSION,
+    domain: profile.domain,
+    officerQueryProfile: profile,
+    generationStages: profile.generationStages,
     workflow: evidenceResponse?.workflow ?? null,
     queryUnderstanding: evidenceResponse?.queryUnderstanding ?? null,
     retrievalDecision: evidenceResponse?.retrievalDecision ?? null,
+    multiStepResearch: multiStepResearch ?? null,
     totalCandidates: evidenceResponse?.totalCandidates ?? 0,
     evidenceCardCount: evidenceCards.length,
+    retrievalTraceSummary: buildAnswerRetrievalTraceSummary({
+      evidenceResponse,
+      evidenceCards,
+      selectedDocumentIds,
+      profile,
+    }),
     contradictionSummary: evidenceResponse?.contradictionFoundation?.summary ?? null,
     questionReviewSummary: evidenceResponse?.questionReviewSurface?.summary ?? null,
   };
@@ -1514,6 +2440,7 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
   const requestedWorkflowMode = normalizeWorkflow(input.workflowMode);
   const model = modelForAnswer(input.deepReview);
   const assistModel = modelForAssist();
+  const officerQueryProfile = buildAirQualityQueryProfile(question);
 
   const sessionId = await ensureSession({
     sessionId: input.sessionId ?? null,
@@ -1561,7 +2488,11 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       throw err;
     }
 
-    await input.onStreamEvent?.({ type: "status", message: "Retrieving evidence" });
+    await input.onStreamEvent?.({
+      type: "status",
+      message: "Understanding air-quality governance question",
+    });
+    await input.onStreamEvent?.({ type: "status", message: "Retrieving hybrid governance evidence" });
     const evidenceResponse = await queryGovernanceWorkspaceEvidence({
       question,
       anchorDocumentIds,
@@ -1589,13 +2520,33 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       throw err;
     }
 
-    const retrievedDocumentIds = uniq(
-      ((evidenceResponse as any)?.candidates ?? []).flatMap((candidate: any) =>
-        Array.isArray(candidate.clusterDocumentIds) && candidate.clusterDocumentIds.length
-          ? candidate.clusterDocumentIds
-          : [candidate.documentId],
-      ),
-    ).filter(Boolean) as string[];
+    await input.onStreamEvent?.({
+      type: "status",
+      message: "Planning multi-step research when needed",
+    });
+    const multiStepResearch = await runMultiStepResearch({
+      question,
+      profile: officerQueryProfile,
+      deepReview: input.deepReview,
+      anchorDocumentIds,
+      anchorUrlIds,
+      sourceScope,
+      requestedWorkflowMode,
+      collectorPurposeId: input.collectorPurposeId ?? null,
+      ownerId: input.ownerId ?? "local",
+    });
+
+    if (multiStepResearch.enabled) {
+      await input.onStreamEvent?.({
+        type: "status",
+        message: `Retrieved ${multiStepResearch.steps.length} research lanes`,
+      });
+    }
+
+    const retrievedDocumentIds = uniq([
+      ...documentIdsFromEvidenceResponse(evidenceResponse),
+      ...multiStepResearch.steps.flatMap((step) => step.documentIds),
+    ]);
     const { candidateDocumentIds, manualEvidenceSelection } =
       resolveAnswerCandidateDocumentIds({
         retrievedDocumentIds,
@@ -1618,9 +2569,10 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
     });
     assertEvidenceCardsWithinPurposeScope(initialEvidenceCards, allowedDocumentIds);
 
-    await input.onStreamEvent?.({ type: "status", message: "Ranking evidence" });
+    await input.onStreamEvent?.({ type: "status", message: "Ranking official sources and evidence lanes" });
     const evidenceCards = await maybeRerankEvidenceWithAssistModel({
       question,
+      profile: officerQueryProfile,
       cards: initialEvidenceCards,
       finalLimit: 26,
       signal: input.signal,
@@ -1628,14 +2580,20 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
     assertEvidenceCardsWithinPurposeScope(evidenceCards, allowedDocumentIds);
 
     retrievalMetadata = {
-      ...buildRetrievalMetadata(evidenceResponse, evidenceCards),
+      ...buildRetrievalMetadata(
+        evidenceResponse,
+        evidenceCards,
+        officerQueryProfile,
+        candidateDocumentIds,
+        multiStepResearch,
+      ),
       collectorPurposeId: input.collectorPurposeId ?? null,
       allowedDocumentIds,
       manualEvidenceSelection,
     };
 
     if (!evidenceCards.length) {
-      const fallback = unsupportedFallback(question);
+      const fallback = unsupportedAirQualityFallback(question, officerQueryProfile);
       const validation: ValidationReport = {
         status: "unsupported",
         validCitationCount: 0,
@@ -1675,6 +2633,18 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
           status: "SUCCEEDED",
           question,
           answer: fallback.answer,
+          structuredAnswer: fallback,
+          queryType: fallback.queryType,
+          jurisdiction: fallback.jurisdiction,
+          agencies: fallback.agencies,
+          pollutants: fallback.pollutants,
+          timeRange: fallback.timeRange,
+          summary: fallback.summary,
+          findings: fallback.findings,
+          conflicts: fallback.conflicts,
+          evidenceGaps: fallback.evidenceGaps,
+          recommendedNextSteps: fallback.recommendedNextSteps,
+          confidence: fallback.confidence,
           citations: [],
           evidence: [],
           caveats: fallback.caveats,
@@ -1689,19 +2659,21 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       };
     }
 
-    await input.onStreamEvent?.({ type: "status", message: "Composing answer" });
-    const evidencePack = formatEvidencePack(evidenceCards);
+    await input.onStreamEvent?.({ type: "status", message: "Drafting officer brief" });
+    const evidencePack = formatEvidencePack(evidenceCards, officerQueryProfile);
     const first = await generateAnswerOnce({
       question,
       history: input.history ?? [],
       evidencePack,
       evidenceCards,
+      profile: officerQueryProfile,
+      multiStepResearch,
       model,
       previousResponseId,
       signal: input.signal,
     });
 
-    await input.onStreamEvent?.({ type: "status", message: "Validating citations" });
+    await input.onStreamEvent?.({ type: "status", message: "Checking claim citations" });
     let validated = validateStructuredAnswer(first.answer, evidenceCards, false);
     let openaiResponseId = first.responseId;
 
@@ -1712,6 +2684,8 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
         history: input.history ?? [],
         evidencePack,
         evidenceCards,
+        profile: officerQueryProfile,
+        multiStepResearch,
         model,
         previousResponseId: openaiResponseId ?? previousResponseId,
         repairFrom: first.answer,
@@ -1723,7 +2697,7 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
 
     const finalAnswer =
       validated.validation.status === "unsupported"
-        ? unsupportedFallback(question)
+        ? unsupportedAirQualityFallback(question, officerQueryProfile)
         : (validated.structured as unknown as GovernanceAnswerStructured);
 
     if (validated.validation.status === "unsupported") {
@@ -1775,6 +2749,18 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
         status: "SUCCEEDED",
         question,
         answer: finalAnswer.answer,
+        structuredAnswer: finalAnswer,
+        queryType: finalAnswer.queryType,
+        jurisdiction: finalAnswer.jurisdiction,
+        agencies: finalAnswer.agencies,
+        pollutants: finalAnswer.pollutants,
+        timeRange: finalAnswer.timeRange,
+        summary: finalAnswer.summary,
+        findings: (validated.structured as any).findings ?? [],
+        conflicts: (validated.structured as any).conflicts ?? [],
+        evidenceGaps: finalAnswer.evidenceGaps,
+        recommendedNextSteps: finalAnswer.recommendedNextSteps,
+        confidence: finalAnswer.confidence,
         claimCitations,
         citations,
         evidence,

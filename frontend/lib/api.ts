@@ -3110,6 +3110,18 @@ export type GovernanceAnswerCaveat = {
   citations?: GovernanceAnswerCitation[];
 };
 
+export type GovernanceOfficerFinding = {
+  title: string;
+  finding: string;
+  citations: GovernanceAnswerCitation[];
+};
+
+export type GovernanceAnswerConfidence = {
+  level: "high" | "medium" | "low" | string;
+  rationale: string;
+  evidenceCoverage: "strong" | "adequate" | "thin" | "missing" | string;
+};
+
 export type GovernanceAnswerRun = {
   id: string;
   sessionId?: string;
@@ -3118,6 +3130,18 @@ export type GovernanceAnswerRun = {
   status: string;
   question: string;
   answer: string | null;
+  structuredAnswer?: any;
+  queryType?: string | null;
+  jurisdiction?: string | null;
+  agencies?: string[];
+  pollutants?: string[];
+  timeRange?: string | null;
+  summary?: string | null;
+  findings?: GovernanceOfficerFinding[];
+  conflicts?: GovernanceOfficerFinding[];
+  evidenceGaps?: string[];
+  recommendedNextSteps?: string[];
+  confidence?: GovernanceAnswerConfidence | null;
   claimCitations?: GovernanceAnswerClaimCitation[];
   citations: GovernanceAnswerCitation[];
   evidence: GovernanceAnswerEvidenceCard[];
@@ -3202,6 +3226,93 @@ export type GovernanceAnswerResponse = {
   run: GovernanceAnswerRun;
 };
 
+export type GovernanceAnswerEvaluation = {
+  runId: string;
+  status: string;
+  qualityBand: string;
+  recommendedAction: string;
+  scores: {
+    retrieval: number;
+    citation: number;
+    coverage: number;
+    conflict: number;
+    overall: number;
+  };
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "pass" | "warn" | "fail";
+    detail: string;
+  }>;
+  officerFeedbackCount: number;
+  updatedAt: string;
+};
+
+export type GovernanceAnswerFeedbackRating =
+  | "useful"
+  | "wrong_citation"
+  | "missing_source"
+  | "hallucinated_claim"
+  | "needs_deeper_review";
+
+export type GovernanceAnswerFeedbackResponse = {
+  feedback: {
+    id: string;
+    rating: GovernanceAnswerFeedbackRating;
+    target: "answer" | "claim" | "citation" | "evidence" | string;
+    claim: string | null;
+    evidenceId: string | null;
+    citationQuote: string | null;
+    comment: string | null;
+    createdAt: string;
+  };
+  evaluation: GovernanceAnswerEvaluation;
+};
+
+export type GovernanceAnswerRetrievalTraceSummary = {
+  candidateCount: number;
+  selectedDocumentCount: number;
+  selectedEvidenceCardCount: number;
+  officialSourceCandidateCount: number;
+  officialSourceEvidenceCount: number;
+  laneCounts: Record<string, number>;
+  coverageCounts: Record<string, number>;
+  topReasons: Array<{ reason: string; count: number }>;
+  selectedEvidence: Array<{
+    evidenceId: string;
+    kind: string;
+    documentId: string | null;
+    title: string;
+    sourceLabel: string | null;
+    officialSource: boolean;
+    airQualityScore: number;
+  }>;
+};
+
+export type GovernanceAnswerMultiStepResearch = {
+  enabled: boolean;
+  rationale: string;
+  steps: Array<{
+    id: string;
+    label: string;
+    question: string;
+    purpose: string;
+    candidateCount: number;
+    documentIds: string[];
+    topSources: Array<{
+      documentId: string | null;
+      title: string;
+      sourceLabel: string | null;
+      matchScore: number | null;
+      whyRanked: string[];
+    }>;
+    retrievalDecision: any;
+    queryUnderstanding: any;
+    coverageFamilies: string[];
+    retrievalLanes: string[];
+  }>;
+};
+
 export type GovernanceAnswerStreamEvent =
   | { event: "run"; data: { type: "run"; runId: string; sessionId: string } }
   | { event: "status"; data: { type: "status"; message: string } }
@@ -3280,6 +3391,30 @@ export async function runGovernanceWorkspaceAnswer(payload: GovernanceAnswerPayl
   } catch (err: any) {
     normalizeApiError(err, "Governance answer generation failed");
   }
+}
+
+export async function evaluateGovernanceAnswer(runId: string) {
+  return apiRequest<GovernanceAnswerEvaluation>(
+    "POST",
+    "/api/governance/workspace/answer/evaluate",
+    { body: { runId } },
+  );
+}
+
+export async function sendGovernanceAnswerFeedback(payload: {
+  runId: string;
+  rating: GovernanceAnswerFeedbackRating;
+  target?: "answer" | "claim" | "citation" | "evidence";
+  claim?: string | null;
+  evidenceId?: string | null;
+  citationQuote?: string | null;
+  comment?: string | null;
+}) {
+  return apiRequest<GovernanceAnswerFeedbackResponse>(
+    "POST",
+    "/api/governance/workspace/answer/feedback",
+    { body: stripNullishGovernanceAnswerPayload(payload) },
+  );
 }
 
 function parseSseBlock(block: string): { event: string; data: any } | null {

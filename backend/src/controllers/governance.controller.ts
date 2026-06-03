@@ -12,8 +12,10 @@ import {
 import { queryGovernanceWorkspaceEvidence } from "../services/governanceWorkspaceQuery.service";
 import {
   createGovernanceAnswerSession,
+  evaluateGovernanceAnswerRun,
   getGovernanceAnswerSession,
   listGovernanceAnswerSessions,
+  recordGovernanceAnswerFeedback,
   runGovernanceWorkspaceAnswer,
 } from "../services/governanceWorkspaceAnswer.service";
 import { formatNotebookSseEvent } from "../services/notebookStream.service";
@@ -564,6 +566,72 @@ export async function postGovernanceWorkspaceAnswerHandler(
     });
 
     res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postGovernanceWorkspaceAnswerEvaluateHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const body = (req as any).body ?? {};
+    const runId = String(body.runId || "").trim();
+    const out = await evaluateGovernanceAnswerRun(runId);
+
+    await logGovernanceAudit(req, {
+      action: "governance.workspace.answer.evaluated",
+      resourceType: "CHAT_RUN",
+      resourceId: runId,
+      metadata: {
+        scores: out.scores,
+        qualityBand: out.qualityBand,
+        recommendedAction: out.recommendedAction,
+      },
+    });
+
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postGovernanceWorkspaceAnswerFeedbackHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const body = (req as any).body ?? {};
+    const runId = String(body.runId || "").trim();
+    const out = await recordGovernanceAnswerFeedback({
+      runId,
+      rating: body.rating,
+      target: body.target ?? "answer",
+      claim: typeof body.claim === "string" ? body.claim : null,
+      evidenceId: typeof body.evidenceId === "string" ? body.evidenceId : null,
+      citationQuote:
+        typeof body.citationQuote === "string" ? body.citationQuote : null,
+      comment: typeof body.comment === "string" ? body.comment : null,
+      requestId: (req as any).requestId ?? null,
+      createdBy: null,
+    });
+
+    await logGovernanceAudit(req, {
+      action: "governance.workspace.answer.feedback_recorded",
+      resourceType: "CHAT_RUN",
+      resourceId: runId,
+      metadata: {
+        rating: out.feedback.rating,
+        target: out.feedback.target,
+        evidenceId: out.feedback.evidenceId,
+        evaluation: out.evaluation.scores,
+      },
+    });
+
+    res.status(201).json(out);
   } catch (err) {
     next(err);
   }

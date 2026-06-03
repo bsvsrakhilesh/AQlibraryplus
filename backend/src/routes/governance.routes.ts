@@ -13,6 +13,8 @@ import {
   listGovernanceAnswerSessionsHandler,
   postGovernanceAnswerSessionHandler,
   getGovernanceAnswerSessionHandler,
+  postGovernanceWorkspaceAnswerEvaluateHandler,
+  postGovernanceWorkspaceAnswerFeedbackHandler,
   postGovernanceWorkspaceAnswerHandler,
   postGovernanceWorkspaceAnswerStreamHandler,
   postGovernanceWorkspaceQueryHandler,
@@ -145,6 +147,26 @@ const workspaceAnswerBody = workspaceAnswerSessionBody.extend({
   deepReview: z.boolean().optional(),
 });
 
+const workspaceAnswerEvaluateBody = z.object({
+  runId: z.string().trim().min(1),
+});
+
+const workspaceAnswerFeedbackBody = z.object({
+  runId: z.string().trim().min(1),
+  rating: z.enum([
+    "useful",
+    "wrong_citation",
+    "missing_source",
+    "hallucinated_claim",
+    "needs_deeper_review",
+  ]),
+  target: z.enum(["answer", "claim", "citation", "evidence"]).optional(),
+  claim: nullableOptionalString(1, 900),
+  evidenceId: nullableOptionalString(1, 240),
+  citationQuote: nullableOptionalString(1, 600),
+  comment: nullableOptionalString(1, 1200),
+});
+
 const workspaceQueryBody = z.object({
   question: z.string().trim().max(4000).optional(),
   anchorDocumentIds: z.array(z.string().trim().min(1)).max(25).optional(),
@@ -186,6 +208,18 @@ r.post(
   "/governance/workspace/answer/stream",
   validate({ body: workspaceAnswerBody }),
   postGovernanceWorkspaceAnswerStreamHandler,
+);
+
+r.post(
+  "/governance/workspace/answer/evaluate",
+  validate({ body: workspaceAnswerEvaluateBody }),
+  postGovernanceWorkspaceAnswerEvaluateHandler,
+);
+
+r.post(
+  "/governance/workspace/answer/feedback",
+  validate({ body: workspaceAnswerFeedbackBody }),
+  postGovernanceWorkspaceAnswerFeedbackHandler,
 );
 
 r.post(
