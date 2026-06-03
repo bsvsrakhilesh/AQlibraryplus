@@ -265,6 +265,16 @@ type GovernanceAnswerRunRow = {
   latencyMs: number | null;
 };
 
+type GovernanceAnswerSessionSummaryRow = GovernanceAnswerSessionRow & {
+  runCount: bigint | number | null;
+  latestRunId: string | null;
+  latestRunStatus: string | null;
+  latestRunQuestion: string | null;
+  latestRunCreatedAt: Date | null;
+  latestGroundingStatus: string | null;
+  latestValidation: unknown;
+};
+
 function asJson(value: unknown): Prisma.Sql {
   return Prisma.sql`${JSON.stringify(value ?? null)}::jsonb`;
 }
@@ -648,6 +658,44 @@ function mapSession(row: GovernanceAnswerSessionRow, runs: GovernanceAnswerRunRo
   };
 }
 
+export function mapGovernanceAnswerSessionSummary(
+  row: GovernanceAnswerSessionSummaryRow,
+) {
+  const validation =
+    row.latestValidation && typeof row.latestValidation === "object"
+      ? (row.latestValidation as Record<string, unknown>)
+      : {};
+  const anchorDocumentIds = safeStringArray(row.anchorDocumentIds);
+  const anchorUrlIds = safeNumberArray(row.anchorUrlIds);
+
+  return {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    title: row.title,
+    question: row.question ?? row.latestRunQuestion ?? null,
+    sourceScope: row.sourceScope,
+    requestedWorkflowMode: row.requestedWorkflowMode,
+    resolvedWorkflowMode: row.resolvedWorkflowMode,
+    selectedIssueId: row.selectedIssueId,
+    selectedAgencyId: row.selectedAgencyId,
+    collectorPurposeId: row.collectorPurposeId,
+    anchorDocumentCount: anchorDocumentIds.length,
+    anchorUrlCount: anchorUrlIds.length,
+    runCount: Number(row.runCount ?? 0),
+    latestRunId: row.latestRunId,
+    latestRunStatus: row.latestRunStatus,
+    latestRunCreatedAt: row.latestRunCreatedAt?.toISOString() ?? null,
+    latestGroundingStatus: row.latestGroundingStatus,
+    qualityBand:
+      typeof validation.qualityBand === "string" ? validation.qualityBand : null,
+    recommendedAction:
+      typeof validation.recommendedAction === "string"
+        ? validation.recommendedAction
+        : null,
+  };
+}
+
 export async function createGovernanceAnswerSession(p: {
   question?: string | null;
   anchorDocumentIds?: string[];
@@ -674,6 +722,71 @@ export async function createGovernanceAnswerSession(p: {
     collectorPurposeId: p.collectorPurposeId ?? null,
   });
   return getGovernanceAnswerSession(sessionId);
+}
+
+export async function listGovernanceAnswerSessions(p: {
+  limit?: number;
+  q?: string | null;
+  collectorPurposeId?: string | null;
+  sourceScope?: "all" | "files" | "urls" | "mixed" | null;
+}) {
+  const limit = Math.max(1, Math.min(50, Math.floor(p.limit ?? 20)));
+  const q = String(p.q || "").trim();
+  const collectorPurposeId = String(p.collectorPurposeId || "").trim();
+  const sourceScope = normalizeScope(p.sourceScope);
+  const filters: Prisma.Sql[] = [];
+
+  if (q) {
+    filters.push(Prisma.sql`(
+      s."title" ILIKE ${`%${q}%`} OR
+      s."question" ILIKE ${`%${q}%`} OR
+      latest."question" ILIKE ${`%${q}%`}
+    )`);
+  }
+
+  if (collectorPurposeId) {
+    filters.push(Prisma.sql`s."collectorPurposeId" = ${collectorPurposeId}`);
+  }
+
+  if (p.sourceScope) {
+    filters.push(Prisma.sql`s."sourceScope" = ${sourceScope}`);
+  }
+
+  const whereSql = filters.length
+    ? Prisma.sql`WHERE ${Prisma.join(filters, " AND ")}`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<GovernanceAnswerSessionSummaryRow[]>`
+    SELECT
+      s.*,
+      COALESCE(run_counts."runCount", 0) AS "runCount",
+      latest."id" AS "latestRunId",
+      latest."status" AS "latestRunStatus",
+      latest."question" AS "latestRunQuestion",
+      latest."createdAt" AS "latestRunCreatedAt",
+      latest."groundingStatus" AS "latestGroundingStatus",
+      latest."validation" AS "latestValidation"
+    FROM "GovernanceAnswerSession" s
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS "runCount"
+      FROM "GovernanceAnswerRun" r
+      WHERE r."sessionId" = s."id"
+    ) run_counts ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT *
+      FROM "GovernanceAnswerRun" r
+      WHERE r."sessionId" = s."id"
+      ORDER BY
+        CASE WHEN r."status" = 'SUCCEEDED' THEN 0 ELSE 1 END,
+        r."createdAt" DESC
+      LIMIT 1
+    ) latest ON TRUE
+    ${whereSql}
+    ORDER BY s."updatedAt" DESC
+    LIMIT ${limit}
+  `;
+
+  return rows.map(mapGovernanceAnswerSessionSummary);
 }
 
 export async function getGovernanceAnswerSession(sessionId: string) {

@@ -13,6 +13,7 @@ import { queryGovernanceWorkspaceEvidence } from "../services/governanceWorkspac
 import {
   createGovernanceAnswerSession,
   getGovernanceAnswerSession,
+  listGovernanceAnswerSessions,
   runGovernanceWorkspaceAnswer,
 } from "../services/governanceWorkspaceAnswer.service";
 import { formatNotebookSseEvent } from "../services/notebookStream.service";
@@ -482,6 +483,36 @@ export async function postGovernanceAnswerSessionHandler(
     });
 
     res.status(201).json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listGovernanceAnswerSessionsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const out = await listGovernanceAnswerSessions({
+      limit: parseLimit(req.query.limit),
+      q: parseOptionalString(req.query.q),
+      collectorPurposeId: parseOptionalString(req.query.collectorPurposeId),
+      sourceScope: parseOptionalString(req.query.sourceScope) as any,
+    });
+
+    await logGovernanceAudit(req, {
+      action: "governance.workspace.answer.sessions_listed",
+      resourceType: "CHAT_RUN",
+      resourceId: "governance-answer-sessions",
+      metadata: {
+        count: out.length,
+        sourceScope: parseOptionalString(req.query.sourceScope) ?? null,
+        collectorPurposeId: parseOptionalString(req.query.collectorPurposeId) ?? null,
+      },
+    });
+
+    res.json({ sessions: out });
   } catch (err) {
     next(err);
   }

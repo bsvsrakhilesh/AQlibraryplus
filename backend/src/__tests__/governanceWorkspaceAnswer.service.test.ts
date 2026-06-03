@@ -119,3 +119,45 @@ test("answer quality summary marks unsupported answers as unsafe", async () => {
   assert.equal(summary.qualityBand, "unsafe");
   assert.equal(summary.recommendedAction, "broaden_evidence");
 });
+
+test("answer session summary maps latest quality and recovery counts", async () => {
+  const { mapGovernanceAnswerSessionSummary } = await loadAnswerScopeHelpers();
+
+  const summary = mapGovernanceAnswerSessionSummary({
+    id: "session-1",
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-02T00:00:00.000Z"),
+    createdBy: null,
+    requestId: null,
+    title: "Air quality directions",
+    question: "What happened?",
+    anchorDocumentIds: ["doc-1", "doc-2"],
+    anchorUrlIds: [10],
+    sourceScope: "files",
+    requestedWorkflowMode: "auto",
+    resolvedWorkflowMode: "question_review",
+    selectedIssueId: null,
+    selectedAgencyId: null,
+    collectorPurposeId: "purpose-1",
+    metadata: null,
+    runCount: BigInt(3),
+    latestRunId: "run-3",
+    latestRunStatus: "SUCCEEDED",
+    latestRunQuestion: "What changed?",
+    latestRunCreatedAt: new Date("2026-01-02T00:00:00.000Z"),
+    latestGroundingStatus: "verified",
+    latestValidation: {
+      qualityBand: "strong",
+      recommendedAction: "use",
+    },
+  });
+
+  assert.equal(summary.id, "session-1");
+  assert.equal(summary.anchorDocumentCount, 2);
+  assert.equal(summary.anchorUrlCount, 1);
+  assert.equal(summary.runCount, 3);
+  assert.equal(summary.latestRunId, "run-3");
+  assert.equal(summary.qualityBand, "strong");
+  assert.equal(summary.recommendedAction, "use");
+  assert.equal(summary.collectorPurposeId, "purpose-1");
+});

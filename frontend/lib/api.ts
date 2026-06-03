@@ -3156,6 +3156,29 @@ export type GovernanceAnswerSession = {
   runs: GovernanceAnswerRun[];
 };
 
+export type GovernanceAnswerSessionSummary = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  title: string | null;
+  question: string | null;
+  sourceScope: string | null;
+  requestedWorkflowMode: string | null;
+  resolvedWorkflowMode: string | null;
+  selectedIssueId: string | null;
+  selectedAgencyId: string | null;
+  collectorPurposeId?: string | null;
+  anchorDocumentCount: number;
+  anchorUrlCount: number;
+  runCount: number;
+  latestRunId: string | null;
+  latestRunStatus: string | null;
+  latestRunCreatedAt: string | null;
+  latestGroundingStatus: string | null;
+  qualityBand: string | null;
+  recommendedAction: string | null;
+};
+
 export type GovernanceAnswerPayload = {
   question: string;
   sessionId?: string | null;
@@ -3231,6 +3254,17 @@ export async function createGovernanceAnswerSession(payload: Partial<GovernanceA
 export async function getGovernanceAnswerSession(sessionId: string) {
   return apiGet<GovernanceAnswerSession>(
     `/api/governance/workspace/answer-sessions/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+export async function listGovernanceAnswerSessions(params?: {
+  limit?: number;
+  q?: string;
+  collectorPurposeId?: string | null;
+  sourceScope?: "all" | "files" | "urls" | "mixed" | "";
+}) {
+  return apiGet<{ sessions: GovernanceAnswerSessionSummary[] }>(
+    `/api/governance/workspace/answer-sessions${buildGovernanceQuery(params)}`,
   );
 }
 

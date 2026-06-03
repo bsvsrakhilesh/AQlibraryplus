@@ -32,6 +32,7 @@ import {
   getGovernanceIssuesDirectory,
   getGovernanceIssueTimeline,
   getUrlRevisions,
+  listGovernanceAnswerSessions,
   queryGovernanceWorkspaceEvidence,
   streamGovernanceWorkspaceAnswer,
   type AuditLogRow,
@@ -42,6 +43,7 @@ import {
   type GovernanceAnswerCitation,
   type GovernanceAnswerRun,
   type GovernanceAnswerSession,
+  type GovernanceAnswerSessionSummary,
 } from "../lib/api";
 import NotebookTemplateModal from "../components/governance/NotebookTemplateModal";
 import { notebookClient } from "../lib/notebookClient";
@@ -1405,6 +1407,183 @@ function AnswerSessionPanel({
   );
 }
 
+function InvestigationLibraryPanel({
+  sessions,
+  loading,
+  search,
+  setSearch,
+  sourceScopeFilter,
+  setSourceScopeFilter,
+  useCurrentPurpose,
+  setUseCurrentPurpose,
+  hasCurrentPurpose,
+  currentSessionId,
+  openingSessionId,
+  onOpen,
+  onRefresh,
+}: {
+  sessions: GovernanceAnswerSessionSummary[];
+  loading: boolean;
+  search: string;
+  setSearch: (value: string) => void;
+  sourceScopeFilter: "" | "all" | "files" | "urls" | "mixed";
+  setSourceScopeFilter: (value: "" | "all" | "files" | "urls" | "mixed") => void;
+  useCurrentPurpose: boolean;
+  setUseCurrentPurpose: (value: boolean) => void;
+  hasCurrentPurpose: boolean;
+  currentSessionId: string | null;
+  openingSessionId: string | null;
+  onOpen: (sessionId: string) => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="rounded-[26px] border border-slate-200 bg-white/90 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.07)] backdrop-blur-sm">
+      <SectionHeader
+        icon={<BookOpen className="h-4 w-4" />}
+        title="Investigation library"
+        subtitle="Recover previous answer sessions with citations, quality status, and follow-ups intact."
+        action={
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
+            Refresh
+          </button>
+        }
+      />
+
+      <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(0,1fr),160px,auto]">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search saved investigations"
+            className="h-10 w-full rounded-2xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+          />
+        </label>
+        <select
+          value={sourceScopeFilter}
+          onChange={(event) =>
+            setSourceScopeFilter(event.target.value as "" | "all" | "files" | "urls" | "mixed")
+          }
+          className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+        >
+          <option value="">Any scope</option>
+          <option value="all">All sources</option>
+          <option value="files">Files</option>
+          <option value="urls">Saved URLs</option>
+          <option value="mixed">Mixed</option>
+        </select>
+        {hasCurrentPurpose ? (
+          <button
+            type="button"
+            onClick={() => setUseCurrentPurpose(!useCurrentPurpose)}
+            className={[
+              "h-10 rounded-2xl border px-3 text-sm font-medium transition",
+              useCurrentPurpose
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+            ].join(" ")}
+          >
+            Current purpose
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {loading && !sessions.length ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading saved investigations
+          </div>
+        ) : sessions.length ? (
+          sessions.map((session) => {
+            const active = session.id === currentSessionId;
+            const band =
+              session.qualityBand && session.qualityBand in answerQualityStyles
+                ? (session.qualityBand as AnswerQualityBand)
+                : null;
+            const tone = band ? answerQualityStyles[band] : null;
+
+            return (
+              <div
+                key={session.id}
+                className={[
+                  "rounded-2xl border p-3 transition",
+                  active
+                    ? "border-indigo-300 bg-indigo-50/60"
+                    : "border-slate-200 bg-slate-50/70",
+                ].join(" ")}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="line-clamp-2 text-sm font-semibold leading-6 text-slate-950">
+                      {session.title || session.question || "Untitled investigation"}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-medium text-slate-500">
+                      <span>Updated {formatDate(session.updatedAt)}</span>
+                      <span>Runs: {session.runCount}</span>
+                      {session.resolvedWorkflowMode || session.requestedWorkflowMode ? (
+                        <span>
+                          {humanizeEnumValue(
+                            session.resolvedWorkflowMode || session.requestedWorkflowMode,
+                            "Workflow",
+                          )}
+                        </span>
+                      ) : null}
+                      {session.sourceScope ? (
+                        <span>{humanizeEnumValue(session.sourceScope, "Scope")}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {tone ? (
+                      <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${tone.badge}`}>
+                        {tone.label}
+                      </span>
+                    ) : null}
+                    {active ? (
+                      <span className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+                        Open
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => onOpen(session.id)}
+                      disabled={openingSessionId === session.id}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {openingSessionId === session.id ? "Opening" : "Open"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <EmptyPanel
+            title="No saved investigations yet"
+            body="Generate an answer to create one."
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function latestRecoverableRun(session: GovernanceAnswerSession) {
+  const runs = session.runs ?? [];
+  return (
+    [...runs].reverse().find((run) => run.status === "SUCCEEDED") ??
+    runs[runs.length - 1] ??
+    null
+  );
+}
+
 function GovernanceAnswerPanel({
   run,
   draftText,
@@ -1868,6 +2047,12 @@ export default function GovernanceWorkspacePage() {
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [answerExporting, setAnswerExporting] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [investigationSearch, setInvestigationSearch] = useState("");
+  const [investigationSourceScope, setInvestigationSourceScope] =
+    useState<"" | "all" | "files" | "urls" | "mixed">("");
+  const [investigationCurrentPurposeOnly, setInvestigationCurrentPurposeOnly] =
+    useState(false);
+  const [openingSessionId, setOpeningSessionId] = useState<string | null>(null);
   const answerAbortRef = useRef<AbortController | null>(null);
   const constrainedPurposeId = launchIntent?.collectorPurposeId ?? null;
   const constrainedPurposeTitle =
@@ -1898,6 +2083,26 @@ export default function GovernanceWorkspacePage() {
     queryKey: ["governance-answer-session", answerSessionId],
     enabled: Boolean(answerSessionId),
     queryFn: async () => getGovernanceAnswerSession(String(answerSessionId)),
+  });
+
+  const investigationLibraryQuery = useQuery({
+    queryKey: [
+      "governance-answer-session-library",
+      investigationSearch.trim(),
+      investigationSourceScope,
+      investigationCurrentPurposeOnly ? constrainedPurposeId : null,
+    ],
+    queryFn: async () =>
+      listGovernanceAnswerSessions({
+        limit: 20,
+        q: investigationSearch.trim() || undefined,
+        sourceScope: investigationSourceScope,
+        collectorPurposeId:
+          investigationCurrentPurposeOnly && constrainedPurposeId
+            ? constrainedPurposeId
+            : undefined,
+      }),
+    staleTime: 20_000,
   });
 
   useEffect(() => {
@@ -2376,6 +2581,7 @@ export default function GovernanceWorkspacePage() {
                 setAnswerDraft(event.data.run.answer ?? "");
                 setAnswerStatus("Answer saved");
                 void answerSessionQuery.refetch();
+                void investigationLibraryQuery.refetch();
                 break;
               case "error":
                 setAnswerError(event.data.message || "Governance answer generation failed.");
@@ -2404,6 +2610,7 @@ export default function GovernanceWorkspacePage() {
       answerRun,
       answerSessionId,
       answerSessionQuery.refetch,
+      investigationLibraryQuery.refetch,
       launchIntent?.anchorDocumentIds,
       launchIntent?.anchorUrlIds,
       selectedAgencyId,
@@ -2430,6 +2637,27 @@ export default function GovernanceWorkspacePage() {
     setAnswerDraft(run.answer ?? "");
     setAnswerError(null);
     setAnswerStatus(null);
+  }, []);
+
+  const openInvestigationSession = React.useCallback(async (sessionId: string) => {
+    setOpeningSessionId(sessionId);
+    setAnswerError(null);
+    try {
+      const session = await getGovernanceAnswerSession(sessionId);
+      const run = latestRecoverableRun(session);
+
+      setAnswerSessionId(session.id);
+      setAnswerRun(run);
+      setAnswerDraft(run?.answer ?? "");
+      setAnswerStatus(null);
+      setFollowUpQuestion("");
+      setWorkspaceQuestion(run?.question || session.question || "");
+      setAnswerError(null);
+    } catch (err: any) {
+      setAnswerError(err?.message || "Could not open the saved investigation.");
+    } finally {
+      setOpeningSessionId(null);
+    }
   }, []);
 
   const submitFollowUpAnswer = React.useCallback(() => {
@@ -3801,6 +4029,25 @@ export default function GovernanceWorkspacePage() {
             </span>
           )}
         </div>
+
+        <InvestigationLibraryPanel
+          sessions={investigationLibraryQuery.data?.sessions ?? []}
+          loading={
+            investigationLibraryQuery.isLoading ||
+            investigationLibraryQuery.isFetching
+          }
+          search={investigationSearch}
+          setSearch={setInvestigationSearch}
+          sourceScopeFilter={investigationSourceScope}
+          setSourceScopeFilter={setInvestigationSourceScope}
+          useCurrentPurpose={investigationCurrentPurposeOnly}
+          setUseCurrentPurpose={setInvestigationCurrentPurposeOnly}
+          hasCurrentPurpose={Boolean(constrainedPurposeId)}
+          currentSessionId={answerSessionId}
+          openingSessionId={openingSessionId}
+          onOpen={(sessionId) => void openInvestigationSession(sessionId)}
+          onRefresh={() => void investigationLibraryQuery.refetch()}
+        />
 
         {answerSessionId ? (
           <AnswerSessionPanel

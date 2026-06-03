@@ -10,6 +10,7 @@ import {
   getIssueRelationsHandler,
   getIssueTimelineHandler,
   getIssuesDirectoryHandler,
+  listGovernanceAnswerSessionsHandler,
   postGovernanceAnswerSessionHandler,
   getGovernanceAnswerSessionHandler,
   postGovernanceWorkspaceAnswerHandler,
@@ -127,6 +128,13 @@ const workspaceAnswerSessionBody = z.object({
   collectorPurposeId: nullableOptionalString(),
 });
 
+const workspaceAnswerSessionListQuery = z.object({
+  limit: z.coerce.number().int().positive().max(50).optional(),
+  q: nullableOptionalString(1, 240),
+  collectorPurposeId: nullableOptionalString(),
+  sourceScope: z.enum(["all", "files", "urls", "mixed"]).optional(),
+});
+
 const workspaceAnswerBody = workspaceAnswerSessionBody.extend({
   question: z.string().trim().min(1).max(4000),
   history: z.array(workspaceAnswerHistoryItem).max(24).optional(),
@@ -153,6 +161,12 @@ r.post(
   "/governance/workspace/answer-sessions",
   validate({ body: workspaceAnswerSessionBody }),
   postGovernanceAnswerSessionHandler,
+);
+
+r.get(
+  "/governance/workspace/answer-sessions",
+  validate({ query: workspaceAnswerSessionListQuery }),
+  listGovernanceAnswerSessionsHandler,
 );
 
 r.get(
