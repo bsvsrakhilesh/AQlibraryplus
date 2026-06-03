@@ -126,6 +126,7 @@ const workspaceAnswerSessionBody = z.object({
   selectedIssueId: nullableOptionalString(),
   selectedAgencyId: nullableOptionalString(),
   collectorPurposeId: nullableOptionalString(),
+  selectedDocumentIds: z.array(z.string().trim().min(1)).max(25).optional(),
 });
 
 const workspaceAnswerSessionListQuery = z.object({

@@ -44,6 +44,7 @@ import {
   type GovernanceAnswerRun,
   type GovernanceAnswerSession,
   type GovernanceAnswerSessionSummary,
+  type GovernanceWorkspaceEvidenceCandidate,
 } from "../lib/api";
 import NotebookTemplateModal from "../components/governance/NotebookTemplateModal";
 import { notebookClient } from "../lib/notebookClient";
@@ -1584,6 +1585,35 @@ function latestRecoverableRun(session: GovernanceAnswerSession) {
   );
 }
 
+function candidateSourceDocumentIds(candidate: GovernanceWorkspaceEvidenceCandidate) {
+  const ids =
+    candidate.clusterDocumentIds?.length
+      ? candidate.clusterDocumentIds
+      : [candidate.documentId];
+  return Array.from(new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)));
+}
+
+function selectedEvidenceDocumentIds(
+  candidates: GovernanceWorkspaceEvidenceCandidate[],
+  selectedCandidateIds: string[],
+) {
+  const selected = new Set(selectedCandidateIds);
+  return Array.from(
+    new Set(
+      candidates
+        .filter((candidate) => selected.has(candidate.documentId))
+        .flatMap(candidateSourceDocumentIds),
+    ),
+  );
+}
+
+function runSelectedEvidenceDocumentIds(run: GovernanceAnswerRun | null) {
+  const selection = run?.retrievalMetadata?.manualEvidenceSelection;
+  return Array.isArray(selection?.selectedDocumentIds)
+    ? selection.selectedDocumentIds.map(String).filter(Boolean)
+    : [];
+}
+
 function GovernanceAnswerPanel({
   run,
   draftText,
@@ -2053,6 +2083,9 @@ export default function GovernanceWorkspacePage() {
   const [investigationCurrentPurposeOnly, setInvestigationCurrentPurposeOnly] =
     useState(false);
   const [openingSessionId, setOpeningSessionId] = useState<string | null>(null);
+  const [selectedEvidenceCandidateIds, setSelectedEvidenceCandidateIds] =
+    useState<string[]>([]);
+  const [evidenceSelectionDirty, setEvidenceSelectionDirty] = useState(false);
   const answerAbortRef = useRef<AbortController | null>(null);
   const constrainedPurposeId = launchIntent?.collectorPurposeId ?? null;
   const constrainedPurposeTitle =
@@ -2517,9 +2550,50 @@ export default function GovernanceWorkspacePage() {
   const hasAdvancedFiltersApplied =
     exactLookupId.length > 0 || hasPinnedAnchors || sourceScope !== "all";
   const evidenceCandidates = workspaceEvidenceQuery.data?.candidates ?? [];
+  const recommendedEvidenceCandidateIds = useMemo(
+    () => evidenceCandidates.map((candidate) => candidate.documentId),
+    [evidenceCandidates],
+  );
+  const selectedEvidenceCandidateSet = useMemo(
+    () => new Set(selectedEvidenceCandidateIds),
+    [selectedEvidenceCandidateIds],
+  );
+  const lockedEvidenceDocumentIds = useMemo(
+    () =>
+      selectedEvidenceDocumentIds(
+        evidenceCandidates,
+        selectedEvidenceCandidateIds,
+      ),
+    [evidenceCandidates, selectedEvidenceCandidateIds],
+  );
+  const lockedEvidenceCounts = useMemo(() => {
+    const selected = evidenceCandidates.filter((candidate) =>
+      selectedEvidenceCandidateSet.has(candidate.documentId),
+    );
+    return {
+      cardCount: selected.length,
+      documentCount: lockedEvidenceDocumentIds.length,
+      fileCount: selected.filter((candidate) => candidate.kind === "FILE").length,
+      urlCount: selected.filter((candidate) => candidate.kind === "URL").length,
+      anchorCount: selected.filter((candidate) => candidate.anchor).length,
+    };
+  }, [evidenceCandidates, lockedEvidenceDocumentIds.length, selectedEvidenceCandidateSet]);
+
+  useEffect(() => {
+    if (!workspaceEvidenceQuery.data) return;
+    setSelectedEvidenceCandidateIds(recommendedEvidenceCandidateIds);
+    setEvidenceSelectionDirty(false);
+  }, [recommendedEvidenceCandidateIds, workspaceEvidenceQuery.data]);
 
   const startGovernanceAnswer = React.useCallback(
-    async (question: string, options?: { deepReview?: boolean; previousRunId?: string | null }) => {
+    async (
+      question: string,
+      options?: {
+        deepReview?: boolean;
+        previousRunId?: string | null;
+        selectedDocumentIds?: string[];
+      },
+    ) => {
       const trimmedQuestion = question.trim();
       if (!trimmedQuestion) return;
 
@@ -2539,6 +2613,12 @@ export default function GovernanceWorkspacePage() {
           ? options.previousRunId ?? null
           : answerRun?.id ?? null;
       const includeHistory = Boolean(previousRunId && answerRun?.answer);
+      const selectedDocumentIds =
+        options && Object.prototype.hasOwnProperty.call(options, "selectedDocumentIds")
+          ? options.selectedDocumentIds ?? []
+          : lockedEvidenceDocumentIds.length
+            ? lockedEvidenceDocumentIds
+            : runSelectedEvidenceDocumentIds(answerRun);
 
       try {
         await streamGovernanceWorkspaceAnswer(
@@ -2559,6 +2639,7 @@ export default function GovernanceWorkspacePage() {
             selectedIssueId,
             selectedAgencyId,
             collectorPurposeId: constrainedPurposeId,
+            selectedDocumentIds,
             limit: 12,
             deepReview: options?.deepReview === true,
           },
@@ -2613,6 +2694,7 @@ export default function GovernanceWorkspacePage() {
       investigationLibraryQuery.refetch,
       launchIntent?.anchorDocumentIds,
       launchIntent?.anchorUrlIds,
+      lockedEvidenceDocumentIds,
       selectedAgencyId,
       selectedIssueId,
       sourceScope,
@@ -2652,6 +2734,8 @@ export default function GovernanceWorkspacePage() {
       setAnswerStatus(null);
       setFollowUpQuestion("");
       setWorkspaceQuestion(run?.question || session.question || "");
+      setSelectedEvidenceCandidateIds([]);
+      setEvidenceSelectionDirty(false);
       setAnswerError(null);
     } catch (err: any) {
       setAnswerError(err?.message || "Could not open the saved investigation.");
@@ -2664,8 +2748,13 @@ export default function GovernanceWorkspacePage() {
     const question = followUpQuestion.trim();
     if (!question) return;
     setFollowUpQuestion("");
-    void startGovernanceAnswer(question, { previousRunId: answerRun?.id ?? null });
-  }, [answerRun?.id, followUpQuestion, startGovernanceAnswer]);
+    void startGovernanceAnswer(question, {
+      previousRunId: answerRun?.id ?? null,
+      selectedDocumentIds: lockedEvidenceDocumentIds.length
+        ? lockedEvidenceDocumentIds
+        : runSelectedEvidenceDocumentIds(answerRun),
+    });
+  }, [answerRun, followUpQuestion, lockedEvidenceDocumentIds, startGovernanceAnswer]);
 
   const canGenerateAnswerFromEvidence =
     Boolean(workspaceEvidenceQuery.data) &&
@@ -2673,18 +2762,51 @@ export default function GovernanceWorkspacePage() {
     !answerLoading &&
     workspaceQuestion.trim().length > 0 &&
     evidenceCandidates.length > 0 &&
+    lockedEvidenceDocumentIds.length > 0 &&
     !(
       constrainedPurposeId &&
       (workspaceEvidenceQuery.data?.evidenceScope?.allowedDocumentIds.length ??
         0) === 0
     );
 
+  const selectAllEvidenceCandidates = React.useCallback(() => {
+    setSelectedEvidenceCandidateIds(recommendedEvidenceCandidateIds);
+    setEvidenceSelectionDirty(true);
+  }, [recommendedEvidenceCandidateIds]);
+
+  const clearEvidenceCandidates = React.useCallback(() => {
+    setSelectedEvidenceCandidateIds([]);
+    setEvidenceSelectionDirty(true);
+  }, []);
+
+  const resetEvidenceCandidates = React.useCallback(() => {
+    setSelectedEvidenceCandidateIds(recommendedEvidenceCandidateIds);
+    setEvidenceSelectionDirty(false);
+  }, [recommendedEvidenceCandidateIds]);
+
+  const toggleEvidenceCandidate = React.useCallback((documentId: string) => {
+    setSelectedEvidenceCandidateIds((current) => {
+      const next = new Set(current);
+      if (next.has(documentId)) {
+        next.delete(documentId);
+      } else {
+        next.add(documentId);
+      }
+      return Array.from(next);
+    });
+    setEvidenceSelectionDirty(true);
+  }, []);
+
   const generateAnswerFromEvidence = React.useCallback(() => {
     const question = workspaceQuestion.trim();
     if (!question || !canGenerateAnswerFromEvidence) return;
-    void startGovernanceAnswer(question, { previousRunId: null });
+    void startGovernanceAnswer(question, {
+      previousRunId: null,
+      selectedDocumentIds: lockedEvidenceDocumentIds,
+    });
   }, [
     canGenerateAnswerFromEvidence,
+    lockedEvidenceDocumentIds,
     startGovernanceAnswer,
     workspaceQuestion,
   ]);
@@ -2692,8 +2814,13 @@ export default function GovernanceWorkspacePage() {
   const regenerateAnswer = React.useCallback(() => {
     const question = answerRun?.question || workspaceQuestion.trim();
     if (!question) return;
-    void startGovernanceAnswer(question, { previousRunId: answerRun?.previousRunId ?? null });
-  }, [answerRun?.previousRunId, answerRun?.question, startGovernanceAnswer, workspaceQuestion]);
+    void startGovernanceAnswer(question, {
+      previousRunId: answerRun?.previousRunId ?? null,
+      selectedDocumentIds: lockedEvidenceDocumentIds.length
+        ? lockedEvidenceDocumentIds
+        : runSelectedEvidenceDocumentIds(answerRun),
+    });
+  }, [answerRun, lockedEvidenceDocumentIds, startGovernanceAnswer, workspaceQuestion]);
 
   const deepReviewAnswer = React.useCallback(() => {
     const question = answerRun?.question || workspaceQuestion.trim();
@@ -2701,8 +2828,11 @@ export default function GovernanceWorkspacePage() {
     void startGovernanceAnswer(question, {
       deepReview: true,
       previousRunId: answerRun?.id ?? null,
+      selectedDocumentIds: lockedEvidenceDocumentIds.length
+        ? lockedEvidenceDocumentIds
+        : runSelectedEvidenceDocumentIds(answerRun),
     });
-  }, [answerRun?.id, answerRun?.question, startGovernanceAnswer, workspaceQuestion]);
+  }, [answerRun, lockedEvidenceDocumentIds, startGovernanceAnswer, workspaceQuestion]);
 
   const copyAnswer = React.useCallback(() => {
     const text = answerRun?.answer || answerDraft;
@@ -4150,6 +4280,69 @@ export default function GovernanceWorkspacePage() {
                   {evidenceReadiness.detail}
                 </p>
 
+                <div className="mt-4 rounded-2xl border border-indigo-200/80 bg-indigo-50/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-700">
+                        Answer source set
+                      </div>
+                      <div className="mt-1 text-sm text-slate-700">
+                        Answer will use selected retrieved documents only.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllEvidenceCandidates}
+                        className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearEvidenceCandidates}
+                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetEvidenceCandidates}
+                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Reset to recommended
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-white bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800">
+                      {lockedEvidenceCounts.documentCount} documents
+                    </span>
+                    <span className="rounded-full border border-white bg-white/90 px-3 py-1 text-xs font-medium text-slate-700">
+                      Cards {lockedEvidenceCounts.cardCount}
+                    </span>
+                    <span className="rounded-full border border-white bg-white/90 px-3 py-1 text-xs font-medium text-slate-700">
+                      Files / URLs {lockedEvidenceCounts.fileCount} /{" "}
+                      {lockedEvidenceCounts.urlCount}
+                    </span>
+                    <span className="rounded-full border border-white bg-white/90 px-3 py-1 text-xs font-medium text-slate-700">
+                      Anchors {lockedEvidenceCounts.anchorCount}
+                    </span>
+                    {evidenceSelectionDirty ? (
+                      <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-medium text-amber-800">
+                        Curated
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {!lockedEvidenceCounts.documentCount ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-amber-800">
+                      Select at least one retrieved document before generating an answer.
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
@@ -5190,23 +5383,73 @@ export default function GovernanceWorkspacePage() {
               {evidenceCandidates.length ? (
                 evidenceCandidates.map((candidate) => {
                   const isActive = candidate.documentId === activeDocumentId;
+                  const isSelected = selectedEvidenceCandidateSet.has(
+                    candidate.documentId,
+                  );
 
                   return (
-                    <button
+                    <div
                       key={candidate.documentId}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setDocumentInput(candidate.documentId);
                         setActiveDocumentId(candidate.documentId);
                         setSelectedProvenance(null);
                       }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setDocumentInput(candidate.documentId);
+                          setActiveDocumentId(candidate.documentId);
+                          setSelectedProvenance(null);
+                        }
+                      }}
                       className={[
                         "rounded-2xl border p-4 text-left transition",
                         isActive
                           ? "border-sky-300 bg-sky-50/70 shadow-sm"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60",
+                          : isSelected
+                            ? "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60"
+                            : "border-slate-200 bg-slate-50/80 opacity-75 hover:border-slate-300",
                       ].join(" ")}
                     >
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <span
+                          className={[
+                            "rounded-full border px-3 py-1 text-xs font-semibold",
+                            isSelected
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 bg-white text-slate-600",
+                          ].join(" ")}
+                        >
+                          {isSelected ? "Included in answer" : "Excluded from answer"}
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleEvidenceCandidate(candidate.documentId);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              toggleEvidenceCandidate(candidate.documentId);
+                            }
+                          }}
+                          className={[
+                            "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                            isSelected
+                              ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                              : "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-white",
+                          ].join(" ")}
+                        >
+                          {isSelected ? "Exclude" : "Include"}
+                        </span>
+                      </div>
+
                       <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                         <span>
                           {candidate.kind === "URL"
@@ -5431,7 +5674,7 @@ export default function GovernanceWorkspacePage() {
                           </span>
                         ) : null}
                       </div>
-                    </button>
+                    </div>
                   );
                 })
               ) : workspaceEvidenceQuery.isFetched &&

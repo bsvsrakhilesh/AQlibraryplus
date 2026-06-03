@@ -29,6 +29,7 @@ export type GovernanceAnswerInput = {
   limit?: number;
   selectedIssueId?: string | null;
   selectedAgencyId?: string | null;
+  selectedDocumentIds?: string[];
   deepReview?: boolean;
   requestId?: string | null;
   createdBy?: string | null;
@@ -848,6 +849,63 @@ export function assertEvidenceCardsWithinPurposeScope(
   throw error;
 }
 
+export function resolveAnswerCandidateDocumentIds(p: {
+  retrievedDocumentIds: string[];
+  selectedDocumentIds?: string[] | null;
+  allowedDocumentIds?: string[] | null;
+}) {
+  const retrievedDocumentIds = safeStringArray(p.retrievedDocumentIds);
+  const selectedDocumentIds = safeStringArray(p.selectedDocumentIds);
+  const allowedDocumentIdSet = p.allowedDocumentIds
+    ? new Set(safeStringArray(p.allowedDocumentIds))
+    : null;
+
+  if (!selectedDocumentIds.length) {
+    return {
+      candidateDocumentIds: retrievedDocumentIds,
+      manualEvidenceSelection: null,
+    };
+  }
+
+  const selectedDocumentIdSet = new Set(selectedDocumentIds);
+  const retrievedDocumentIdSet = new Set(retrievedDocumentIds);
+  const outsideRetrieval = selectedDocumentIds.filter(
+    (documentId) => !retrievedDocumentIdSet.has(documentId),
+  );
+  if (outsideRetrieval.length) {
+    const error: any = new Error(
+      "Selected evidence is no longer part of the retrieved document set. Run Find evidence again.",
+    );
+    error.status = 400;
+    throw error;
+  }
+
+  if (allowedDocumentIdSet) {
+    const outsidePurpose = selectedDocumentIds.filter(
+      (documentId) => !allowedDocumentIdSet.has(documentId),
+    );
+    if (outsidePurpose.length) {
+      const error: any = new Error(
+        "Selected evidence is outside the current purpose boundary.",
+      );
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  return {
+    candidateDocumentIds: retrievedDocumentIds.filter((documentId) =>
+      selectedDocumentIdSet.has(documentId),
+    ),
+    manualEvidenceSelection: {
+      active: true,
+      selectedDocumentIds,
+      selectedDocumentCount: selectedDocumentIds.length,
+      retrievedDocumentCount: retrievedDocumentIds.length,
+    },
+  };
+}
+
 async function loadEvidenceCards(p: {
   question: string;
   candidateDocumentIds: string[];
@@ -1531,13 +1589,19 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       throw err;
     }
 
-    const candidateDocumentIds = uniq(
+    const retrievedDocumentIds = uniq(
       ((evidenceResponse as any)?.candidates ?? []).flatMap((candidate: any) =>
         Array.isArray(candidate.clusterDocumentIds) && candidate.clusterDocumentIds.length
           ? candidate.clusterDocumentIds
           : [candidate.documentId],
       ),
     ).filter(Boolean) as string[];
+    const { candidateDocumentIds, manualEvidenceSelection } =
+      resolveAnswerCandidateDocumentIds({
+        retrievedDocumentIds,
+        selectedDocumentIds: input.selectedDocumentIds,
+        allowedDocumentIds,
+      });
 
     await input.onStreamEvent?.({
       type: "status",
@@ -1567,6 +1631,7 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       ...buildRetrievalMetadata(evidenceResponse, evidenceCards),
       collectorPurposeId: input.collectorPurposeId ?? null,
       allowedDocumentIds,
+      manualEvidenceSelection,
     };
 
     if (!evidenceCards.length) {

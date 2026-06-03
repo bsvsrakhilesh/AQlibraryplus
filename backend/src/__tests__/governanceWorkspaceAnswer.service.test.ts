@@ -161,3 +161,55 @@ test("answer session summary maps latest quality and recovery counts", async () 
   assert.equal(summary.recommendedAction, "use");
   assert.equal(summary.collectorPurposeId, "purpose-1");
 });
+
+test("selected answer evidence restricts candidate documents", async () => {
+  const { resolveAnswerCandidateDocumentIds } = await loadAnswerScopeHelpers();
+
+  const out = resolveAnswerCandidateDocumentIds({
+    retrievedDocumentIds: ["doc-1", "doc-2", "doc-3"],
+    selectedDocumentIds: ["doc-2", "doc-3"],
+  });
+
+  assert.deepEqual(out.candidateDocumentIds, ["doc-2", "doc-3"]);
+  assert.deepEqual(out.manualEvidenceSelection, {
+    active: true,
+    selectedDocumentIds: ["doc-2", "doc-3"],
+    selectedDocumentCount: 2,
+    retrievedDocumentCount: 3,
+  });
+});
+
+test("omitted selected answer evidence preserves retrieved candidates", async () => {
+  const { resolveAnswerCandidateDocumentIds } = await loadAnswerScopeHelpers();
+
+  const out = resolveAnswerCandidateDocumentIds({
+    retrievedDocumentIds: ["doc-1", "doc-2"],
+    selectedDocumentIds: [],
+  });
+
+  assert.deepEqual(out.candidateDocumentIds, ["doc-1", "doc-2"]);
+  assert.equal(out.manualEvidenceSelection, null);
+});
+
+test("selected answer evidence rejects documents outside retrieval or purpose scope", async () => {
+  const { resolveAnswerCandidateDocumentIds } = await loadAnswerScopeHelpers();
+
+  assert.throws(
+    () =>
+      resolveAnswerCandidateDocumentIds({
+        retrievedDocumentIds: ["doc-1"],
+        selectedDocumentIds: ["doc-2"],
+      }),
+    /no longer part of the retrieved document set/,
+  );
+
+  assert.throws(
+    () =>
+      resolveAnswerCandidateDocumentIds({
+        retrievedDocumentIds: ["doc-1", "doc-2"],
+        selectedDocumentIds: ["doc-2"],
+        allowedDocumentIds: ["doc-1"],
+      }),
+    /outside the current purpose boundary/,
+  );
+});

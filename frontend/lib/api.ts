@@ -3193,6 +3193,7 @@ export type GovernanceAnswerPayload = {
   selectedIssueId?: string | null;
   selectedAgencyId?: string | null;
   collectorPurposeId?: string | null;
+  selectedDocumentIds?: string[];
   deepReview?: boolean;
 };
 

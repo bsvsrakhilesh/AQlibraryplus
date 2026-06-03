@@ -428,6 +428,7 @@ function buildAnswerInput(req: Request) {
       typeof body.selectedIssueId === "string" ? body.selectedIssueId : undefined,
     selectedAgencyId:
       typeof body.selectedAgencyId === "string" ? body.selectedAgencyId : undefined,
+    selectedDocumentIds: parseStringArray(body.selectedDocumentIds),
     deepReview: body.deepReview === true,
     collectorPurposeId:
       typeof body.collectorPurposeId === "string"
