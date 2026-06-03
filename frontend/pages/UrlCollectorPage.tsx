@@ -84,6 +84,7 @@ type CollectorScope = {
 type PersistShape = {
   website: string;
   keywords: string;
+  activePurposeId?: string;
   scope?: CollectorScope;
 
   results?: SearchResult[];
@@ -96,6 +97,51 @@ type PersistShape = {
   nextPage?: number | null;
   totalResults?: number | null;
 };
+
+function normalizePersistScope(scope?: Partial<CollectorScope>): CollectorScope {
+  return {
+    yearFrom: toYYYY(scope?.yearFrom ?? ""),
+    yearTo: toYYYY(scope?.yearTo ?? ""),
+    jurisdiction: String(scope?.jurisdiction ?? "").trim(),
+    region: String(scope?.region ?? "").trim(),
+    format:
+      scope?.format === "pdfOnly" || scope?.format === "excludePdf"
+        ? scope.format
+        : "any",
+  };
+}
+
+function sameCollectorRefreshState(
+  persisted: PersistShape,
+  current: {
+    website: string;
+    keywords: string;
+    scope: CollectorScope;
+    activePurposeId: string;
+    hasUrlSearchParams: boolean;
+  },
+) {
+  if (current.activePurposeId && persisted.activePurposeId !== current.activePurposeId) {
+    return false;
+  }
+
+  if (!current.hasUrlSearchParams) return true;
+
+  const persistedScope = normalizePersistScope(persisted.scope);
+  const currentScope = normalizePersistScope(current.scope);
+
+  return (
+    normalizeCollectorWebsite(persisted.website) ===
+      normalizeCollectorWebsite(current.website) &&
+    normalizeCollectorKeywords(persisted.keywords) ===
+      normalizeCollectorKeywords(current.keywords) &&
+    persistedScope.yearFrom === currentScope.yearFrom &&
+    persistedScope.yearTo === currentScope.yearTo &&
+    persistedScope.jurisdiction === currentScope.jurisdiction &&
+    persistedScope.region === currentScope.region &&
+    persistedScope.format === currentScope.format
+  );
+}
 
 function toYYYY(s: string): string {
   const t = (s || "").trim();
@@ -152,6 +198,7 @@ const UrlCollectorPage: React.FC = () => {
     () => {},
   );
   const loadMoreRetryRef = useRef<() => void>(() => {});
+  const persistHydratedRef = useRef(false);
 
   const urlSite = params.get("site") ?? "";
   const urlKeywords = params.get("q") ?? "";
@@ -172,6 +219,7 @@ const UrlCollectorPage: React.FC = () => {
     !!urlJurisdiction ||
     !!urlRegion ||
     (urlFormat && urlFormat !== "any");
+  const hasUrlSearchParams = hasUrlParams;
 
   const [website, setWebsite] = useState(urlSite);
   const [keywords, setKeywords] = useState(urlKeywords);
@@ -314,41 +362,79 @@ const UrlCollectorPage: React.FC = () => {
 
   /* ---------- Restore persisted state ---------- */
   useEffect(() => {
-    // If URL includes params, treat it as authoritative (shareable links should win)
-    if (hasUrlParams) return;
+    if (persistHydratedRef.current) return;
 
     try {
       const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return;
-      const p = JSON.parse(raw) as PersistShape;
-
-      if (p.website) setWebsite(p.website);
-      if (p.keywords) setKeywords(p.keywords);
-      if (p.scope) setScope((prev) => ({ ...prev, ...p.scope }));
-      if (p.results) setSearchResults(p.results);
-      if (p.selected) setSelectedUrls(new Set(p.selected));
-      if (p.sortKey) setSortKey(p.sortKey);
-      if (typeof p.lastQuery === "string") setLastQuery(p.lastQuery);
-      if (p.lastSearchOpts && typeof p.lastSearchOpts === "object") {
-        setLastSearchOpts(p.lastSearchOpts);
+      if (!raw) {
+        persistHydratedRef.current = true;
+        return;
       }
-      if (typeof p.nextPage !== "undefined") setNextPage(p.nextPage ?? null);
-      if (typeof p.totalResults !== "undefined")
-        setTotalResults(p.totalResults ?? null);
-      if ((p.results && p.results.length > 0) || p.lastRunAt) {
-        setHasSearched(true);
+      const p = JSON.parse(raw) as PersistShape;
+      const restoredScope = normalizePersistScope(p.scope);
+      const urlScope = normalizePersistScope({
+        yearFrom: urlYearFrom,
+        yearTo: urlYearTo,
+        jurisdiction: urlJurisdiction,
+        region: urlRegion,
+        format: urlFormat,
+      });
+      const cacheMatchesRefresh = sameCollectorRefreshState(p, {
+        website: urlSite,
+        keywords: urlKeywords,
+        scope: urlScope,
+        activePurposeId: urlPurposeId,
+        hasUrlSearchParams,
+      });
+
+      if (!hasUrlSearchParams) {
+        if (p.website) setWebsite(p.website);
+        if (p.keywords) setKeywords(p.keywords);
+        if (p.activePurposeId && !urlPurposeId) setActivePurposeId(p.activePurposeId);
+        if (p.scope) setScope((prev) => ({ ...prev, ...restoredScope }));
+      }
+
+      if (cacheMatchesRefresh) {
+        if (p.results) setSearchResults(p.results);
+        if (p.selected) setSelectedUrls(new Set(p.selected));
+        if (p.sortKey) setSortKey(p.sortKey);
+        if (typeof p.lastQuery === "string") setLastQuery(p.lastQuery);
+        if (p.lastSearchOpts && typeof p.lastSearchOpts === "object") {
+          setLastSearchOpts(p.lastSearchOpts);
+        }
+        if (typeof p.nextPage !== "undefined") setNextPage(p.nextPage ?? null);
+        if (typeof p.totalResults !== "undefined")
+          setTotalResults(p.totalResults ?? null);
+        if ((p.results && p.results.length > 0) || p.lastRunAt) {
+          setHasSearched(true);
+        }
       }
     } catch {
       /* ignore */
+    } finally {
+      persistHydratedRef.current = true;
     }
-  }, [hasUrlParams]);
+  }, [
+    hasUrlSearchParams,
+    urlFormat,
+    urlJurisdiction,
+    urlKeywords,
+    urlPurposeId,
+    urlRegion,
+    urlSite,
+    urlYearFrom,
+    urlYearTo,
+  ]);
 
   /* ---------- Persist state (quota-safe) ---------- */
   useEffect(() => {
+    if (!persistHydratedRef.current) return undefined;
+
     // store capped + minified results for a good UX on refresh
     const full: PersistShape = {
       website,
       keywords,
+      activePurposeId,
       scope,
       results: minifyResults(searchResults),
       selected: Array.from(selectedUrls),
@@ -364,6 +450,7 @@ const UrlCollectorPage: React.FC = () => {
     const noResults: PersistShape = {
       website,
       keywords,
+      activePurposeId,
       scope,
       selected: Array.from(selectedUrls),
       sortKey,
@@ -378,16 +465,22 @@ const UrlCollectorPage: React.FC = () => {
     const minimal: PersistShape = {
       website,
       keywords,
+      activePurposeId,
       scope,
       selected: [],
       sortKey,
       lastRunAt: hasSearched ? new Date().toISOString() : undefined,
     };
 
-    if (safeLocalStorageSet(LS_KEY, full)) return;
-    if (safeLocalStorageSet(LS_KEY, noResults)) return;
-    safeLocalStorageSet(LS_KEY, minimal);
+    const timer = window.setTimeout(() => {
+      if (safeLocalStorageSet(LS_KEY, full)) return;
+      if (safeLocalStorageSet(LS_KEY, noResults)) return;
+      safeLocalStorageSet(LS_KEY, minimal);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
   }, [
+    activePurposeId,
     website,
     keywords,
     scope,
