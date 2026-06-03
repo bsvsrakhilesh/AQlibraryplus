@@ -24,7 +24,35 @@ function normalizeHost(site: string): string {
   const s = site.trim();
   if (!s) return "";
   const withoutProto = s.replace(/^https?:\/\//i, "");
-  return withoutProto.split("/")[0].trim();
+  return withoutProto.split("/")[0].trim().toLowerCase();
+}
+
+function hostFromUrl(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function stripWww(host: string): string {
+  return host.replace(/^www\./i, "");
+}
+
+export function resultHostMatchesSite(rawUrl: string, siteHost: string): boolean {
+  const host = hostFromUrl(rawUrl);
+  const site = normalizeHost(siteHost);
+  if (!host || !site) return false;
+
+  const hostBare = stripWww(host);
+  const siteBare = stripWww(site);
+
+  return (
+    hostBare === siteBare ||
+    hostBare.endsWith(`.${siteBare}`) ||
+    host === site ||
+    host.endsWith(`.${site}`)
+  );
 }
 
 function quoteIfNeeded(s: string): string {
@@ -141,11 +169,13 @@ export async function googleSearch(
     });
 
     const items: any[] = Array.isArray(resp?.data?.items) ? resp.data.items : [];
-    const results = items.map((item: any) => ({
-      title: item?.title ?? "",
-      url: item?.link ?? "",
-      snippet: item?.snippet ?? "",
-    }));
+    const results = items
+      .map((item: any) => ({
+        title: item?.title ?? "",
+        url: item?.link ?? "",
+        snippet: item?.snippet ?? "",
+      }))
+      .filter((row) => !siteHost || resultHostMatchesSite(row.url, siteHost));
 
     const nextStart: unknown = resp?.data?.queries?.nextPage?.[0]?.startIndex;
     const nextPageCandidate =
@@ -182,6 +212,8 @@ export async function googleSearch(
       start,
       status: resp.status,
       items_count: results.length,
+      raw_items_count: items.length,
+      filtered_out_count: items.length - results.length,
       nextPage,
       totalResults,
       ms: Date.now() - startedAt,
