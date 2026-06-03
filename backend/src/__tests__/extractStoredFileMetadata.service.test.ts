@@ -135,7 +135,66 @@ test("candidate ranker lets explicit PDF page evidence beat PDF info dates", () 
     meta.details?.winningCandidate?.evidenceText,
     "Order dated 16 April 2026",
   );
+  assert.equal(meta.details?.topCandidates.length, 1);
+  assert.equal(meta.details?.ignoredCandidates[0]?.source, "pdf_info");
+});
+
+test("candidate ranker ignores weak contextual dates when they are the only evidence", () => {
+  const candidates: PublishedAtCandidate[] = [
+    {
+      date: new Date(Date.UTC(2026, 4, 20)),
+      source: "pdf_info",
+      confidence: 0.45,
+      raw: "D:20260520000000Z",
+      reason: "PDF internal metadata",
+    },
+    {
+      date: new Date(Date.UTC(2025, 10, 15)),
+      source: "pdf_text_heuristic",
+      confidence: 0.5,
+      raw: "15/11/2025",
+      evidenceText: "The committee reviewed actions from 15/11/2025.",
+      reason: "Date found without an explicit publication cue",
+    },
+  ];
+
+  const best = chooseBestPublishedAtCandidate(candidates);
+  const meta = publishedAtMetaFromCandidates(candidates);
+
+  assert.equal(best, null);
+  assert.equal(meta.source, "unknown");
+  assert.equal(meta.confidence, 0.0);
   assert.equal(meta.details?.topCandidates.length, 2);
+  assert.equal(meta.details?.ignoredCandidates.length, 2);
+});
+
+test("candidate ranker prefers filename fallback over generic body dates", () => {
+  const candidates: PublishedAtCandidate[] = [
+    {
+      date: new Date(Date.UTC(2026, 4, 20)),
+      source: "pdf_text_heuristic",
+      confidence: 0.5,
+      raw: "20/05/2026",
+      evidenceText: "Earlier proceedings were considered on 20/05/2026.",
+      reason: "Date found without an explicit publication cue",
+    },
+    {
+      date: new Date(Date.UTC(2024, 10, 18)),
+      source: "filename_pattern",
+      confidence: 0.34,
+      raw: "2024-11-18",
+      locator: { fileName: "order-2024-11-18.pdf" },
+      reason: "Date pattern found in filename",
+    },
+  ];
+
+  const best = chooseBestPublishedAtCandidate(candidates);
+  const meta = publishedAtMetaFromCandidates(candidates);
+
+  assert.equal(isoDate(best?.date ?? null), "2024-11-18");
+  assert.equal(best?.source, "filename_pattern");
+  assert.equal(meta.source, "filename_pattern");
+  assert.equal(meta.details?.ignoredCandidates[0]?.source, "pdf_text_heuristic");
 });
 
 test("candidate ranker uses source priority as a deterministic tie breaker", () => {

@@ -142,13 +142,19 @@ const PUBLISHED_AT_SOURCE_PRIORITY: Record<PublishedAtSource, number> = {
   html_meta: 90,
   text_explicit: 88,
   pdf_pages: 86,
-  pdf_text_heuristic: 58,
-  pdf_info: 45,
+  pdf_text_heuristic: 28,
+  pdf_info: 20,
   filename_pattern: 34,
   url_pattern: 32,
-  text_heuristic: 30,
+  text_heuristic: 24,
   unknown: 0,
 };
+
+const WEAK_CONTEXTUAL_PUBLISHED_AT_SOURCES = new Set<PublishedAtSource>([
+  "pdf_info",
+  "pdf_text_heuristic",
+  "text_heuristic",
+]);
 
 function clampConfidence(value: number) {
   if (!Number.isFinite(value)) return 0;
@@ -182,17 +188,22 @@ function sortPublishedAtCandidates(candidates: PublishedAtCandidate[]) {
     });
 }
 
+function sortSelectablePublishedAtCandidates(
+  candidates: PublishedAtCandidate[],
+) {
+  return sortPublishedAtCandidates(candidates).filter(
+    (candidate) =>
+      !WEAK_CONTEXTUAL_PUBLISHED_AT_SOURCES.has(candidate.source) ||
+      candidate.confidence >= 0.6,
+  );
+}
+
 function dedupePublishedAtCandidates(candidates: PublishedAtCandidate[]) {
   const out: PublishedAtCandidate[] = [];
   const seen = new Set<string>();
 
   for (const candidate of candidates) {
-    const key = [
-      candidate.source,
-      candidate.date.toISOString().slice(0, 10),
-      candidate.raw || "",
-      JSON.stringify(candidate.locator || {}),
-    ].join("|");
+    const key = publishedAtCandidateKey(candidate);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(candidate);
@@ -201,10 +212,19 @@ function dedupePublishedAtCandidates(candidates: PublishedAtCandidate[]) {
   return out;
 }
 
+function publishedAtCandidateKey(candidate: PublishedAtCandidate) {
+  return [
+    candidate.source,
+    candidate.date.toISOString().slice(0, 10),
+    candidate.raw || "",
+    JSON.stringify(candidate.locator || {}),
+  ].join("|");
+}
+
 export function chooseBestPublishedAtCandidate(
   candidates: PublishedAtCandidate[],
 ) {
-  return sortPublishedAtCandidates(candidates)[0] ?? null;
+  return sortSelectablePublishedAtCandidates(candidates)[0] ?? null;
 }
 
 function serializePublishedAtCandidate(candidate: PublishedAtCandidate) {
@@ -222,14 +242,18 @@ function serializePublishedAtCandidate(candidate: PublishedAtCandidate) {
 export function publishedAtMetaFromCandidates(
   candidates: PublishedAtCandidate[],
 ): PublishedAtMeta {
-  const sorted = sortPublishedAtCandidates(candidates);
+  const allSorted = sortPublishedAtCandidates(candidates);
+  const sorted = sortSelectablePublishedAtCandidates(candidates);
   const winning = sorted[0];
 
   if (!winning) {
     return {
       source: "unknown",
       confidence: 0.0,
-      details: { topCandidates: [] },
+      details: {
+        topCandidates: allSorted.slice(0, 5).map(serializePublishedAtCandidate),
+        ignoredCandidates: allSorted.slice(0, 5).map(serializePublishedAtCandidate),
+      },
     };
   }
 
@@ -239,6 +263,16 @@ export function publishedAtMetaFromCandidates(
     details: {
       winningCandidate: serializePublishedAtCandidate(winning),
       topCandidates: sorted.slice(0, 5).map(serializePublishedAtCandidate),
+      ignoredCandidates: (() => {
+        const selectableKeys = new Set(sorted.map(publishedAtCandidateKey));
+        return allSorted
+          .filter(
+            (candidate) =>
+              !selectableKeys.has(publishedAtCandidateKey(candidate)),
+          )
+          .slice(0, 5)
+          .map(serializePublishedAtCandidate);
+      })(),
     },
   };
 }
