@@ -5,6 +5,7 @@ import { createJobFromFile, createJobFromUrl } from "./pyTaggerClient";
 import { startOrReuseAiTagJobForUrl } from "./aiTagJobStart.service";
 import { finalizeAiTagJobForUrl } from "./aiTagJobFinalize.service";
 import { persistAiTagFailureForUrl } from "./aiTagPersistence.service";
+import { chooseUrlTaggingSource } from "./aiTagUrlSource.util";
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "true").toLowerCase() === "true";
@@ -36,18 +37,45 @@ export async function runAiTagForUrl(
     };
   }
 
-  const latestSnapshot = await prisma.storedFile.findFirst({
-    where: { urlId },
+  const snapshotSelect = {
+    storagePath: true,
+    mimeType: true,
+    captureType: true,
+    fileName: true,
+  } as const;
+
+  const pdfSnapshot = await prisma.storedFile.findFirst({
+    where: {
+      urlId,
+      deletedAt: null,
+      OR: [
+        { captureType: "URL_PDF" },
+        { mimeType: { contains: "pdf", mode: "insensitive" } },
+        { fileName: { endsWith: ".pdf", mode: "insensitive" } },
+      ],
+    },
     orderBy: { createdAt: "desc" },
-    select: { storagePath: true, mimeType: true, captureType: true },
+    select: snapshotSelect,
+  });
+
+  const latestSnapshot = await prisma.storedFile.findFirst({
+    where: { urlId, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: snapshotSelect,
+  });
+
+  const taggingSource = chooseUrlTaggingSource({
+    url: rec.url,
+    pdfSnapshot,
+    latestSnapshot,
   });
 
   const started = await startOrReuseAiTagJobForUrl({
     urlId,
     startJob: () =>
-      latestSnapshot?.storagePath
-        ? createJobFromFile(latestSnapshot.storagePath, TOPK, USE_LLM)
-        : createJobFromUrl(rec.url, TOPK, USE_LLM),
+      taggingSource.kind === "file"
+        ? createJobFromFile(taggingSource.path, TOPK, USE_LLM)
+        : createJobFromUrl(taggingSource.url, TOPK, USE_LLM),
   });
 
   const jobId = started.jobId;
