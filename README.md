@@ -609,8 +609,38 @@ limited.
 
 ## Development status
 
+SmartScrape is under active development. The current repository is suitable for
+local testing, research workflow evaluation, and continued development, but it
+should be treated as pre-release research software until a stable public release
+is tagged.
+
+The Docker development stack, automated tests, and manual smoke-test workflow in
+this README are the recommended ways to verify the current version. Interfaces,
+configuration options, and data models may change between early releases.
+
 ## Citation
+
+If you use SmartScrape in research, policy analysis, or institutional work,
+please cite the repository and the corresponding software release. A formal
+software citation file will be added before the first archived release.
+
+Suggested citation format for now:
+
+> Boddu Sesha Venkata Sai Ranga Akhilesh et al. SmartScrape: Evidence collection
+> and grounded analysis software for governance and policy workflows. GitHub
+> repository: https://github.com/bsvsrakhilesh/Smart-Scrape
+
+For archival citation, create a tagged release and archive it with a service
+such as Zenodo to obtain a DOI.
 
 ## License
 
+SmartScrape is intended to be released under the Apache License 2.0. A full
+`LICENSE` file should be included before public release or journal submission.
+
 ## Contact / support
+
+For questions, bug reports, feature requests, or reproducibility issues, use the
+GitHub issue tracker:
+
+https://github.com/bsvsrakhilesh/Smart-Scrape/issues
