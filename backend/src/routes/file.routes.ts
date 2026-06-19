@@ -1215,14 +1215,30 @@ r.post(
         };
 
         if (prismaSupportsFolders()) {
-          updateData.folderId =
-            typeof folderId === "string" && folderId.trim()
+          const uploadTargetFolderId =
+            typeof folderId === "string" &&
+            folderId.trim() &&
+            folderId.trim() !== "root"
               ? folderId.trim()
               : null;
-          createData.folderId =
-            typeof folderId === "string" && folderId.trim()
-              ? folderId.trim()
-              : null;
+          if (uploadTargetFolderId) {
+            const targetFolder = await prisma.folder.findUnique({
+              where: { id: uploadTargetFolderId },
+              select: { id: true, deletedAt: true },
+            });
+            if (!targetFolder) {
+              return res
+                .status(400)
+                .json({ message: "Target folder not found" });
+            }
+            if (targetFolder.deletedAt) {
+              return res
+                .status(409)
+                .json({ message: "Target folder is in trash" });
+            }
+          }
+          updateData.folderId = uploadTargetFolderId;
+          createData.folderId = uploadTargetFolderId;
         }
 
         const rec = await prisma.storedFile.upsert({
@@ -1576,14 +1592,26 @@ r.post("/files/finalize", async (req, res, next) => {
     };
 
     if (prismaSupportsFolders()) {
-      updateData.folderId =
-        typeof folderId === "string" && folderId.trim()
+      const uploadTargetFolderId =
+        typeof folderId === "string" &&
+        folderId.trim() &&
+        folderId.trim() !== "root"
           ? folderId.trim()
           : null;
-      createData.folderId =
-        typeof folderId === "string" && folderId.trim()
-          ? folderId.trim()
-          : null;
+      if (uploadTargetFolderId) {
+        const targetFolder = await prisma.folder.findUnique({
+          where: { id: uploadTargetFolderId },
+          select: { id: true, deletedAt: true },
+        });
+        if (!targetFolder) {
+          return res.status(400).json({ message: "Target folder not found" });
+        }
+        if (targetFolder.deletedAt) {
+          return res.status(409).json({ message: "Target folder is in trash" });
+        }
+      }
+      updateData.folderId = uploadTargetFolderId;
+      createData.folderId = uploadTargetFolderId;
     }
 
     const record = await prisma.storedFile.upsert({
@@ -2476,6 +2504,12 @@ r.get("/files/:id/extracted-text", async (req, res, next) => {
 // POST /api/folders - create a folder
 r.post("/folders", async (req, res, next) => {
   try {
+    if (!prismaSupportsFolders()) {
+      return res.status(501).json({
+        message:
+          "Folders not yet available. Please run Prisma migrate/generate and restart the server.",
+      });
+    }
     const { name, parentId } = req.body || {};
     if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ message: "Folder name is required" });
@@ -2487,6 +2521,8 @@ r.post("/folders", async (req, res, next) => {
       });
       if (!parent)
         return res.status(400).json({ message: "Parent folder not found" });
+      if (parent.deletedAt)
+        return res.status(409).json({ message: "Parent folder is in trash" });
     }
     const folder = await prisma.folder.create({
       data: { name: sanitized, parentId: parentId ? String(parentId) : null },
@@ -2710,6 +2746,11 @@ r.patch("/folders/:id", async (req, res, next) => {
 
     const existing = await prisma.folder.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ message: "Not found" });
+    if (existing.deletedAt) {
+      return res.status(409).json({
+        message: "Folder is in trash. Restore it before renaming or moving it.",
+      });
+    }
 
     // Normalize requested parentId:
     // - undefined => don't change
@@ -2732,10 +2773,13 @@ r.patch("/folders/:id", async (req, res, next) => {
       if (desiredParentId) {
         const parent = await prisma.folder.findUnique({
           where: { id: desiredParentId },
-          select: { id: true, parentId: true },
+          select: { id: true, parentId: true, deletedAt: true },
         });
         if (!parent) {
           return res.status(400).json({ message: "Parent folder not found" });
+        }
+        if (parent.deletedAt) {
+          return res.status(409).json({ message: "Parent folder is in trash" });
         }
 
         // Cycle check: walk parents until root, bounded to avoid infinite loops
@@ -3006,6 +3050,18 @@ r.post("/files/:id/duplicate", async (req, res, next) => {
           ? null
           : folderId
         : existing.folderId;
+    if (targetFolderId) {
+      const targetFolder = await prisma.folder.findUnique({
+        where: { id: targetFolderId },
+        select: { id: true, deletedAt: true },
+      });
+      if (!targetFolder) {
+        return res.status(400).json({ message: "Target folder not found" });
+      }
+      if (targetFolder.deletedAt) {
+        return res.status(409).json({ message: "Target folder is in trash" });
+      }
+    }
     const newPath = finalFilePathFor(newId, newName);
     fs.mkdirSync(path.dirname(newPath), { recursive: true });
     // Copy bytes
@@ -3353,6 +3409,9 @@ r.post("/files/:id/move", async (req, res, next) => {
       if (!folder) {
         return res.status(400).json({ message: "Target folder not found" });
       }
+      if (folder.deletedAt) {
+        return res.status(409).json({ message: "Target folder is in trash" });
+      }
     }
 
     const existing = await prisma.storedFile.findUnique({ where: { id } });
@@ -3445,6 +3504,8 @@ r.put("/files/:id/move", async (req, res, next) => {
       });
       if (!folder)
         return res.status(400).json({ message: "Target folder not found" });
+      if (folder.deletedAt)
+        return res.status(409).json({ message: "Target folder is in trash" });
     }
 
     const existing = await prisma.storedFile.findUnique({ where: { id } });

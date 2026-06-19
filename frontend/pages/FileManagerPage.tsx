@@ -1196,6 +1196,18 @@ export default function FileManagerPage() {
   const isFolderItem = (f: FileItem) =>
     (f as any)?.mimeType === "folder" || isFolderId(String(f.id));
 
+  const folderToFileItem = useCallback((folder: { id: string; name: string; createdAt?: string | Date | null }): FileItem => ({
+    id: `folder:${folder.id}`,
+    title: folder.name,
+    description: "",
+    uploader: { id: "system", name: "-" },
+    uploadDate: String(folder.createdAt ?? new Date().toISOString()),
+    size: 0,
+    mimeType: "folder",
+    tags: [],
+    visibility: "private",
+  }), []);
+
   const splitSelectionIds = (ids: string[]) => {
     const folderIds: string[] = [];
     const fileIds: string[] = [];
@@ -1424,6 +1436,20 @@ export default function FileManagerPage() {
     [],
   );
 
+  const removeItemsEverywhere = useCallback((ids: string[]) => {
+    const idSet = new Set(ids.map(String));
+    if (!idSet.size) return;
+
+    setAllFiles((prev) => prev.filter((x) => !idSet.has(String(x.id))));
+    setSelected((prev) => prev.filter((x) => !idSet.has(String(x.id))));
+    setPropertiesFile((prev) =>
+      prev && idSet.has(String(prev.id)) ? null : prev,
+    );
+    setSelectedPreview((prev) =>
+      prev && idSet.has(String(prev.id)) ? null : prev,
+    );
+  }, []);
+
   const handleRenameById = async (id: string, nextName?: string) => {
     const file = allFiles.find((f) => f.id === id);
     if (file) await handleRename(file, nextName);
@@ -1472,28 +1498,10 @@ export default function FileManagerPage() {
       try {
         const updated = await toggleFileFavorite(file.id, !prev);
         // sync with server response
-        setAllFiles((list) =>
-          list.map((f) =>
-            f.id === file.id
-              ? {
-                  ...f,
-                  isFavorited: updated.isFavorited,
-                  favoritesCount: updated.favoritesCount,
-                }
-              : f,
-          ),
-        );
-        if (selectedPreview?.id === file.id) {
-          setSelectedPreview((p) =>
-            p
-              ? {
-                  ...p,
-                  isFavorited: updated.isFavorited,
-                  favoritesCount: updated.favoritesCount,
-                }
-              : p,
-          );
-        }
+        patchFileEverywhere(file.id, {
+          isFavorited: updated.isFavorited,
+          favoritesCount: updated.favoritesCount,
+        });
         notify(
           `${file.title} ${
             updated.isFavorited ? "added to" : "removed from"
@@ -1532,7 +1540,7 @@ export default function FileManagerPage() {
         notify("Could not update favorite", "error");
       }
     },
-    [notify, selectedPreview],
+    [notify, patchFileEverywhere, selectedPreview],
   );
 
   // ------- Breadcrumb: build from authoritative parent chain -------
@@ -2353,6 +2361,7 @@ export default function FileManagerPage() {
       }
 
       notify("Restored", "success");
+      removeItemsEverywhere([String(item.id)]);
       refreshAll();
     } catch (e: any) {
       notify(e?.message || "Restore failed", "error");
@@ -2376,6 +2385,7 @@ export default function FileManagerPage() {
       }
 
       notify("Deleted permanently", "success");
+      removeItemsEverywhere([String(item.id)]);
       refreshAll();
     } catch (e: any) {
       notify(e?.message || "Permanent delete failed", "error");
@@ -2650,9 +2660,19 @@ export default function FileManagerPage() {
     if (!name || name === file.title) return;
     try {
       if (isFolderItem(file)) {
-        await renameFolder(rawFolderId(String(file.id)), name);
+        const updated = await renameFolder(rawFolderId(String(file.id)), name);
+        folderCache.current.set(updated.id, {
+          id: updated.id,
+          name: updated.name,
+          parentId: updated.parentId ?? null,
+        });
+        patchFileEverywhere(file.id, { title: updated.name });
       } else {
-        await renameFile(String(file.id), name);
+        const updated = await renameFile(String(file.id), name);
+        patchFileEverywhere(file.id, {
+          title: updated.fileName || name,
+          fileName: updated.fileName || name,
+        } as Partial<FileItem> & Partial<FileDetail>);
       }
 
       notify("Renamed", "success");
@@ -2716,9 +2736,10 @@ export default function FileManagerPage() {
           );
         }
         if (fileIds.length > 0) {
-          await Promise.all(
+          const created = await Promise.all(
             fileIds.map((id) => duplicateFile(id, currentFolderId ?? null)),
           );
+          created.forEach(upsertLatestFileEverywhere);
           notify(`Copied ${fileIds.length} file(s)`, "success");
         }
       } else {
@@ -2750,7 +2771,15 @@ export default function FileManagerPage() {
     } finally {
       setClipboard(null);
     }
-  }, [clipboard, currentFolderId, notify, refreshAll, viewMode, virtualZip]);
+  }, [
+    clipboard,
+    currentFolderId,
+    notify,
+    refreshAll,
+    upsertLatestFileEverywhere,
+    viewMode,
+    virtualZip,
+  ]);
 
   const buildEmptyBGMenu = useCallback((): MenuItem[] => {
     const isReadOnlyHere = !!virtualZip || viewMode !== "drive";
@@ -3655,6 +3684,7 @@ export default function FileManagerPage() {
         nextUserTags,
         before.aiTags ?? [],
       );
+      const backup = allFiles;
 
       setAllFiles((prev) =>
         prev.map((f) =>
@@ -3670,14 +3700,18 @@ export default function FileManagerPage() {
       );
 
       try {
-        await updateFileTags(fileId, nextUserTags);
+        const updated = await updateFileTags(fileId, nextUserTags);
+        if (updated?.id) {
+          applyLatestFileEverywhere(toFileItem(updated as BackendStoredFile));
+        }
         setRefreshToken((n) => n + 1);
       } catch (e) {
+        setAllFiles(backup);
         notify("Failed to update tags", "error");
         refresh();
       }
     },
-    [allFiles, notify, refresh],
+    [allFiles, applyLatestFileEverywhere, notify, refresh],
   );
 
   const handleRetryAiTag = useCallback(
@@ -3940,6 +3974,8 @@ export default function FileManagerPage() {
       }
       if (!fileIds.length) return;
 
+      const backup = allFiles;
+
       // optimistic user-tag update
       setAllFiles((prev) =>
         prev.map((f) => {
@@ -3959,20 +3995,26 @@ export default function FileManagerPage() {
       );
 
       try {
-        await Promise.all(
+        const updatedFiles = await Promise.all(
           fileIds.map(async (id) => {
             const current = allFiles.find((f) => f.id === id)?.userTags ?? [];
             const next = mergeUniqueTags(current, [tag]);
-            await updateFileTags(id, next);
+            return updateFileTags(id, next);
           }),
         );
+        updatedFiles.forEach((updated) => {
+          if (updated?.id) {
+            applyLatestFileEverywhere(toFileItem(updated as BackendStoredFile));
+          }
+        });
         notify("Tag added", "success");
       } catch {
+        setAllFiles(backup);
         notify("Failed to add tag to some items", "error");
         refresh(); // revert to server truth
       }
     },
-    [allFiles, notify, refresh],
+    [allFiles, applyLatestFileEverywhere, notify, refresh],
   );
 
   const openAddTagDialog = useCallback((ids: string[]) => {
@@ -4002,7 +4044,16 @@ export default function FileManagerPage() {
       if (textDialog.kind === "save-view") {
         persistArchiveView(trimmed);
       } else if (textDialog.kind === "new-folder") {
-        await createFolder(trimmed, currentFolderId);
+        const folder = await createFolder(trimmed, currentFolderId);
+        folderCache.current.set(folder.id, {
+          id: folder.id,
+          name: folder.name,
+          parentId: folder.parentId ?? null,
+        });
+        if (viewMode === "drive" && !virtualZip && page === 1) {
+          upsertLatestFileEverywhere(folderToFileItem(folder));
+          setTotal((n) => n + 1);
+        }
         notify("Folder created", "success");
         const bc = await buildBreadcrumb(currentFolderId);
         setBreadcrumb(bc);
@@ -4033,6 +4084,11 @@ export default function FileManagerPage() {
     allFiles,
     handleRename,
     onAddTagSelected,
+    folderToFileItem,
+    page,
+    upsertLatestFileEverywhere,
+    viewMode,
+    virtualZip,
   ]);
 
   const onFavoriteSelected = useCallback(
@@ -4048,6 +4104,8 @@ export default function FileManagerPage() {
       }
       if (!fileIds.length) return;
 
+      const backup = allFiles;
+
       // optimistic: set favorite true
       setAllFiles((prev) =>
         prev.map((f) =>
@@ -4055,21 +4113,27 @@ export default function FileManagerPage() {
             ? {
                 ...f,
                 isFavorited: true,
-                favoritesCount: (f.favoritesCount ?? 0) + 1,
+                favoritesCount: f.isFavorited
+                  ? (f.favoritesCount ?? 0)
+                  : (f.favoritesCount ?? 0) + 1,
               }
             : f,
         ),
       );
 
       try {
-        await Promise.all(fileIds.map((id) => toggleFileFavorite(id, true)));
+        const updatedFiles = await Promise.all(
+          fileIds.map((id) => toggleFileFavorite(id, true)),
+        );
+        updatedFiles.forEach(applyLatestFileEverywhere);
         notify("Added to favorites", "success");
       } catch {
+        setAllFiles(backup);
         notify("Failed to favorite some items", "error");
         refresh();
       }
     },
-    [notify, refresh],
+    [allFiles, applyLatestFileEverywhere, notify, refresh],
   );
 
   const onDownloadSelected = useCallback(
