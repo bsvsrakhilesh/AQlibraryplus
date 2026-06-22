@@ -105,6 +105,13 @@ function clearDraftBundlesForSavedNote(args: {
   }
 }
 
+function emitSaveInProgressToast() {
+  emitNotebookEvent("toast", {
+    kind: "info",
+    text: "Wait for the current note save to finish.",
+  });
+}
+
 function renderInlineMarkdown(text: string) {
   return String(text ?? "")
     .split(/(\*\*[^*]+\*\*|_[^_]+_)/g)
@@ -194,6 +201,7 @@ export default function NotesEditor({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [lastDraftAt, setLastDraftAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
   const editorRef = useRef<HTMLDivElement | null>(null);
 
@@ -244,6 +252,10 @@ export default function NotesEditor({
   }, [confirm, dirty]);
 
   const startNewNote = useCallback(async () => {
+    if (isSavingNote) {
+      emitSaveInProgressToast();
+      return;
+    }
     if (!(await confirmDiscardIfDirty())) return;
     if (dirty || title.trim() || content.trim() || citationsPayload?.artifacts?.length) {
       flushDraftNow();
@@ -255,6 +267,7 @@ export default function NotesEditor({
     content,
     dirty,
     flushDraftNow,
+    isSavingNote,
     resetNote,
     title,
   ]);
@@ -277,6 +290,9 @@ export default function NotesEditor({
   }, [activeNoteId]);
 
   const saveM = useMutation({
+    onMutate: async () => {
+      setIsSavingNote(true);
+    },
     mutationFn: async (vars: {
       mode: "create" | "update";
       noteId?: string;
@@ -334,7 +350,11 @@ export default function NotesEditor({
     onError: (err: any) => {
       setSaveError(err?.message || "Save failed.");
     },
+    onSettled: () => {
+      setIsSavingNote(false);
+    },
   });
+  const noteEditorLocked = isSavingNote;
 
   // load drafts (separate drafts for "new note" vs "editing note")
   useEffect(() => {
@@ -375,6 +395,10 @@ export default function NotesEditor({
   // listen for Add-to-Notes events from Chat
   useEffect(() => {
     return subscribeNotebookEvent("add-note", (d) => {
+      if (isSavingNote) {
+        emitSaveInProgressToast();
+        return;
+      }
       if (typeof d === "string") {
         const md = d;
         setContent((prev) => (prev ? prev + "\n\n" + md : md));
@@ -416,13 +440,17 @@ export default function NotesEditor({
         text: "Added to note draft. Save the note to persist it.",
       });
     });
-  }, []);
+  }, [isSavingNote]);
 
   // Open an existing note from the Recent notes list
   useEffect(() => {
     return subscribeNotebookEvent("open-note", (n) => {
       void (async () => {
         if (!n || !n.id) return;
+        if (isSavingNote) {
+          emitSaveInProgressToast();
+          return;
+        }
         if (!(await confirmDiscardIfDirty())) return;
         if (dirty || title.trim() || content.trim() || citationsPayload?.artifacts?.length) {
           flushDraftNow();
@@ -465,6 +493,7 @@ export default function NotesEditor({
     content,
     dirty,
     flushDraftNow,
+    isSavingNote,
     notebookId,
     title,
   ]);
@@ -516,6 +545,10 @@ export default function NotesEditor({
       e.preventDefault();
 
       if (!notebookId) return;
+      if (isSavingNote) {
+        emitSaveInProgressToast();
+        return;
+      }
       if (!title.trim() && !content.trim()) return;
       if (activeNoteId && !dirty) return;
 
@@ -527,7 +560,7 @@ export default function NotesEditor({
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [notebookId, title, content, activeNoteId, dirty, saveM]);
+  }, [activeNoteId, content, dirty, isSavingNote, notebookId, saveM, title]);
 
   const provenanceArtifacts = citationsPayload?.artifacts ?? [];
 
@@ -556,6 +589,7 @@ export default function NotesEditor({
               onClick={startNewNote}
               className="ml-1 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
               title="Start a new note"
+              disabled={noteEditorLocked}
             >
               <Plus className="h-3 w-3" />
               New note
@@ -636,7 +670,7 @@ export default function NotesEditor({
         }}
         placeholder="Note title"
         className="border rounded-xl px-3 py-2 text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
-        disabled={!notebookId}
+        disabled={!notebookId || noteEditorLocked}
       />
       {view === "write" ? (
         <textarea
@@ -648,7 +682,7 @@ export default function NotesEditor({
           }}
           placeholder="Write notes (markdown allowed)..."
           className="h-44 border rounded-xl p-3 text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
-          disabled={!notebookId}
+          disabled={!notebookId || noteEditorLocked}
         />
       ) : (
         <div className="min-h-44 border rounded-xl p-3 text-sm leading-6 bg-slate-50/70 text-slate-800">
