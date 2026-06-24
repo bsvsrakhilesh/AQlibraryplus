@@ -404,12 +404,17 @@ export default function ChatPanel({
   const [historyReloadKey, setHistoryReloadKey] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const userStopRef = useRef(false);
+  const notebookIdRef = useRef<string | null>(notebookId);
 
   // Keep latest messages in a ref so we can build chat history without re-creating callbacks
   const messagesRef = useRef<Msg[]>([]);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    notebookIdRef.current = notebookId;
+  }, [notebookId]);
 
   useEffect(() => {
     return () => abortRef.current?.abort();
@@ -462,6 +467,20 @@ export default function ChatPanel({
     blockedCount,
   };
 
+  useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    userStopRef.current = false;
+    messagesRef.current = [];
+    setMessages([]);
+    setHistoryError(null);
+    setPending(false);
+    setActiveScopeSnapshot(null);
+    setStreamStatus("Thinking");
+    setStreamMessageId(null);
+    setShowJump(false);
+  }, [notebookId]);
+
   // Load chat history from the backend for this notebook.
   useEffect(() => {
     let alive = true;
@@ -469,6 +488,8 @@ export default function ChatPanel({
     async function loadHistory() {
       if (!notebookId) {
         setMessages([]);
+        messagesRef.current = [];
+        setHistoryError(null);
         setLoadingHistory(false);
         return;
       }
@@ -478,10 +499,13 @@ export default function ChatPanel({
         setHistoryError(null);
         const runs = await api.getChatHistory(notebookId, 80);
         if (!alive) return;
-        setMessages(historyRunsToMessages(runs));
+        const nextMessages = historyRunsToMessages(runs);
+        messagesRef.current = nextMessages;
+        setMessages(nextMessages);
       } catch (err: any) {
         if (!alive) return;
         setMessages([]);
+        messagesRef.current = [];
         setHistoryError(
           err?.message || "Could not load this notebook conversation.",
         );
@@ -528,9 +552,12 @@ export default function ChatPanel({
   // Persist composer draft per notebook
   const draftKey = notebookId ? `nb:chatDraft:${notebookId}` : null;
   useEffect(() => {
-    if (!draftKey) return;
+    if (!draftKey) {
+      setInput("");
+      return;
+    }
     const saved = localStorage.getItem(draftKey);
-    if (saved) setInput(saved);
+    setInput(saved ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
@@ -633,6 +660,13 @@ export default function ChatPanel({
 
       const question = (q || "").trim();
       if (!question) return;
+      if (loadingHistory) {
+        emitNotebookEvent("toast", {
+          kind: "info",
+          text: "Wait for this notebook conversation to finish loading.",
+        });
+        return;
+      }
       if (sourceGuardMessage) {
         setMessages((m) => [
           ...m,
@@ -707,6 +741,12 @@ export default function ChatPanel({
           answerMode,
           signal: controller.signal,
           onEvent: (event) => {
+            if (
+              notebookIdRef.current !== notebookId ||
+              abortRef.current !== controller
+            ) {
+              return;
+            }
             if (event.type === "status") {
               setStreamStatus(event.message);
               return;
@@ -795,6 +835,7 @@ export default function ChatPanel({
         }
 
         const canonicalAnswer = finalAnswerPayload ?? res;
+        if (notebookIdRef.current !== notebookId) return;
 
         if (saveToNotes?.title) {
           emitNotebookEvent("add-note", {
@@ -856,6 +897,7 @@ export default function ChatPanel({
       notebookId,
       sourceIds,
       answerMode,
+      loadingHistory,
       sourceGuardMessage,
       totalCount,
       scopeCount,
@@ -878,7 +920,7 @@ export default function ChatPanel({
       const noteMode: "append" | "replace" =
         (detailObj as any).noteMode === "replace" ? "replace" : "append";
 
-      if (autoSend && notebookId && !pending && canChat) {
+      if (autoSend && notebookId && !pending && !loadingHistory && canChat) {
         const note =
           saveToNotes && noteTitle
             ? ({
@@ -911,12 +953,20 @@ export default function ChatPanel({
           : `${blockedMessage} Your existing draft was kept.`,
       });
     });
-  }, [canChat, notebookId, pending, send, sourceGuardMessage, stageComposerPrompt]);
+  }, [
+    canChat,
+    loadingHistory,
+    notebookId,
+    pending,
+    send,
+    sourceGuardMessage,
+    stageComposerPrompt,
+  ]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!pending && canChat && input.trim()) {
+      if (!loadingHistory && !pending && canChat && input.trim()) {
         const q = input.trim();
         setInput("");
         send(q);
@@ -925,7 +975,7 @@ export default function ChatPanel({
   };
 
   const onRegenerate = (i: number) => {
-    if (!notebookId || pending) return;
+    if (!notebookId || pending || loadingHistory) return;
     const prevUserIndex = [...messages.slice(0, i)]
       .map((m, j) => ({ m, j }))
       .reverse()
@@ -1560,10 +1610,12 @@ export default function ChatPanel({
                   onKeyDown={onKeyDown}
                   placeholder={
                     notebookId
-                      ? displaySourceGuardMessage || "Ask about your sources..."
+                      ? loadingHistory
+                        ? "Loading notebook conversation..."
+                        : displaySourceGuardMessage || "Ask about your sources..."
                       : "Create/select a notebook to start"
                   }
-                  disabled={!notebookId || !!displaySourceGuardMessage}
+                  disabled={!notebookId || loadingHistory || !!displaySourceGuardMessage}
                   className="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-slate-400 disabled:text-slate-400"
                   rows={1}
                 />
@@ -1591,13 +1643,14 @@ export default function ChatPanel({
                   abortRef.current?.abort();
                   return;
                 }
+                if (loadingHistory) return;
                 if (!canChat) return;
                 const q = input.trim();
                 if (!q) return;
                 setInput("");
                 send(q);
               }}
-              disabled={!canChat || (!pending && !input.trim())}
+              disabled={loadingHistory || !canChat || (!pending && !input.trim())}
               className={clsx(
                 "w-11 h-11 grid place-items-center rounded-2xl text-white shadow-[0_18px_50px_rgba(15,23,42,0.25)] transition-all",
                 !canChat || (!pending && !input.trim())

@@ -105,6 +105,24 @@ function clearDraftBundlesForSavedNote(args: {
   }
 }
 
+function persistDraftBundle(args: {
+  notebookId: string;
+  noteId?: string | null;
+  title: string;
+  content: string;
+  citations: NoteProvenanceBundle | null;
+}) {
+  const base = draftStorageBase(args.notebookId, args.noteId);
+  localStorage.setItem(`${base}:title`, args.title);
+  localStorage.setItem(`${base}:content`, args.content);
+  if (args.citations) {
+    localStorage.setItem(`${base}:citations`, JSON.stringify(args.citations));
+  } else {
+    localStorage.removeItem(`${base}:citations`);
+  }
+  localStorage.setItem(`${base}:savedAt`, new Date().toISOString());
+}
+
 function emitSaveInProgressToast() {
   emitNotebookEvent("toast", {
     kind: "info",
@@ -204,6 +222,7 @@ export default function NotesEditor({
   const [isSavingNote, setIsSavingNote] = useState(false);
 
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const previousNotebookIdRef = useRef<string | null>(notebookId);
 
   // When set, we are editing an existing saved note
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
@@ -223,18 +242,17 @@ export default function NotesEditor({
   }, []);
 
   const flushDraftNow = useCallback(
-    (targetNoteId?: string | null) => {
-      if (!notebookId) return;
-      const base = draftStorageBase(notebookId, targetNoteId ?? activeNoteId);
-      localStorage.setItem(`${base}:title`, title);
-      localStorage.setItem(`${base}:content`, content);
-      if (citationsPayload) {
-        localStorage.setItem(`${base}:citations`, JSON.stringify(citationsPayload));
-      } else {
-        localStorage.removeItem(`${base}:citations`);
-      }
+    (targetNoteId?: string | null, targetNotebookId?: string | null) => {
+      const draftNotebookId = targetNotebookId ?? notebookId;
+      if (!draftNotebookId) return;
+      persistDraftBundle({
+        notebookId: draftNotebookId,
+        noteId: targetNoteId ?? activeNoteId,
+        title,
+        content,
+        citations: citationsPayload,
+      });
       const now = new Date();
-      localStorage.setItem(`${base}:savedAt`, now.toISOString());
       setLastDraftAt(now);
     },
     [activeNoteId, citationsPayload, content, notebookId, title],
@@ -274,6 +292,22 @@ export default function NotesEditor({
 
   // Switching notebooks should exit edit-mode cleanly
   useEffect(() => {
+    const previousNotebookId = previousNotebookIdRef.current;
+    const hasLocalDraft =
+      dirty ||
+      Boolean(title.trim()) ||
+      Boolean(content.trim()) ||
+      Boolean(citationsPayload?.artifacts?.length);
+
+    if (
+      previousNotebookId &&
+      previousNotebookId !== notebookId &&
+      hasLocalDraft
+    ) {
+      flushDraftNow(activeNoteId, previousNotebookId);
+    }
+
+    previousNotebookIdRef.current = notebookId;
     setActiveNoteId(null);
     setTitle("");
     setContent("");
@@ -283,7 +317,15 @@ export default function NotesEditor({
     setLastDraftAt(null);
     setCitationsPayload(null);
     setView("write");
-  }, [notebookId]);
+  }, [
+    activeNoteId,
+    citationsPayload,
+    content,
+    dirty,
+    flushDraftNow,
+    notebookId,
+    title,
+  ]);
 
   useEffect(() => {
     emitNotebookEvent("note-active", { noteId: activeNoteId });
@@ -379,20 +421,15 @@ export default function NotesEditor({
   useEffect(() => {
     if (!notebookId) return;
 
-    const base = activeNoteId
-      ? `nb:noteDraft:${notebookId}:note:${activeNoteId}`
-      : `nb:noteDraft:${notebookId}:new`;
-
     const id = setTimeout(() => {
-      localStorage.setItem(`${base}:title`, title);
-      localStorage.setItem(`${base}:content`, content);
-      if (citationsPayload) {
-        localStorage.setItem(`${base}:citations`, JSON.stringify(citationsPayload));
-      } else {
-        localStorage.removeItem(`${base}:citations`);
-      }
+      persistDraftBundle({
+        notebookId,
+        noteId: activeNoteId,
+        title,
+        content,
+        citations: citationsPayload,
+      });
       const now = new Date();
-      localStorage.setItem(`${base}:savedAt`, now.toISOString());
       setLastDraftAt(now);
     }, 150);
 

@@ -701,6 +701,59 @@ function isUnknownFolderIdError(error: any): boolean {
   return String(error?.message || "").includes("Unknown argument `folderId`");
 }
 
+function isFolderValidationLookupUnavailable(error: any): boolean {
+  const code = String(error?.code || "").trim();
+  const message = String(error?.message || "");
+
+  return (
+    code === "P1000" ||
+    code === "P1001" ||
+    code === "P1002" ||
+    code === "P1008" ||
+    code === "P1017" ||
+    /authentication failed|can't reach database server|server has closed the connection/i.test(
+      message,
+    )
+  );
+}
+
+async function resolveUploadTargetFolderId(folderId: unknown) {
+  if (!prismaSupportsFolders()) return undefined;
+
+  const uploadTargetFolderId =
+    typeof folderId === "string" && folderId.trim() && folderId.trim() !== "root"
+      ? folderId.trim()
+      : null;
+
+  if (!uploadTargetFolderId) return uploadTargetFolderId;
+
+  try {
+    const targetFolder = await prisma.folder.findUnique({
+      where: { id: uploadTargetFolderId },
+      select: { id: true, deletedAt: true },
+    });
+    if (!targetFolder) {
+      const err: any = new Error("Target folder not found");
+      err.status = 400;
+      throw err;
+    }
+    if (targetFolder.deletedAt) {
+      const err: any = new Error("Target folder is in trash");
+      err.status = 409;
+      throw err;
+    }
+  } catch (error: any) {
+    if (error?.status) throw error;
+    if (isFolderValidationLookupUnavailable(error)) {
+      // If folder prevalidation is unavailable, defer authority to the final write.
+      return uploadTargetFolderId;
+    }
+    throw error;
+  }
+
+  return uploadTargetFolderId;
+}
+
 type StoredFileScopeParams = {
   q?: string;
   tags?: string;
@@ -1215,28 +1268,9 @@ r.post(
         };
 
         if (prismaSupportsFolders()) {
-          const uploadTargetFolderId =
-            typeof folderId === "string" &&
-            folderId.trim() &&
-            folderId.trim() !== "root"
-              ? folderId.trim()
-              : null;
-          if (uploadTargetFolderId) {
-            const targetFolder = await prisma.folder.findUnique({
-              where: { id: uploadTargetFolderId },
-              select: { id: true, deletedAt: true },
-            });
-            if (!targetFolder) {
-              return res
-                .status(400)
-                .json({ message: "Target folder not found" });
-            }
-            if (targetFolder.deletedAt) {
-              return res
-                .status(409)
-                .json({ message: "Target folder is in trash" });
-            }
-          }
+          const uploadTargetFolderId = await resolveUploadTargetFolderId(
+            folderId,
+          );
           updateData.folderId = uploadTargetFolderId;
           createData.folderId = uploadTargetFolderId;
         }
@@ -1592,24 +1626,7 @@ r.post("/files/finalize", async (req, res, next) => {
     };
 
     if (prismaSupportsFolders()) {
-      const uploadTargetFolderId =
-        typeof folderId === "string" &&
-        folderId.trim() &&
-        folderId.trim() !== "root"
-          ? folderId.trim()
-          : null;
-      if (uploadTargetFolderId) {
-        const targetFolder = await prisma.folder.findUnique({
-          where: { id: uploadTargetFolderId },
-          select: { id: true, deletedAt: true },
-        });
-        if (!targetFolder) {
-          return res.status(400).json({ message: "Target folder not found" });
-        }
-        if (targetFolder.deletedAt) {
-          return res.status(409).json({ message: "Target folder is in trash" });
-        }
-      }
+      const uploadTargetFolderId = await resolveUploadTargetFolderId(folderId);
       updateData.folderId = uploadTargetFolderId;
       createData.folderId = uploadTargetFolderId;
     }

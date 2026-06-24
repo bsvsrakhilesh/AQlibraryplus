@@ -581,7 +581,7 @@ export async function deleteSource(notebookId: string, sourceId: string) {
   const src = await prisma.notebookSource.findUnique({
     where: { id: sourceId },
   });
-  if (!src || src.notebookId !== notebookId) return;
+  if (!src || src.notebookId !== notebookId) return false;
 
   // If you added SourcePage model, clean it too (or rely on cascade)
   await prisma.sourceChunk.deleteMany({ where: { sourceId } });
@@ -589,6 +589,7 @@ export async function deleteSource(notebookId: string, sourceId: string) {
   await prisma.sourcePage?.deleteMany?.({ where: { sourceId } });
 
   await prisma.notebookSource.delete({ where: { id: sourceId } });
+  return true;
 }
 
 export async function createNote(

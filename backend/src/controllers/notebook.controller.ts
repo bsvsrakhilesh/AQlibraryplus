@@ -257,7 +257,8 @@ export async function deleteNotebookSourceHandler(
     const notebookId = firstParam(req.params.id);
     const sourceId = firstParam(req.params.sourceId);
 
-    await deleteSource(notebookId, sourceId);
+    const ok = await deleteSource(notebookId, sourceId);
+    if (!ok) return res.status(404).json({ message: "Source not found" });
 
     await logAudit(req, {
       action: "notebook.source.deleted",

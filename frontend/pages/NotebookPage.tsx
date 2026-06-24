@@ -829,6 +829,18 @@ export default function NotebookPage() {
         `/notebooks/${activeId!}/sources/${fixSourceId!}/diagnostics?maxChars=20000`,
       ),
     enabled: !!activeId && !!fixSourceId,
+    refetchInterval: (query) => {
+      const diag = query.state.data as SourceDiagnostics | undefined;
+      const ing = diag?.jobs.ingestion?.status ?? "NONE";
+      const emb = diag?.jobs.embedding?.status ?? "NONE";
+      const needsRefresh =
+        ing === "PENDING" ||
+        ing === "RUNNING" ||
+        emb === "PENDING" ||
+        emb === "RUNNING";
+      return needsRefresh ? 2000 : false;
+    },
+    refetchIntervalInBackground: true,
   });
 
   const retryIngestionM = useMutation({
