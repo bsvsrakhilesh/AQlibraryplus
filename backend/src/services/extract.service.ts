@@ -8,6 +8,7 @@ import dns from "dns/promises";
 import net from "net";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import fs from "node:fs/promises";
+import * as unzipper from "unzipper";
 
 const MAX_HTML_BYTES = Number(
   process.env.EXTRACT_MAX_HTML_BYTES || 10 * 1024 * 1024,
@@ -779,7 +780,9 @@ async function extractPdfPagesFromBuffer(
   buf: Buffer,
   pageNumbers?: number[] | ((totalPages: number) => number[]),
 ) {
-  const loadingTask = pdfjsLib.getDocument({ data: buf });
+  // PDF.js rejects Node.js Buffer instances even though Buffer extends
+  // Uint8Array. Copy into a plain Uint8Array at the library boundary.
+  const loadingTask = pdfjsLib.getDocument({ data: Uint8Array.from(buf) });
   const pdfDoc = await loadingTask.promise;
 
   const pages: { pageNumber: number; text: string }[] = [];
@@ -1170,6 +1173,50 @@ export async function extractTextFromFile(
   mimeType: string,
 ): Promise<string> {
   const ext = path.extname(filePath).toLowerCase();
+  if (
+    ext === ".docx" ||
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    const archive = await unzipper.Open.file(filePath);
+    const documentXml = archive.files.find(
+      (entry: { path: string }) => entry.path === "word/document.xml",
+    );
+    if (!documentXml) throw new Error("DOCX document.xml is missing");
+    if (documentXml.uncompressedSize > 25 * 1024 * 1024) {
+      throw new Error("DOCX document text is too large to extract safely");
+    }
+
+    const xml = (await documentXml.buffer()).toString("utf8");
+    return xml
+      .replace(/<w:tab\b[^>]*\/>/gi, "\t")
+      .replace(/<w:br\b[^>]*\/>/gi, "\n")
+      .replace(/<\/w:p>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+  if (ext === ".html" || ext === ".htm" || mimeType === "text/html") {
+    const html = await readFile(filePath, "utf8");
+    const dom = createDom(html, "https://local.invalid/");
+    dom.window.document
+      .querySelectorAll("script, style, noscript, template")
+      .forEach((node) => node.remove());
+    dom.window.document
+      .querySelectorAll(
+        "address, article, aside, blockquote, br, div, dl, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hr, li, main, nav, ol, p, pre, section, table, tr, ul",
+      )
+      .forEach((node) => node.insertAdjacentText("afterend", " "));
+    return String(dom.window.document.body?.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
   if (mimeType?.startsWith("text/") || ext === ".txt") {
     try {
       return (await readFile(filePath, "utf8")).toString();
@@ -1193,7 +1240,7 @@ export async function extractPdfPagesFromFile(
   storagePath: string,
 ): Promise<{ pageNumber: number; text: string }[]> {
   const buf = await fs.readFile(storagePath);
-  const loadingTask = pdfjsLib.getDocument({ data: buf });
+  const loadingTask = pdfjsLib.getDocument({ data: Uint8Array.from(buf) });
   const pdf = await loadingTask.promise;
 
   const pages: { pageNumber: number; text: string }[] = [];

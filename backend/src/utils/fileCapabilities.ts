@@ -191,3 +191,33 @@ export function getAiTaggingUnavailableMessage(
     `AI tagging is not yet supported for ${cap.canonicalMime || "this file type"}.`
   );
 }
+
+const NOTEBOOK_TEXT_EXTENSIONS = new Set([
+  ".pdf",
+  ".docx",
+  ".html",
+  ".htm",
+  ".txt",
+  ".md",
+  ".csv",
+  ".json",
+  ".xml",
+]);
+
+/**
+ * Notebook chat requires deterministic text extraction. Upload support is
+ * broader because the file manager and visual AI tagger also accept images.
+ */
+export function getNotebookIngestionCapability(
+  fileName: string,
+  mimeType?: string,
+): { supported: boolean; reason: string | null } {
+  const capability = getFileCapability(fileName, mimeType);
+  const supported = NOTEBOOK_TEXT_EXTENSIONS.has(capability.ext);
+  return {
+    supported,
+    reason: supported
+      ? null
+      : "Notebook chat currently supports PDF, DOCX, HTML, TXT, Markdown, CSV, JSON, and XML files. Image-only files need a document OCR workflow before they can be used as chat evidence.",
+  };
+}

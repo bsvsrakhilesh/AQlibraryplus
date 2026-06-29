@@ -36,6 +36,8 @@ interface AdvancedFileUploadProps {
   finalizeUrl?: string; // optional finalize endpoint
   compact?: boolean;
   folderId?: string; // optional: associate uploads to folder
+  accept?: string;
+  fileTypeHint?: string;
 }
 
 const STORAGE_KEY = "advanced_file_upload_state";
@@ -176,6 +178,8 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
   finalizeUrl,
   compact = false,
   folderId,
+  accept = FILE_INPUT_ACCEPT,
+  fileTypeHint = FILE_INPUT_HINT,
 }) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -257,6 +261,21 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
     for (const file of Array.from(files)) {
       const fingerprint = await fingerprintFor(file);
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      if (file.size === 0) {
+        setFileProgressMap((prev) => ({
+          ...prev,
+          [fingerprint]: {
+            file,
+            fingerprint,
+            uploadSessionId: createUploadSessionId(),
+            uploadedChunks: new Set<number>(),
+            totalChunks: 0,
+            status: "error",
+            error: "Empty files cannot be uploaded.",
+          },
+        }));
+        continue;
+      }
       const stored = loadStoredState();
       const existing = stored[fingerprint];
       const uploadSessionId =
@@ -727,7 +746,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
                 name="compact-upload-files"
                 type="file"
                 multiple
-                accept={FILE_INPUT_ACCEPT}
+                accept={accept}
                 className="hidden"
                 onChange={(e) => handleFiles(e.target.files)}
               />
@@ -738,7 +757,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
                 <div className="text-sm">
                   <div className="font-medium">Add files</div>
                   <div className="text-xs text-neutral-500">
-                    Drag & drop or click to select • {FILE_INPUT_HINT}
+                    Drag & drop or click to select • {fileTypeHint}
                   </div>
                 </div>
               </div>
@@ -825,7 +844,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
           <div className="min-w-0">
             <div className="font-medium">Upload files</div>
             <div className="text-xs text-neutral-500">
-              Drag & drop or click to select multiple files • {FILE_INPUT_HINT}
+              Drag & drop or click to select multiple files • {fileTypeHint}
             </div>
           </div>
         </div>
@@ -835,7 +854,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
           name="upload-files"
           type="file"
           multiple
-          accept={FILE_INPUT_ACCEPT}
+                accept={accept}
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />

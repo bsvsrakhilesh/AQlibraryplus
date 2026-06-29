@@ -161,6 +161,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A tasks:CELERY inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      start_period: 45s
+      retries: 3
     command: sh -c "celery -A tasks:CELERY worker -l info --concurrency=$${AI_TAGGER_WORKER_CONCURRENCY:-2}"
 
 volumes:

@@ -6,6 +6,8 @@ import { emitNotebookEvent } from "../../lib/notebookEvents";
 import { notebookClient as api, type NBSource } from "../../lib/notebookClient";
 import UrlIcon from "../icons/UrlIcon";
 import FileIcon from "../icons/FileIcon";
+import AdvancedFileUpload from "../filemanager/AdvancedFileUpload";
+import type { FileItem } from "../../lib/types";
 
 function clsx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -32,6 +34,13 @@ type RowExtraProps = {
 const PAGE_SIZE = 200;
 const ROW_HEIGHT = 62;
 const PREFETCH_THRESHOLD = 18;
+const NOTEBOOK_FILE_ACCEPT =
+  ".pdf,.docx,.html,.htm,.txt,.md,.csv,.json,.xml";
+
+function notebookSupportsFile(row: PickerRow) {
+  const name = String(row.raw?.fileName ?? row.title).toLowerCase();
+  return /\.(pdf|docx|html?|txt|md|csv|json|xml)$/.test(name);
+}
 
 async function fetchJson<T = any>(path: string): Promise<T> {
   return apiGet<T>(`/api${path}`);
@@ -98,20 +107,22 @@ function RowsListItem({
 
   const isAttached = attached.has(row.id);
   const isChecked = selected.has(row.id);
+  const isUnsupported = kind === "file" && !notebookSupportsFile(row);
 
   return (
     <div style={style} className="px-2 py-1.5">
       <button
         type="button"
         onClick={() => toggle(row.id)}
-        disabled={isAttached}
+        disabled={isAttached || isUnsupported}
         className={clsx(
           "w-full h-full text-left rounded-xl border px-3 py-2.5 flex items-start gap-3 transition",
           "bg-white hover:bg-slate-50",
           isChecked &&
             "border-indigo-300 bg-indigo-50/40 hover:bg-indigo-50/50",
           !isChecked && "border-slate-200/80",
-          isAttached && "opacity-60 cursor-not-allowed hover:bg-white",
+          (isAttached || isUnsupported) &&
+            "opacity-60 cursor-not-allowed hover:bg-white",
         )}
       >
         <div className="mt-0.5 shrink-0">
@@ -143,6 +154,11 @@ function RowsListItem({
                 Attached
               </span>
             )}
+            {isUnsupported && (
+              <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-amber-800">
+                Not chat-ready
+              </span>
+            )}
           </div>
 
           <div className="text-[12px] text-slate-500 truncate mt-0.5">
@@ -156,7 +172,7 @@ function RowsListItem({
             type="checkbox"
             checked={isChecked}
             readOnly
-            disabled={isAttached}
+            disabled={isAttached || isUnsupported}
             className="w-4 h-4 accent-indigo-600"
             aria-label={isChecked ? "Selected" : "Not selected"}
           />
@@ -193,7 +209,44 @@ export default function SourcePicker({
   const [loadingInitial, setLoadingInitial] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [attaching, setAttaching] = useState(false);
+  const [showUploader, setShowUploader] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const attachUploadedFile = async (file: FileItem) => {
+    if (!notebookId || !file?.id) return;
+    try {
+      setErr(null);
+      const source = await api.addFileSource(notebookId, String(file.id));
+      setAttachedIds((prev) => new Set(prev).add(String(file.id)));
+      setRawItems((prev) => {
+        if (prev.some((item) => String(item?.id) === String(file.id))) return prev;
+        return [
+          {
+            id: file.id,
+            fileName: file.title,
+            mimeType: file.mimeType,
+            size: file.size,
+          },
+          ...prev,
+        ];
+      });
+      qc.setQueryData(["nb:sources", notebookId], (prev: unknown) => {
+        const current = Array.isArray(prev) ? (prev as NBSource[]) : [];
+        return current.some((item) => item.id === source.id)
+          ? current
+          : [source, ...current];
+      });
+      qc.invalidateQueries({ queryKey: ["nb:sources", notebookId] });
+      emitNotebookEvent("toast", {
+        kind: "success",
+        text: `Uploaded and attached ${file.title}. Indexing has started.`,
+      });
+    } catch (error: any) {
+      const message = error?.message || "The file uploaded, but could not be attached.";
+      setErr(message);
+      emitNotebookEvent("toast", { kind: "error", text: message });
+    }
+  };
 
   // Debounce search
   useEffect(() => {
@@ -637,6 +690,16 @@ export default function SourcePicker({
               Add {kind === "url" ? "URLs" : "Files"} to notebook
             </div>
             <div className="ml-auto flex items-center gap-2">
+              {kind === "file" ? (
+                <button
+                  type="button"
+                  onClick={() => setShowUploader((value) => !value)}
+                  disabled={attaching}
+                  className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 disabled:opacity-60"
+                >
+                  {showUploader ? "Browse library" : "Upload new"}
+                </button>
+              ) : null}
               <button
                 onClick={onClose}
                 disabled={attaching}
@@ -656,7 +719,20 @@ export default function SourcePicker({
             </div>
           </div>
 
-          <div className="mt-2 flex items-center gap-2">
+          {kind === "file" && showUploader ? (
+            <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3">
+              <AdvancedFileUpload
+                onUploaded={(file) => void attachUploadedFile(file)}
+                accept={NOTEBOOK_FILE_ACCEPT}
+                fileTypeHint="PDF, DOCX, HTML, TXT, Markdown, CSV, JSON, or XML"
+              />
+              <p className="mt-2 text-[12px] leading-5 text-slate-600">
+                Completed uploads are attached automatically. Chat becomes available after text extraction and indexing finish.
+              </p>
+            </div>
+          ) : null}
+
+          {!showUploader || kind !== "file" ? <div className="mt-2 flex items-center gap-2">
             <input
               ref={inputRef}
               name="picker-search"
@@ -671,16 +747,16 @@ export default function SourcePicker({
                 ? "Loading…"
                 : `${rows.length.toLocaleString()} results`}
             </div>
-          </div>
+          </div> : null}
 
-          <div className="mt-2 text-[12px] text-slate-500">
+          {!showUploader || kind !== "file" ? <div className="mt-2 text-[12px] text-slate-500">
             Tip: <span className="font-semibold">Esc</span> to close ·{" "}
             <span className="font-semibold">Ctrl/Cmd + Enter</span> to attach
-          </div>
+          </div> : null}
         </div>
 
         {/* Body */}
-        <div className="flex-1 min-h-0">
+        <div className={clsx("flex-1 min-h-0", showUploader && kind === "file" && "hidden")}>
           {err && (
             <div className="p-3 m-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm">
               <div className="font-semibold mb-1">Something went wrong</div>

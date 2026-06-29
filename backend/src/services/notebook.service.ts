@@ -4,6 +4,7 @@ import { enqueueEmbeddingJob } from "../queues/embedding.queue";
 import { enqueueIngestionJob } from "../queues/ingestion.queue";
 import crypto from "crypto";
 import { Prisma } from "../generated/prisma/client";
+import { getNotebookIngestionCapability } from "../utils/fileCapabilities";
 import { listAuditLogs } from "./audit.service";
 import { normalizeNoteProvenance } from "./notebookProvenance.service";
 import {
@@ -523,6 +524,17 @@ export async function attachFileSource(notebookId: string, fileId: string) {
     throw err;
   }
 
+  const notebookCapability = getNotebookIngestionCapability(
+    file.fileName,
+    file.mimeType,
+  );
+  if (!notebookCapability.supported) {
+    throw httpError(
+      415,
+      notebookCapability.reason || "Unsupported notebook file type",
+    );
+  }
+
   try {
     const src = await prisma.notebookSource.create({
       data: { notebookId, kind: "FILE", fileId },
@@ -612,6 +624,7 @@ export async function createNote(
     if (e?.code === "P2003") throw httpError(404, "Notebook not found");
     throw e;
   }
+
 }
 
 export async function updateNote(
