@@ -2,6 +2,15 @@
 
 SmartScrape is a research platform for collecting, organizing, preserving, and analyzing web-based and personal documents used in governance and policy work. It helps users build searchable, citation-backed evidence collections for reviewing past decisions, preparing new analyses, and preserving institutional knowledge.
 
+The intended SmartScrape workflow uses **Google Programmable Search / Custom
+Search JSON API** for web discovery and **OpenAI** for query assistance,
+embeddings, enhanced tag reranking, Notebook answers, and Governance Workspace
+analysis. Configure both integrations before evaluating the complete product.
+The AI tagger itself does not require OpenAI: it has a deterministic tagging,
+taxonomy, and structured-intelligence path, with optional LLM enhancement.
+
+For detailed page-by-page usage instructions, see the [User Manual](docs/SmartScrape_User_Manual.docx).
+
 ## Overview
 
 The platform brings together four connected workflows:
@@ -30,7 +39,7 @@ Therefore, the approach is to develop an LLM-backed tool that allows you to extr
 
 - **Evidence-Backed Policy Analysis** — Centralizes fragmented governance documents, helps preserve sources that may disappear from the web, and supports reproducible analysis with cited evidence.
 - **Cross-Agency Pattern Discovery** — Trace policy decisions and their consequences within the organization or across multiple institutions ; identify timeline relationships and decision dependencies for comparative governance research and decisions.
-- **Grounded AI Analysis** — LLM-backed insights that don't hallucinate; all outputs anchored to source documents with citation links; reduces analyst time on manual review and categorization
+- **Grounded AI Analysis** — LLM-backed insights that don't hallucinate; outputs are grounded in retrieved source passages and include citation links for verification; reduces analyst time on manual review and categorization
 - **Provenance & Auditability** — Maintains citation links to original sources; records capture metadata (date, context, version); enables verification and supports institutional knowledge preservation
 - **Institutional Continuity** — Archives ephemeral web content before it disappears; captures decision rationale and organizational context; supports longitudinal governance studies
 
@@ -38,7 +47,7 @@ Therefore, the approach is to develop an LLM-backed tool that allows you to extr
 
 - **URL Collector with Deduplication** — Search, inspect, and capture web pages as text or PDF; automatic deduplication prevents redundant data; structured capture of web-sourced evidence
 - **Flexible Multi-Format Support** — Handles web pages, PDFs, and text uploads with unified storage and searchable archive
-- **Intelligent Metadata & Tagging** — AI-powered automated tagging using LLM-based taxonomy system; customizable structured tags (CAQM taxonomy included as example); full-text search across documents and metadata
+- **Intelligent Metadata & Tagging** — Automated deterministic tagging with a customizable taxonomy system (the CAQM taxonomy is included as an example), structured metadata extraction, and optional LLM-enhanced reranking; full-text search across documents and metadata
 - **Governance Workspace** — Map connections across agencies, decisions, timelines, and issues; track authorship and policy dependencies; create audit trails for governance decisions
 
 ### Technical Architecture
@@ -61,8 +70,8 @@ standard setup.
 - Docker Desktop or Docker Engine with Docker Compose.
 - Git, unless you download the repository as a ZIP archive.
 - A terminal: PowerShell on Windows, Terminal on macOS or Linux.
-- For full external integrations: `OPENAI_API_KEY`, `GOOGLE_CSE_KEY`,
-  and `GOOGLE_CSE_CX`.
+- Google Custom Search credentials: `GOOGLE_CSE_KEY` and `GOOGLE_CSE_CX`.
+- An OpenAI API key with access to the models configured below.
 - Optional for non-Docker development only: Node.js 22+, npm, Python 3.12,
   PostgreSQL 16 with pgvector, and Redis 7.
 
@@ -74,7 +83,6 @@ SmartScrape uses these local ports in the Docker development setup:
 | Backend API | `http://localhost:4000` |
 | Backend health check | `http://localhost:4000/health` |
 | AI tagger health check | `http://localhost:7071/health` |
-| Optional Institutional Capture Node | `http://localhost:7081` |
 
 ### 1. Get the Source Code
 
@@ -106,7 +114,6 @@ Copy-Item .env.example .env
 Copy-Item backend\.env.example backend\.env
 Copy-Item frontend\.env.example frontend\.env
 Copy-Item ai-tagger\.env.example ai-tagger\.env
-Copy-Item icn\.env.example icn\.env
 ```
 
 On macOS or Linux:
@@ -116,7 +123,6 @@ cp .env.example .env
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 cp ai-tagger/.env.example ai-tagger/.env
-cp icn/.env.example icn/.env
 ```
 
 The `.env` files are local configuration files. They may contain secrets and
@@ -156,8 +162,15 @@ POSTGRES_PASSWORD=replace-with-your-password
 DATABASE_URL=postgresql://postgres:replace-with-your-password@db:5432/SmartScrape?schema=public
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 TAGGER_PY_URL=http://ai-tagger:7071
-OPENAI_ENABLED=false
-TAGS_USE_LLM=false
+GOOGLE_CSE_KEY=your-google-api-key
+GOOGLE_CSE_CX=your-programmable-search-engine-id
+OPENAI_ENABLED=true
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-5.2
+GOVERNANCE_ANSWER_MODEL=gpt-5.5
+GOVERNANCE_ASSIST_MODEL=gpt-5.4-mini
+GOVERNANCE_DEEP_REVIEW_MODEL=gpt-5.5-pro
+TAGS_USE_LLM=true
 DEV_AUTH_ENABLED=false
 ```
 
@@ -170,44 +183,29 @@ For the Docker development stack, these values are supplied by
 `frontend/.env` can stay blank for Docker because the development container
 starts Vite on port `3000` and proxies API requests to the backend service.
 
-### 4. Optional External Service Configuration
+### 4. Optional OpenAI Enhancement for the AI Tagger
 
-SmartScrape can run without external API keys. In that mode, local startup,
-file upload, source storage, deterministic tests, and non-LLM workflows remain
-available, but web search and LLM-backed analysis are limited.
-
-To enable OpenAI-backed notebook answers, governance answers, LLM-assisted tag
-ranking, and structured extraction, set these values in `backend/.env`:
-
-```env
-OPENAI_ENABLED=true
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4.1-mini
-GOVERNANCE_ANSWER_MODEL=gpt-4.1-mini
-GOVERNANCE_ASSIST_MODEL=gpt-4.1-mini
-GOVERNANCE_DEEP_REVIEW_MODEL=gpt-4.1
-```
-
-If the Python AI tagger should also use LLM enhancement, set these values in
-`ai-tagger/.env`:
+The backend configuration above enables OpenAI for embeddings, Notebook chat,
+Governance Workspace answers, search assistance, and backend LLM operations.
+The Python AI tagger works without an OpenAI key. Its baseline path performs
+deterministic candidate extraction, taxonomy application, ranking, and
+structured-intelligence extraction. To additionally enable LLM-assisted tag
+reranking and structured extraction, set the following values in
+`ai-tagger/.env` (the same OpenAI API key may be used):
 
 ```env
-OPENAI_API_KEY=sk-...
-LLM_MODEL=gpt-4.1-mini
+OPENAI_API_KEY=your-openai-api-key
+LLM_MODEL=gpt-4o-mini
 STRUCTURED_LLM_ENABLED=true
-STRUCTURED_LLM_MODEL=gpt-4.1-mini
+STRUCTURED_LLM_MODEL=gpt-4o-mini
 ```
 
-To enable Google-powered URL search, set these values in `backend/.env`:
-
-```env
-GOOGLE_CSE_KEY=your-google-api-key
-GOOGLE_CSE_CX=your-programmable-search-engine-id
-```
-
-If those Google values are absent, reviewers can still test saved-source,
-upload, tagging, notebook, and governance workflows with manually supplied
-URLs and files.
+The containers can start with blank external credentials, which is useful for
+deterministic tests and infrastructure development. That degraded mode is not
+the intended SmartScrape experience: URL Collector web search requires Google,
+while source embeddings, grounded Notebook answers, Governance answers, and
+LLM-enhanced tag reranking require OpenAI. Baseline AI tagging remains available
+without an OpenAI key in `ai-tagger/.env`.
 
 ### 5. Start SmartScrape
 
@@ -234,6 +232,14 @@ Confirm the backend and AI tagger are responding:
 http://localhost:4000/health
 http://localhost:7071/health
 ```
+
+Then confirm the configured integrations in the application:
+
+1. Open URL Collector and run a small search. A missing or invalid
+   `GOOGLE_CSE_KEY` / `GOOGLE_CSE_CX` will prevent results from loading.
+2. Use **AI assist** in URL Collector, or add a source to Notebook and wait for
+   it to become ready. A missing or invalid OpenAI configuration will prevent
+   the intended LLM and embedding workflow.
 
 ### 6. Stop, Restart, or Reset
 
@@ -296,36 +302,21 @@ docker compose -f docker-compose.dev.yml up --build
 ```
 
 If the application starts but LLM or search features are unavailable, check that
-the relevant API keys are present in `backend/.env` and `ai-tagger/.env`. The
-basic local application does not require those keys.
+`GOOGLE_CSE_KEY`, `GOOGLE_CSE_CX`, `OPENAI_ENABLED=true`, and `OPENAI_API_KEY`
+are present in `backend/.env`. An `OPENAI_API_KEY` in `ai-tagger/.env` is only
+needed for LLM-enhanced reranking and structured extraction; deterministic AI
+tagging works without it. After changing environment values, recreate the
+affected containers so they receive the new configuration.
 
-### 8. Optional Institutional Capture Node
+### 8. Institutional Capture Node Prototype
 
-The Institutional Capture Node (ICN) is an optional local browser-capture
-service for authenticated pages. The Docker development backend is configured
-to look for it at `http://host.docker.internal:7081`.
-
-Run the ICN outside Docker:
-
-```powershell
-cd icn
-npm install
-npm run install:browsers
-npm run dev
-```
-
-Recommended `icn/.env` values for local testing:
-
-```env
-PORT=7081
-HOST=127.0.0.1
-ICN_NODE_NAME=local-icn
-ICN_HEADLESS=false
-ICN_ALLOWED_ORIGIN=http://localhost:3000
-```
-
-If you set `ICN_SHARED_SECRET` in `icn/.env`, set the same value in
-`backend/.env`.
+The `icn/` directory is a **mock/prototype integration** demonstrating how a
+future institutional capture node could support authenticated or restricted
+sources through a user-controlled browser session. It is not required for the
+core Google + OpenAI workflow, and Docker Compose does not start an ICN service
+or container. It should not be presented as a production-ready or supported
+deployment feature. Its interfaces and security model may change substantially
+before any production implementation.
 
 ### 9. Local Development Without Docker
 
@@ -393,9 +384,22 @@ NODE_ENV=production
 POSTGRES_PASSWORD=replace-with-a-strong-production-password
 DATABASE_URL=postgresql://postgres:replace-with-a-strong-production-password@db:5432/SmartScrape?schema=public
 CORS_ORIGINS=https://your-production-domain.example
-OPENAI_ENABLED=false
+GOOGLE_CSE_KEY=read-from-secret-manager
+GOOGLE_CSE_CX=read-from-secret-manager
+OPENAI_ENABLED=true
+OPENAI_API_KEY=read-from-secret-manager
+OPENAI_MODEL=gpt-5.2
+GOVERNANCE_ANSWER_MODEL=gpt-5.5
+GOVERNANCE_ASSIST_MODEL=gpt-5.4-mini
+GOVERNANCE_DEEP_REVIEW_MODEL=gpt-5.5-pro
 DEV_AUTH_ENABLED=false
 ```
+
+Supply the placeholder credentials above through the deployment's
+secret-management system. Optionally provide `OPENAI_API_KEY`, `LLM_MODEL`, and
+`STRUCTURED_LLM_MODEL` to the AI tagger environment when LLM-enhanced tag
+reranking and structured extraction are wanted. Do not commit API keys to the
+repository or bake them into container images.
 
 Start the production stack:
 
@@ -417,11 +421,12 @@ Copy-Item .env.example .env
 Copy-Item backend\.env.example backend\.env
 Copy-Item frontend\.env.example frontend\.env
 Copy-Item ai-tagger\.env.example ai-tagger\.env
-Copy-Item icn\.env.example icn\.env
 ```
 
-Then fill `POSTGRES_PASSWORD`, `DATABASE_URL`, and `CORS_ORIGINS` as described
-above, start Docker Desktop, and run:
+Then fill `POSTGRES_PASSWORD`, `DATABASE_URL`, `CORS_ORIGINS`,
+`GOOGLE_CSE_KEY`, `GOOGLE_CSE_CX`, and the backend OpenAI values described
+above. The AI-tagger OpenAI values are optional enhancements. Start Docker
+Desktop and run:
 
 ```powershell
 docker compose -f docker-compose.dev.yml up --build
@@ -431,22 +436,24 @@ Open `http://localhost:3000` after the services are healthy.
 
 ## Example Workflow
 
-After installation, use this workflow to verify the main research-software path:
+After installation, use this workflow to verify the intended Google + OpenAI
+research path:
 
 1. Open `http://localhost:3000`.
-2. Upload a small PDF or text file in the File Manager.
-3. Confirm that the source is saved with file name, capture metadata, and
+2. In URL Collector, create or select a research purpose and run a Google-backed
+   search for a policy or governance topic.
+3. Save a relevant result to the purpose and capture the source as text or PDF
+   through the saved-source workflow.
+4. Confirm that the source is saved with its URL, capture metadata, and
    searchable text where extraction is available.
-4. Add or review structured tags for the saved source.
-5. Open the Notebook, attach the saved source, and ask a question that requires
+5. Add or review the AI-generated structured tags for the saved source.
+6. Open the Notebook, attach the saved source, wait for it to become ready, and
+   ask a question that requires
    an answer grounded in the uploaded evidence.
-6. Confirm that the answer includes citations back to the saved source.
-7. Open the Governance Workspace and verify that the same source can be used in
+7. Confirm that the answer includes citations back to the saved source and
+   inspect the cited passage before accepting the answer.
+8. Open the Governance Workspace and verify that the same source can be used in
    an issue, agency, timeline, or evidence-review workflow.
-
-If Google search credentials are configured, also test the URL Collector by
-searching for a policy or governance source, reviewing the result metadata,
-saving one URL, and confirming that it appears in the saved-source archive.
 
 ## Repository structure
 
@@ -478,7 +485,7 @@ smart-scrape/
 |   |-- pipeline.py               # Tagging pipeline orchestration
 |   |-- taxonomies/               # Domain taxonomies, including the CAQM example taxonomy
 |   `-- tests/                    # Python tests for tagging, OCR, and structured extraction
-|-- icn/                          # Institutional Capture Node for authenticated browser-based captures
+|-- icn/                          # Mock/prototype for a possible future institutional capture integration
 `-- paper/                        # JOSS paper source files
     |-- paper.md
     `-- paper.bib
@@ -583,14 +590,14 @@ http://localhost:7071/health
 A reviewer can then perform this manual smoke test:
 
 1. Open `http://localhost:3000`.
-2. Use the URL Collector to search for relevant sources using keywords,
-   website/domain filters, year filters, jurisdiction, region, and document
-   format options.
+2. Create or select a research purpose, then use URL Collector to run a
+   Google-backed search using keywords, website/domain filters, year filters,
+   jurisdiction, region, and document format options.
 3. Review the returned URLs, inspect their snippets and metadata, and save one
-   or more relevant results to the archive.
+   or more relevant results to the active research purpose.
 4. Upload a small PDF or plain-text file in the File Manager.
-5. Run AI tagging on a saved URL or uploaded file when the tagger service is
-   available.
+5. Run AI tagging on a saved URL or uploaded file. This baseline tagging path
+   works without an OpenAI key in the AI tagger.
 6. Confirm that the saved source appears with title, URL or file name, capture
    metadata, tags, and provenance information.
 7. Attach the saved source to a Notebook and ask a question that requires a
@@ -603,13 +610,13 @@ backend build without TypeScript errors, service health checks respond, and the
 manual workflow produces a saved evidence source that can be searched, tagged,
 attached to a notebook, and cited in an answer.
 
-Some integrations depend on external services. OpenAI-backed notebook/chat,
-LLM-assisted tag ranking, and structured extraction require a valid
-`OPENAI_API_KEY`. Google-powered URL search requires valid `GOOGLE_CSE_KEY` and
-`GOOGLE_CSE_CX` credentials. Without these keys, deterministic tests, local
-startup, file upload, saved-source management, and non-LLM verification paths
-can still be exercised, but external search and LLM-backed analysis will be
-limited.
+This smoke test assumes valid Google and backend OpenAI credentials. OpenAI-backed
+Notebook chat, embeddings, and Governance analysis require the backend
+`OPENAI_API_KEY`; Google-powered URL discovery requires `GOOGLE_CSE_KEY` and
+`GOOGLE_CSE_CX`. The AI tagger independently supports deterministic tagging and
+structured intelligence without an OpenAI key. Giving the tagger an OpenAI key
+adds LLM-assisted reranking and structured extraction but is not required for
+the tagger to operate.
 
 ## Development status
 
