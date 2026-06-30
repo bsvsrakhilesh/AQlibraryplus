@@ -11,28 +11,28 @@ test.describe("Smart Scrape landing page", () => {
 
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { name: "Build an evidence trail that survives scrutiny." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "From research purpose to verified finding." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "One workspace for the complete evidence lifecycle." })).toBeVisible();
-    await expect(page.getByText("Illustrative workflow · no live analysis")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Find the source. Keep the proof. Explain what happened." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "From first question to checked answer." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Everything you need to collect, organize, and explain records." })).toBeVisible();
+    await expect(page.getByText("Workspace overview")).toBeVisible();
     expect(operationalRequests).toEqual([]);
   });
 
   test("presents all five work surfaces with accurate descriptions", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("heading", { name: "One workspace for the complete evidence lifecycle." }).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", { name: "Everything you need to collect, organize, and explain records." }).scrollIntoViewIfNeeded();
 
     const governanceTab = page.getByRole("tab", { name: /Governance Workspace/ });
     await governanceTab.click();
     await expect(governanceTab).toHaveAttribute("aria-selected", "true");
     const surfaceCopy = page.locator(".ssl-surface-panel__copy");
-    await expect(surfaceCopy.getByRole("heading", { name: "Investigate governance questions" })).toBeVisible();
-    await expect(surfaceCopy.getByText("Retrieve official evidence, trace agencies and timelines, and inspect contradictions.")).toBeVisible();
+    await expect(surfaceCopy.getByRole("heading", { name: "Understand what happened" })).toBeVisible();
+    await expect(surfaceCopy.getByText("Compare official records, follow agency actions, build timelines, and spot gaps in the story.")).toBeVisible();
 
     const notebookTab = page.getByRole("tab", { name: /Notebook/ });
     await notebookTab.click();
-    await expect(surfaceCopy.getByRole("heading", { name: "Analyse selected sources" })).toBeVisible();
-    await expect(surfaceCopy.getByText("Control retrieval scope, ask focused questions, inspect citations, and write notes.")).toBeVisible();
+    await expect(surfaceCopy.getByRole("heading", { name: "Turn records into notes" })).toBeVisible();
+    await expect(surfaceCopy.getByText("Ask questions about selected sources, check cited passages, and write up what the records show.")).toBeVisible();
   });
 
   test("supports mobile navigation and reduced motion without horizontal overflow", async ({ page }) => {
