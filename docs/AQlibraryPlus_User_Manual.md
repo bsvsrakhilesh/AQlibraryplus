@@ -24,7 +24,7 @@ AQlibrary+ is an evidence workspace for discovering public sources with Google C
 
 The normal workflow is:
 
-> Define a research purpose â†’ discover and save relevant sources â†’ preserve important evidence â†’ analyse it with cited Notebook or Governance workflows â†’ verify the cited evidence.
+> Define a research purpose, discover and save relevant sources, preserve important evidence, analyse it with cited Notebook or Governance workflows, verify the cited evidence.
 
 AQlibrary+ is intended for researchers, environmental-governance organisations, public agencies, analysts, and other teams that need a traceable archive of documents, organisations, decisions, and interventions.
 
@@ -83,7 +83,7 @@ The supported local installation uses Docker Compose. You need Docker Desktop or
 
 Only ports `3000`, `4000`, and `7071` are published by the development stack. PostgreSQL and Redis are internal services and do not require host ports `5432` or `6379`.
 
-#### Step 1 â€” Get the source
+#### Step 1 Get the source
 
 ```powershell
 git clone https://github.com/bsvsrakhilesh/AQlibrary-plus.git
@@ -94,7 +94,7 @@ docker compose version
 
 If you downloaded a ZIP, extract it and open a terminal in the extracted `AQlibrary-plus` directory.
 
-#### Step 2 â€” Create local environment files
+#### Step 2 Create local environment files
 
 Windows PowerShell:
 
@@ -116,7 +116,7 @@ cp ai-tagger/.env.example ai-tagger/.env
 
 These files can contain secrets. Never commit them to version control or paste their contents into an issue, screenshot, or shared log.
 
-#### Step 3 â€” Configure the development stack
+#### Step 3 Configure the development stack
 
 Choose a PostgreSQL password. Put it in the root `.env`:
 
@@ -154,7 +154,7 @@ DEV_AUTH_ENABLED=false
 
 The checked-in examples remain the source of truth for all available variables. `frontend/.env` may remain blank for Docker. The Compose file supplies internal Redis, storage, Chromium, and queue settings.
 
-#### Step 4 â€” Start and verify
+#### Step 4 Start and verify
 
 ```powershell
 docker compose -f docker-compose.dev.yml up --build
@@ -189,7 +189,7 @@ Use these values throughout the walkthrough:
 
 | Item | Worked-example value |
 | --- | --- |
-| Research Purpose | `Delhi C&D dust enforcement, 2023â€“2025` |
+| Research Purpose | `Delhi C&D dust enforcement, 2023-2025` |
 | Research question | `How did CAQM directions translate into Delhi construction-and-demolition dust enforcement and reporting from January 2023 to December 2025?` |
 | Jurisdiction or area | `Delhi NCR, India` |
 | Desired output | `Cited enforcement timeline and agency-responsibility brief` |
@@ -205,7 +205,7 @@ The target evidence set contains at least three official-source records with dif
 
 1. A CAQM direction or order defining C&D dust-control obligations, such as Direction No. 79 dated 13 February 2024.
 2. A CAQM, DPCC, CPCB, MCD, or GNCTD implementation or enforcement record describing monitoring, closure, environmental compensation, prosecution, portal registration, or another follow-up action.
-3. A DPCC or CPCB report providing implementation, facility, inspection, or C&D waste-management evidence, such as the DPCC annual report for 2023â€“2024.
+3. A DPCC or CPCB report providing implementation, facility, inspection, or C&D waste-management evidence, such as the DPCC annual report for 2023-2024.
 
 Official websites, document addresses, and Google result ordering can change. Treat the named documents as search targets, not guaranteed search positions. When an exact item is unavailable, select an equivalent official document with the same evidence role and record the substitution in Notes. Do not substitute an unattributed summary for a primary official source.
 
@@ -360,7 +360,7 @@ Saved URLs is the source registry used after discovery. It supports purpose-scop
 
 ### 6.2.1 Continue the worked example: curate and preserve the source set
 
-1. Select the Research Purpose `Delhi C&D dust enforcement, 2023â€“2025` so unrelated registry records are excluded from this review.
+1. Select the Research Purpose `Delhi C&D dust enforcement, 2023-2025` so unrelated registry records are excluded from this review.
 2. Create the Saved URL collection `Delhi C&D enforcement`. Add the verified example records to it without removing their Research Purpose membership; a collection and a purpose serve different roles.
 3. Open each recordâ€™s **Details** view and confirm title, source domain, publication or issue date when available, and original URL.
 4. Add the core tags `construction-dust`, `Delhi`, and `enforcement`, plus the issuing agency name such as `CAQM` or `DPCC`. Add one concise note identifying the evidence role: `direction`, `implementation/enforcement`, or `reporting`.

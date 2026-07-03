@@ -188,6 +188,35 @@ test("collector purpose authority inference covers stubble and forecast evidence
   assert.ok(sources.some((source) => source.domain === "safar.tropmet.res.in"));
 });
 
+test("collector purpose authority inference broadens Delhi construction searches to related government portals", async () => {
+  process.env.NODE_ENV = "test";
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
+
+  const { inferAuthoritySources } = await import(
+    "../services/collectorPurpose.service"
+  );
+
+  const sources = inferAuthoritySources({
+    title: "Delhi C&D dust enforcement",
+    researchQuestion:
+      "How did CAQM directions translate into Delhi construction-and-demolition dust enforcement and reporting?",
+    jurisdiction: "Delhi NCR",
+    region: "Delhi",
+    yearFrom: null,
+    yearTo: null,
+    sourcePreferences: [],
+    targetActors: [],
+  });
+
+  assert.ok(sources.some((source) => source.domain === "caqm.nic.in"));
+  assert.ok(sources.some((source) => source.domain === "delhi.gov.in"));
+  assert.ok(sources.some((source) => source.domain === "mohua.gov.in"));
+  assert.ok(sources.some((source) => source.domain === "ncrpb.nic.in"));
+  assert.ok(sources.some((source) => source.domain === "india.gov.in"));
+});
+
 test("saveCollectorPurposeSelection deduplicates noisy selected collector rows before linking", async (t) => {
   const testDatabaseUrl = process.env.AQLIBRARYPLUS_TEST_DATABASE_URL;
   if (!testDatabaseUrl) {

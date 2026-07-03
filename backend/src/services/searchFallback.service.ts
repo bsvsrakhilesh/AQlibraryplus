@@ -107,24 +107,53 @@ export async function googleSearchWithFallback(
   q: string,
   page: number = 1,
   opts: GoogleSearchOpts = {},
+  searchImpl: typeof googleSearch = googleSearch,
 ): Promise<SearchFallbackResult> {
   const startedAt = Date.now();
   const retriedQueries: string[] = [];
   let fallbackApplied = false;
+  const originalSite = opts.site;
 
-  try {
-    // First attempt: original query
+  async function trySearch(
+    query: string,
+    searchOpts: GoogleSearchOpts,
+    attemptType: string,
+  ) {
+    if (!query && !searchOpts.site) return null;
+
     log.info("search.fallback.attempt", {
-      query: q,
-      attempt: 1,
-      type: "original",
+      query,
+      site: searchOpts.site || undefined,
+      originalSite: originalSite || undefined,
+      attempt: retriedQueries.length + 1,
+      type: attemptType,
       ms: Date.now() - startedAt,
     });
 
-    const result = await googleSearch(q, page, opts);
+    try {
+      const attempt = await searchImpl(query, page, searchOpts);
+      if (attempt.results.length > 0) {
+        return attempt;
+      }
+    } catch (err) {
+      log.warn("search.fallback.attemptFailed", {
+        query,
+        site: searchOpts.site || undefined,
+        originalSite: originalSite || undefined,
+        type: attemptType,
+        error: String(err),
+      });
+    }
+
+    return null;
+  }
+
+  try {
+    // First attempt: original query
+    const result = await trySearch(q, opts, "original");
 
     // If we got results, return them
-    if (result.results.length > 0) {
+    if (result) {
       return {
         results: result.results,
         totalResults: result.totalResults,
@@ -136,8 +165,7 @@ export async function googleSearchWithFallback(
 
     log.info("search.fallback.noResults", {
       query: q,
-      totalResults: result.totalResults,
-      resultCount: result.results.length,
+      site: originalSite || undefined,
       ms: Date.now() - startedAt,
     });
 
@@ -149,39 +177,58 @@ export async function googleSearchWithFallback(
 
       retriedQueries.push(expandedQ);
 
-      log.info("search.fallback.attempt", {
-        query: expandedQ,
-        originalQuery: q,
-        attempt: retriedQueries.length + 1,
-        type: "expanded",
-        ms: Date.now() - startedAt,
+      const expandedResult = await trySearch(expandedQ, opts, "expanded");
+      if (expandedResult) {
+        log.info("search.fallback.foundWithExpanded", {
+          originalQuery: q,
+          expandedQuery: expandedQ,
+          site: originalSite || undefined,
+          resultCount: expandedResult.results.length,
+          ms: Date.now() - startedAt,
+        });
+
+        return {
+          results: expandedResult.results,
+          totalResults: expandedResult.totalResults,
+          nextPage: expandedResult.nextPage,
+          retriedQueries,
+          fallbackApplied: true,
+        };
+      }
+    }
+
+    // If a site-scoped query is empty, try the same expansions without the site filter.
+    if (originalSite) {
+      const broadenedQueries = [q, ...expandedQueries].filter((value, index, arr) => {
+        const query = String(value || "").trim();
+        return query.length > 0 && arr.findIndex((candidate) => String(candidate || "").trim() === query) === index;
       });
 
-      try {
-        const expandedResult = await googleSearch(expandedQ, page, opts);
+      for (const broadenedQ of broadenedQueries) {
+        retriedQueries.push(`siteless:${broadenedQ}`);
+        const broadenedResult = await trySearch(
+          broadenedQ,
+          { ...opts, site: undefined },
+          "siteless-broadened",
+        );
 
-        if (expandedResult.results.length > 0) {
-          log.info("search.fallback.foundWithExpanded", {
+        if (broadenedResult) {
+          log.info("search.fallback.foundWithSiteLessBroadened", {
             originalQuery: q,
-            expandedQuery: expandedQ,
-            resultCount: expandedResult.results.length,
+            broadenedQuery: broadenedQ,
+            originalSite,
+            resultCount: broadenedResult.results.length,
             ms: Date.now() - startedAt,
           });
 
           return {
-            results: expandedResult.results,
-            totalResults: expandedResult.totalResults,
-            nextPage: expandedResult.nextPage,
+            results: broadenedResult.results,
+            totalResults: broadenedResult.totalResults,
+            nextPage: broadenedResult.nextPage,
             retriedQueries,
             fallbackApplied: true,
           };
         }
-      } catch (err) {
-        log.warn("search.fallback.expandedFailed", {
-          originalQuery: q,
-          expandedQuery: expandedQ,
-          error: String(err),
-        });
       }
     }
 
@@ -189,44 +236,32 @@ export async function googleSearchWithFallback(
     const relevantDomain = detectRelevantDomain(q);
 
     if (relevantDomain && !opts.site) {
-      log.info("search.fallback.attempt", {
-        query: q,
-        site: relevantDomain,
-        attempt: retriedQueries.length + 2,
-        type: "govDomain",
-        ms: Date.now() - startedAt,
-      });
-
-      try {
-        const siteResult = await googleSearch(q, page, {
+      const siteResult = await trySearch(
+        q,
+        {
           ...opts,
           site: relevantDomain,
-        });
+        },
+        "govDomain",
+      );
 
-        if (siteResult.results.length > 0) {
-          log.info("search.fallback.foundWithGovDomain", {
-            originalQuery: q,
-            govDomain: relevantDomain,
-            resultCount: siteResult.results.length,
-            ms: Date.now() - startedAt,
-          });
-
-          retriedQueries.push(`site:${relevantDomain}`);
-
-          return {
-            results: siteResult.results,
-            totalResults: siteResult.totalResults,
-            nextPage: siteResult.nextPage,
-            retriedQueries,
-            fallbackApplied: true,
-          };
-        }
-      } catch (err) {
-        log.warn("search.fallback.govDomainFailed", {
+      if (siteResult) {
+        log.info("search.fallback.foundWithGovDomain", {
           originalQuery: q,
           govDomain: relevantDomain,
-          error: String(err),
+          resultCount: siteResult.results.length,
+          ms: Date.now() - startedAt,
         });
+
+        retriedQueries.push(`site:${relevantDomain}`);
+
+        return {
+          results: siteResult.results,
+          totalResults: siteResult.totalResults,
+          nextPage: siteResult.nextPage,
+          retriedQueries,
+          fallbackApplied: true,
+        };
       }
     }
 

@@ -15,6 +15,19 @@ export type CollectorSearchWebOptions = {
   gl?: string;
 };
 
+export type CollectorSearchTarget = {
+  site: string;
+  label: string;
+  confidence: number;
+};
+
+export type WebsiteSuggestion = {
+  domain: string;
+  label: string;
+  confidence: number;
+  source: "authority" | "search";
+};
+
 const PDF_FIRST_DOC_TYPES = new Set([
   "court_order",
   "notification",
@@ -94,6 +107,149 @@ export function normalizeCollectorKeywords(raw: string): string {
 
 export function buildCollectorSearchQuery(kws: string): string {
   return (kws || "").trim();
+}
+
+export function resolveCollectorSearchTargets(input: {
+  site?: string;
+  authoritySources?: Array<{
+    domain: string;
+    label: string;
+    confidence?: number;
+  }>;
+  limit?: number;
+}): CollectorSearchTarget[] {
+  const limit =
+    typeof input.limit === "number" && Number.isFinite(input.limit)
+      ? Math.max(1, Math.floor(input.limit))
+      : 6;
+  const targets: CollectorSearchTarget[] = [];
+  const seen = new Set<string>();
+
+  const push = (
+    site: string | undefined,
+    label: string | undefined,
+    confidence: number | undefined,
+  ) => {
+    const normalized = normalizeCollectorWebsite(String(site ?? ""));
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    targets.push({
+      site: normalized,
+      label: String(label ?? normalized).trim() || normalized,
+      confidence: Number.isFinite(confidence as number) ? Number(confidence) : 0,
+    });
+  };
+
+  const sources = Array.isArray(input.authoritySources)
+    ? input.authoritySources
+    : [];
+
+  if (input.site) {
+    const normalizedSite = normalizeCollectorWebsite(input.site);
+    const match = sources.find(
+      (source) => normalizeCollectorWebsite(source.domain) === normalizedSite,
+    );
+    push(
+      normalizedSite,
+      match?.label ?? normalizedSite,
+      match?.confidence ?? 100,
+    );
+  }
+
+  for (const source of sources) {
+    push(source.domain, source.label, source.confidence ?? 0);
+    if (targets.length >= limit) break;
+  }
+
+  return targets.slice(0, limit);
+}
+
+export function resolveWebsiteSuggestions(input: {
+  query: string;
+  authoritySources?: Array<{
+    domain: string;
+    label: string;
+    confidence?: number;
+  }>;
+  limit?: number;
+}): WebsiteSuggestion[] {
+  const query = String(input.query ?? "").trim().toLowerCase();
+  const limit =
+    typeof input.limit === "number" && Number.isFinite(input.limit)
+      ? Math.max(1, Math.floor(input.limit))
+      : 8;
+  const sources = Array.isArray(input.authoritySources)
+    ? input.authoritySources
+    : [];
+  const matches: WebsiteSuggestion[] = [];
+  const seen = new Set<string>();
+
+  const push = (
+    domain: string | undefined,
+    label: string | undefined,
+    confidence: number | undefined,
+    source: WebsiteSuggestion["source"],
+  ) => {
+    const normalized = normalizeCollectorWebsite(String(domain ?? ""));
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    matches.push({
+      domain: normalized,
+      label: String(label ?? normalized).trim() || normalized,
+      confidence: Number.isFinite(confidence as number) ? Number(confidence) : 0,
+      source,
+    });
+  };
+
+  const tokens = query
+    .split(/[\s,./_-]+/g)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  for (const source of sources) {
+    const haystack = `${source.label} ${source.domain}`.toLowerCase();
+    if (
+      !query ||
+      tokens.some((token) => token.length >= 2 && haystack.includes(token))
+    ) {
+      push(source.domain, source.label, source.confidence ?? 0, "authority");
+    }
+  }
+
+  return matches.slice(0, limit);
+}
+
+export function collectWebsiteSuggestionsFromSearchResults(
+  rows: SearchResult[],
+  limit = 6,
+): WebsiteSuggestion[] {
+  const seen = new Set<string>();
+  const suggestions: WebsiteSuggestion[] = [];
+
+  const push = (domain: string, label: string, confidence: number) => {
+    const normalized = normalizeCollectorWebsite(domain);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    suggestions.push({
+      domain: normalized,
+      label: label.trim() || normalized,
+      confidence,
+      source: "search",
+    });
+  };
+
+  for (let index = 0; index < rows.length && suggestions.length < limit; index += 1) {
+    const row = rows[index];
+    let domain = "";
+    try {
+      domain = new URL(row.url).hostname.replace(/^www\./i, "");
+    } catch {
+      domain = normalizeCollectorWebsite(row.url);
+    }
+    push(domain, row.title || domain, Math.max(10, 100 - index * 10));
+  }
+
+  return suggestions.slice(0, limit);
 }
 
 export function collectorResultDedupKey(url: string): string {

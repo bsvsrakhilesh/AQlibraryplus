@@ -3205,7 +3205,32 @@ export default function GovernanceWorkspacePage() {
       getDocumentGovernance(String(activeDocumentId), { limit: 160 }),
   });
 
-  const overview = documentQuery.data ?? null;
+  const overview = useMemo(() => {
+    if (!documentQuery.data) return null;
+
+    return {
+      ...documentQuery.data,
+      summary: {
+        agencyCount: 0,
+        issueCount: 0,
+        mandateCount: 0,
+        claimCount: 0,
+        eventCount: 0,
+        positionCount: 0,
+        gapCount: 0,
+        relationCount: 0,
+        ...documentQuery.data.summary,
+      },
+      agencies: documentQuery.data.agencies ?? [],
+      issues: documentQuery.data.issues ?? [],
+      mandates: documentQuery.data.mandates ?? [],
+      claims: documentQuery.data.claims ?? [],
+      events: documentQuery.data.events ?? [],
+      positions: documentQuery.data.positions ?? [],
+      gaps: documentQuery.data.gaps ?? [],
+      relations: documentQuery.data.relations ?? [],
+    };
+  }, [documentQuery.data]);
 
   const issueDirectoryQuery = useQuery({
     queryKey: [
@@ -3311,7 +3336,7 @@ export default function GovernanceWorkspacePage() {
 
     return (
       issueDirectoryItems.find((issue) => issue.id === selectedIssueId) ??
-      overview?.issues.find((issue) => issue.id === selectedIssueId) ??
+      overview?.issues?.find((issue) => issue.id === selectedIssueId) ??
       timelineQuery.data?.issue ??
       relationsQuery.data?.issue ??
       null
@@ -3329,7 +3354,7 @@ export default function GovernanceWorkspacePage() {
 
     return (
       agencyDirectoryItems.find((agency) => agency.id === selectedAgencyId) ??
-      overview?.agencies.find((agency) => agency.id === selectedAgencyId) ??
+      overview?.agencies?.find((agency) => agency.id === selectedAgencyId) ??
       agencyLandscapeQuery.data?.agency ??
       null
     );
@@ -3343,7 +3368,7 @@ export default function GovernanceWorkspacePage() {
   useEffect(() => {
     if (selectedProvenance) return;
 
-    const firstTimeline = timelineQuery.data?.entries[0];
+    const firstTimeline = timelineQuery.data?.entries?.[0];
     if (firstTimeline?.provenance) {
       setSelectedProvenance({
         title: firstTimeline.label,
@@ -4279,16 +4304,63 @@ export default function GovernanceWorkspacePage() {
     workspaceQueryRunKey,
   ]);
 
-  const landscape = agencyLandscapeQuery.data ?? null;
-  const timeline = timelineQuery.data ?? null;
-  const relations = relationsQuery.data ?? null;
+  const landscape = useMemo(() => {
+    if (!agencyLandscapeQuery.data) return null;
+
+    return {
+      ...agencyLandscapeQuery.data,
+      summary: {
+        issueCount: 0,
+        mandateCount: 0,
+        positionCount: 0,
+        gapCount: 0,
+        outgoingRelationCount: 0,
+        incomingRelationCount: 0,
+        ...agencyLandscapeQuery.data.summary,
+      },
+      issueMatrix: agencyLandscapeQuery.data.issueMatrix ?? [],
+      issueLinks: agencyLandscapeQuery.data.issueLinks ?? [],
+      mandates: agencyLandscapeQuery.data.mandates ?? [],
+      positions: agencyLandscapeQuery.data.positions ?? [],
+      gaps: agencyLandscapeQuery.data.gaps ?? [],
+      outgoingRelations: agencyLandscapeQuery.data.outgoingRelations ?? [],
+      incomingRelations: agencyLandscapeQuery.data.incomingRelations ?? [],
+    };
+  }, [agencyLandscapeQuery.data]);
+
+  const timeline = useMemo(() => {
+    if (!timelineQuery.data) return null;
+
+    return {
+      ...timelineQuery.data,
+      summary: {
+        entryCount: 0,
+        eventCount: 0,
+        positionCount: 0,
+        ...timelineQuery.data.summary,
+      },
+      entries: timelineQuery.data.entries ?? [],
+    };
+  }, [timelineQuery.data]);
+
+  const relations = useMemo(() => {
+    if (!relationsQuery.data) return null;
+
+    return {
+      ...relationsQuery.data,
+      summary: {
+        relationCount: 0,
+        byType: {},
+        byBucket: {},
+        ...relationsQuery.data.summary,
+      },
+      relations: relationsQuery.data.relations ?? [],
+    };
+  }, [relationsQuery.data]);
 
   const selectedLandscapeIssueRow = useMemo(() => {
     if (!landscape || !selectedIssueId) return null;
-    return (
-      landscape.issueMatrix.find((row) => row.issue.id === selectedIssueId) ??
-      null
-    );
+    return landscape.issueMatrix?.find((row) => row.issue.id === selectedIssueId) ?? null;
   }, [landscape, selectedIssueId]);
 
   const selectedIssueMandates = useMemo(

@@ -23,10 +23,12 @@ import CollectorJobConsole from "../components/urlcollector/CollectorJobConsole"
 import { useCollectorJobs } from "../hooks/useCollectorJobs";
 import {
   buildCollectorSearchQuery,
+  collectWebsiteSuggestionsFromSearchResults,
   formatAppliedCollectorSearchPlan,
   mergeCollectorSearchResults,
   normalizeCollectorKeywords,
   normalizeCollectorWebsite,
+  resolveCollectorSearchTargets,
 } from "../utils/urlCollector";
 import {
   summarizeCollectorAuthorityCoverage,
@@ -345,6 +347,36 @@ const UrlCollectorPage: React.FC = () => {
   const missingAuthoritySources = authorityCoverageSummary.missingSources;
   const evidenceRoleCoverage = authorityCoverageSummary.roleCoverage;
   const missingEvidenceRoles = authorityCoverageSummary.missingRoles;
+  const websiteSuggestions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          (activePurpose?.authoritySources ?? []).map((source) => [
+            source.domain,
+            {
+              domain: source.domain,
+              label: source.label,
+            },
+          ]),
+        ).values(),
+      ).slice(0, 10),
+    [activePurpose?.authoritySources],
+  );
+  const resolveSearchSuggestions = useCallback(
+    async (query: string, signal: AbortSignal) => {
+      const trimmed = query.trim();
+      if (!trimmed) return [];
+
+      try {
+        const { rows } = await searchWeb(trimmed, 1, signal);
+        return collectWebsiteSuggestionsFromSearchResults(rows, 6);
+      } catch (error: any) {
+        if (isAbortLike(error)) return [];
+        return [];
+      }
+    },
+    [],
+  );
 
   // Abort in-flight searches when a new one starts
   const fetchAbortRef = useRef<AbortController | null>(null);
@@ -714,122 +746,141 @@ const UrlCollectorPage: React.FC = () => {
 
       try {
         const q = buildCollectorSearchQuery(kws);
-        const searchOpts = buildSearchOpts(site, effectiveScope);
-        setLastSearchOpts(searchOpts);
-
-        // Helper to fetch a specific page from the backend
-        const fetchPage = async (page: number) => {
-          return await searchWeb(q, page, controller.signal, searchOpts);
-        };
+        const searchTargets = resolveCollectorSearchTargets({
+          site,
+          authoritySources: activePurpose?.authoritySources ?? [],
+          limit: 6,
+        });
+        const targetQueue =
+          searchTargets.length > 0
+            ? searchTargets
+            : [
+                {
+                  site: "",
+                  label: "Whole web",
+                  confidence: 0,
+                },
+              ];
 
         setLastQuery(q);
         setPrefetchCount(0);
 
-        // Fetch page 1 immediately
-        const p1 = await fetchPage(1);
-        assertCurrentResultsRequest();
-        setCollectorSearchId(p1.collectorSearchId);
-        collectorJobActions.updateJob(jobId, {
-          stage: "page-1",
-          message: `Loaded first ${p1.rows.length} result${p1.rows.length === 1 ? "" : "s"}`,
-          progressPct: 22,
-        });
-        const initialMerge = mergeCollectorSearchResults([], p1.rows, {
-          limit: INITIAL_RESULTS_TARGET,
-        });
-        let merged = initialMerge.rows;
+        let merged: SearchResult[] = [];
+        let storedCollectorSearchId = false;
+        let sawAnyResults = false;
+        let lastSearchOptsForRerank: SearchWebOptions | null = null;
+        let encounteredRateLimit = false;
 
-        setSearchResults(merged);
-        setSelectedUrls(new Set());
-        setNextPage(p1.nextPage);
-        setTotalResults(p1.totalResults);
-        setPrefetchCount(merged.length);
+        // Search the selected website first, then related official domains.
+        for (let targetIndex = 0; targetIndex < targetQueue.length; targetIndex += 1) {
+          const target = targetQueue[targetIndex];
+          if (controller.signal.aborted) break;
 
-        // Scroll the results into view once we have something to show
-        requestAnimationFrame(() => {
-          resultsSectionRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        });
-
-        if (p1.rows.length === 0) {
-          setError(
-            "No results found. Try different keywords, widen filters, or remove the site filter.",
-          );
-          collectorJobActions.succeedJob(jobId, "Search completed with no results", {
-            stage: "empty",
-            progressPct: 100,
-          });
-          return;
-        }
-
-        // Auto-prefetch up to 50 results (5 pages x 10 results)
-        let np = p1.nextPage;
-        const maxPages = Math.ceil(INITIAL_RESULTS_TARGET / RESULTS_PER_PAGE);
-        let pagesFetched = 1;
-
-        while (
-          !controller.signal.aborted &&
-          np &&
-          merged.length < INITIAL_RESULTS_TARGET &&
-          pagesFetched < maxPages
-        ) {
-          // Pace requests to avoid bursty 429s
-          await sleep(PREFETCH_DELAY_MS, controller.signal);
-          assertCurrentResultsRequest();
-          collectorJobActions.updateJob(jobId, {
-            stage: `page-${np}`,
-            message: `Fetching page ${np}`,
-            progressPct: Math.min(
-              68,
-              22 + Math.round((pagesFetched / maxPages) * 42),
-            ),
-          });
-
-          let pn;
-          try {
-            pn = await fetchPage(np);
-            assertCurrentResultsRequest();
-          } catch (e: any) {
-            if (e?.message === "RATE_LIMITED") {
-              rateLimitUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
-              setError(
-                `Rate limit reached. Showing the first ${merged.length} results. Try again in ~60s.`,
-              );
-              collectorJobActions.updateJob(jobId, {
-                stage: "rate-limited",
-                message: `Rate limited after ${merged.length} results`,
-                progressPct: 72,
-              });
-              break; // stop auto-prefetch, keep what we already have
-            }
-            throw e;
+          const searchOpts = buildSearchOpts(target.site, effectiveScope);
+          if (!lastSearchOptsForRerank) {
+            lastSearchOptsForRerank = searchOpts;
+            setLastSearchOpts(searchOpts);
           }
 
-          pagesFetched += 1;
-
-          merged = mergeCollectorSearchResults(merged, pn.rows, {
-            limit: INITIAL_RESULTS_TARGET,
-          }).rows;
-
-          setSearchResults([...merged]);
-          setPrefetchCount(merged.length);
           collectorJobActions.updateJob(jobId, {
-            stage: `loaded-${merged.length}`,
-            message: `Loaded ${merged.length}/${INITIAL_RESULTS_TARGET} target results`,
-            progressPct: Math.min(
-              72,
-              30 + Math.round((merged.length / INITIAL_RESULTS_TARGET) * 40),
-            ),
+            stage: `site-${targetIndex + 1}`,
+            message: target.site
+              ? `Searching ${target.label || target.site}`
+              : "Searching whole web",
+            progressPct: Math.min(18 + targetIndex * 9, 40),
           });
-          setNextPage(pn.nextPage);
-          if (typeof pn.totalResults === "number")
-            setTotalResults(pn.totalResults);
-          np = pn.nextPage;
 
-          // If a page returns no rows, stop trying.
-          if (pn.rows.length === 0) break;
+          const fetchPage = async (page: number) =>
+            searchWeb(q, page, controller.signal, searchOpts);
+
+          let pageNumber = 1;
+          let targetRows = 0;
+          const maxPages = Math.ceil(INITIAL_RESULTS_TARGET / RESULTS_PER_PAGE);
+
+          while (
+            !controller.signal.aborted &&
+            pageNumber <= maxPages &&
+            merged.length < INITIAL_RESULTS_TARGET
+          ) {
+            if (pageNumber > 1) {
+              await sleep(PREFETCH_DELAY_MS, controller.signal);
+              assertCurrentResultsRequest();
+            }
+
+            let pageResult;
+            try {
+              pageResult = await fetchPage(pageNumber);
+              assertCurrentResultsRequest();
+            } catch (e: any) {
+              if (e?.message === "RATE_LIMITED") {
+                rateLimitUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+                setError(
+                  `Rate limit reached. Showing the first ${merged.length} results. Try again in ~60s.`,
+                );
+                collectorJobActions.updateJob(jobId, {
+                  stage: "rate-limited",
+                  message: `Rate limited after ${merged.length} results`,
+                  progressPct: 72,
+                });
+                encounteredRateLimit = true;
+              } else {
+                throw e;
+              }
+              break;
+            }
+
+            if (pageNumber === 1 && pageResult.collectorSearchId && !storedCollectorSearchId) {
+              storedCollectorSearchId = true;
+              setCollectorSearchId(pageResult.collectorSearchId);
+            }
+
+            if (pageResult.rows.length === 0) {
+              break;
+            }
+
+            if (!sawAnyResults) {
+              sawAnyResults = true;
+              requestAnimationFrame(() => {
+                resultsSectionRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+              });
+            }
+
+            targetRows += pageResult.rows.length;
+            merged = mergeCollectorSearchResults(merged, pageResult.rows, {
+              limit: INITIAL_RESULTS_TARGET,
+            }).rows;
+
+            setSearchResults([...merged]);
+            setSelectedUrls(new Set());
+            setPrefetchCount(merged.length);
+            setTotalResults(merged.length);
+            setNextPage(pageResult.nextPage);
+
+            collectorJobActions.updateJob(jobId, {
+              stage: `loaded-${merged.length}`,
+              message: `Loaded ${merged.length}/${INITIAL_RESULTS_TARGET} target results`,
+              progressPct: Math.min(
+                72,
+                18 + Math.round((merged.length / INITIAL_RESULTS_TARGET) * 54),
+              ),
+            });
+
+            pageNumber += 1;
+            if (!pageResult.nextPage) break;
+          }
+
+          if (encounteredRateLimit || merged.length >= INITIAL_RESULTS_TARGET) break;
+
+          if (targetRows === 0) {
+            collectorJobActions.updateJob(jobId, {
+              stage: `site-${targetIndex + 1}`,
+              message: `No results on ${target.label || target.site || "whole web"}`,
+              progressPct: Math.min(40, 18 + (targetIndex + 1) * 9),
+            });
+          }
         }
 
         if (!controller.signal.aborted && merged.length > 1) {
@@ -841,7 +892,7 @@ const UrlCollectorPage: React.FC = () => {
           const reranked = await applyMergedRerank(
             q,
             merged,
-            searchOpts,
+            lastSearchOptsForRerank ?? undefined,
             controller.signal,
           );
 
@@ -851,12 +902,18 @@ const UrlCollectorPage: React.FC = () => {
           }
         }
         if (!controller.signal.aborted) {
+          if (merged.length === 0) {
+            setError(
+              "No results found after searching related official government websites. Try different keywords or widen the topic.",
+            );
+          }
+
           collectorJobActions.succeedJob(
             jobId,
             `Loaded ${merged.length} result${merged.length === 1 ? "" : "s"}`,
             {
               meta: {
-                site,
+                site: site || undefined,
                 keywords: kws,
                 totalResults: totalResults ?? undefined,
               },
@@ -1367,6 +1424,20 @@ const UrlCollectorPage: React.FC = () => {
         sourcePreferences: "",
         targetActors: "",
       });
+      setWebsite("");
+      setKeywords("");
+      setScope({
+        yearFrom: "",
+        yearTo: "",
+        jurisdiction: "",
+        region: "",
+        format: "any",
+      });
+      clearSearchOutcome();
+      navigate(
+        { search: `?purposeId=${encodeURIComponent(created.id)}` },
+        { replace: true },
+      );
       const plan = await planPurposeSearch(created.id);
       setPurposeLanes(plan.lanes);
     } catch (reason: any) {
@@ -1374,7 +1445,7 @@ const UrlCollectorPage: React.FC = () => {
     } finally {
       setPurposeBusy(false);
     }
-  }, [purposeDraft, selectPurpose]);
+  }, [clearSearchOutcome, navigate, purposeDraft, selectPurpose]);
 
   const generatePurposeLanes = useCallback(async () => {
     if (!activePurposeId) return;
@@ -1833,6 +1904,8 @@ const UrlCollectorPage: React.FC = () => {
             aiAssistLoading={aiAssistLoading}
             aiAssistRationale={aiAssistRationale}
             searchDisabled={!activePurpose}
+            websiteSuggestions={websiteSuggestions}
+            resolveSearchSuggestions={resolveSearchSuggestions}
           />
 
           {/* Scope filters */}

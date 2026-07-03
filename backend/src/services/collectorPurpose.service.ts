@@ -403,6 +403,66 @@ const AUTHORITY_REGISTRY: AuthorityRegistryEntry[] = [
     documentTerms: ["notification", "rule", "office memorandum", "press release", "order"],
   },
   {
+    key: "india-portal",
+    label: "India.gov.in",
+    domain: "india.gov.in",
+    aliases: ["india.gov.in", "india portal", "national portal of india"],
+    topicTerms: ["government", "policy", "notification", "order", "guideline", "department", "official"],
+    jurisdictionTerms: ["india", "national"],
+    evidenceRole: "National portal",
+    reason: "National government portal for central notices, service pages, and department links when the question spans multiple institutions.",
+    queryHints: ["government", "notification", "policy", "official"],
+    documentTerms: ["notification", "order", "guideline", "policy", "report"],
+  },
+  {
+    key: "delhi-gov",
+    label: "Delhi Government",
+    domain: "delhi.gov.in",
+    aliases: ["delhi government", "government of nct of delhi", "delhi govt"],
+    topicTerms: ["delhi", "government", "policy", "notification", "order", "department", "official"],
+    jurisdictionTerms: ["delhi", "nct of delhi"],
+    evidenceRole: "State portal",
+    reason: "Delhi government portal for cross-department notices, orders, and policy pages tied to local implementation.",
+    queryHints: ["Delhi", "government", "notification", "order", "policy"],
+    documentTerms: ["notification", "order", "notice", "circular", "policy"],
+  },
+  {
+    key: "mohua",
+    label: "MoHUA",
+    domain: "mohua.gov.in",
+    aliases: ["mohua", "ministry of housing and urban affairs", "urban affairs ministry"],
+    topicTerms: ["construction", "demolition", "urban", "housing", "building", "dust", "municipal", "infrastructure"],
+    jurisdictionTerms: ["india", "national"],
+    evidenceRole: "Urban policy",
+    reason: "Central ministry for construction, demolition, urban policy, and municipal implementation material.",
+    queryHints: ["construction", "demolition", "urban", "municipal", "policy"],
+    documentTerms: ["guideline", "advisory", "order", "notification", "policy"],
+  },
+  {
+    key: "pib",
+    label: "PIB",
+    domain: "pib.gov.in",
+    aliases: ["pib", "press information bureau", "government press release"],
+    topicTerms: ["government", "release", "announcement", "policy", "official", "press", "statement"],
+    jurisdictionTerms: ["india", "national"],
+    evidenceRole: "Official release",
+    reason: "Press release source for government announcements and official statements that often point to the underlying order or policy page.",
+    queryHints: ["press release", "government announcement", "official statement", "policy"],
+    documentTerms: ["press release", "announcement", "statement", "release"],
+  },
+  {
+    key: "ncrpb",
+    label: "NCR Planning Board",
+    domain: "ncrpb.nic.in",
+    aliases: ["ncrpb", "ncr planning board", "national capital region planning board"],
+    topicTerms: ["ncr", "regional plan", "planning", "development", "construction", "infrastructure", "delhi"],
+    jurisdictionTerms: ["delhi", "ncr", "national capital region"],
+    evidenceRole: "NCR planning",
+    reason: "NCR planning authority relevant to regional development, construction, and cross-jurisdiction implementation.",
+    queryHints: ["NCR", "regional plan", "development", "planning"],
+    documentTerms: ["plan", "policy", "report", "notification", "order"],
+  },
+  {
     key: "egazette",
     label: "e-Gazette",
     domain: "egazette.nic.in",
@@ -437,7 +497,7 @@ const AUTHORITY_REGISTRY: AuthorityRegistryEntry[] = [
   },
 ];
 
-const MAX_AUTHORITY_SOURCES = 8;
+const MAX_AUTHORITY_SOURCES = 12;
 
 function textIncludes(text: string, term: string) {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -493,6 +553,26 @@ function scoreAuthority(entry: AuthorityRegistryEntry, text: string, domains: Se
   }
   if (entry.key === "ppcb" && /stubble|paddy|crop residue|burning/i.test(text)) {
     score += 42;
+  }
+  if (
+    entry.key === "india-portal" &&
+    /government|policy|notification|order|guideline|department|official|direction|enforcement|report|reporting|notice|circular|implementation/i.test(
+      text,
+    )
+  ) {
+    score += 48;
+  }
+  if (entry.key === "delhi-gov" && textIncludes(text, "delhi")) {
+    score += 52;
+  }
+  if (entry.key === "mohua" && /construction|demolition|urban|housing|building|dust|municipal/i.test(text)) {
+    score += 22;
+  }
+  if (entry.key === "pib" && /press|release|announcement|statement|official/i.test(text)) {
+    score += 16;
+  }
+  if (entry.key === "ncrpb" && /ncr|regional plan|planning|development/i.test(text)) {
+    score += 18;
   }
   if (["imd", "safar"].includes(entry.key) && /aqi|forecast|meteorolog|dispersion|air quality/i.test(text)) {
     score += 28;
