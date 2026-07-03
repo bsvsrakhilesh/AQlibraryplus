@@ -6,6 +6,7 @@ import { env } from "../config/env";
 import { Prisma } from "../generated/prisma/client";
 import { openaiClient } from "./openaiClient";
 import { queryGovernanceWorkspaceEvidence } from "./governanceWorkspaceQuery.service";
+import { resolveCollectorPurposeEvidenceScope } from "./collectorPurposeEvidence.service";
 
 export type GovernanceAnswerStreamEvent =
   | { type: "run"; runId: string; sessionId: string }
@@ -2651,6 +2652,7 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
   const sourceScope = normalizeScope(input.sourceScope);
   const requestedWorkflowMode = normalizeWorkflow(input.workflowMode);
   const officerFilters = normalizeAnswerOfficerFilters(input.officerFilters);
+  const preselectedDocumentIds = safeStringArray(input.selectedDocumentIds);
   const model = modelForAnswer(input.deepReview);
   const maxOutputTokens = maxOutputTokensForAnswer(input.deepReview);
   const assistModel = modelForAssist();
@@ -2706,22 +2708,13 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       type: "status",
       message: "Understanding air-quality governance question",
     });
-    await input.onStreamEvent?.({ type: "status", message: "Retrieving hybrid governance evidence" });
-    const evidenceResponse = await queryGovernanceWorkspaceEvidence({
-      question,
-      anchorDocumentIds,
-      anchorUrlIds,
-      sourceScope,
-      workflowMode: requestedWorkflowMode,
-      limit: Math.max(10, Math.min(12, Number(input.limit ?? 12))),
-      collectorPurposeId: input.collectorPurposeId ?? null,
-      ownerId: input.ownerId ?? "local",
-      officerFilters,
-    });
-
-    const allowedDocumentIds = input.collectorPurposeId
-      ? safeStringArray((evidenceResponse as any)?.evidenceScope?.allowedDocumentIds)
+    const evidenceScope = input.collectorPurposeId
+      ? await resolveCollectorPurposeEvidenceScope(
+          input.ownerId ?? "local",
+          input.collectorPurposeId,
+        )
       : null;
+    const allowedDocumentIds = evidenceScope?.allowedDocumentIds ?? null;
     retrievalMetadata = {
       collectorPurposeId: input.collectorPurposeId ?? null,
       allowedDocumentIds,
@@ -2735,40 +2728,115 @@ export async function runGovernanceWorkspaceAnswer(input: GovernanceAnswerInput)
       throw err;
     }
 
-    await input.onStreamEvent?.({
-      type: "status",
-      message: "Planning multi-step research when needed",
-    });
-    const multiStepResearch = await runMultiStepResearch({
-      question,
-      profile: officerQueryProfile,
-      deepReview: input.deepReview,
-      anchorDocumentIds,
-      anchorUrlIds,
-      sourceScope,
-      requestedWorkflowMode,
-      collectorPurposeId: input.collectorPurposeId ?? null,
-      ownerId: input.ownerId ?? "local",
-    });
+    let evidenceResponse: any = {
+      workflow: {
+        requestedMode: requestedWorkflowMode,
+        resolvedMode:
+          requestedWorkflowMode === "auto" ? "question_review" : requestedWorkflowMode,
+      },
+      queryUnderstanding: null,
+      retrievalDecision: null,
+      totalCandidates: 0,
+      candidates: [],
+      contradictionFoundation: null,
+      questionReviewSurface: null,
+    };
+    let multiStepResearch: MultiStepResearchResult = {
+      enabled: false,
+      rationale: "Selected evidence was provided directly, so retrieval replay was skipped.",
+      steps: [],
+    };
+    let graphRagSummary: GraphRagSummary | null = null;
+    let candidateDocumentIds: string[] = [];
+    let manualEvidenceSelection: ReturnType<typeof resolveAnswerCandidateDocumentIds>["manualEvidenceSelection"] =
+      null;
 
-    if (multiStepResearch.enabled) {
+    if (preselectedDocumentIds.length) {
+      if (allowedDocumentIds?.length) {
+        const allowedSet = new Set(allowedDocumentIds);
+        const outsidePurpose = preselectedDocumentIds.filter(
+          (documentId) => !allowedSet.has(documentId),
+        );
+        if (outsidePurpose.length) {
+          const error: any = new Error(
+            "Selected evidence is outside the current purpose boundary.",
+          );
+          error.status = 400;
+          throw error;
+        }
+      }
+
+      candidateDocumentIds = preselectedDocumentIds;
+      manualEvidenceSelection = {
+        active: true,
+        selectedDocumentIds: preselectedDocumentIds,
+        selectedDocumentCount: preselectedDocumentIds.length,
+        retrievedDocumentCount: preselectedDocumentIds.length,
+      };
+      evidenceResponse = {
+        ...evidenceResponse,
+        totalCandidates: preselectedDocumentIds.length,
+        candidates: preselectedDocumentIds.map((documentId) => ({
+          documentId,
+          clusterDocumentIds: [documentId],
+          coverageFamilies: [],
+          retrievalLanes: [],
+        })),
+      };
       await input.onStreamEvent?.({
         type: "status",
-        message: `Retrieved ${multiStepResearch.steps.length} research lanes`,
+        message: `Using ${preselectedDocumentIds.length} selected evidence document${preselectedDocumentIds.length === 1 ? "" : "s"}`,
       });
-    }
-    const graphRagSummary = buildGraphRagSummary(evidenceResponse);
+    } else {
+      await input.onStreamEvent?.({ type: "status", message: "Retrieving hybrid governance evidence" });
+      evidenceResponse = await queryGovernanceWorkspaceEvidence({
+        question,
+        anchorDocumentIds,
+        anchorUrlIds,
+        sourceScope,
+        workflowMode: requestedWorkflowMode,
+        limit: Math.max(10, Math.min(12, Number(input.limit ?? 12))),
+        collectorPurposeId: input.collectorPurposeId ?? null,
+        ownerId: input.ownerId ?? "local",
+        officerFilters,
+      });
 
-    const retrievedDocumentIds = uniq([
-      ...documentIdsFromEvidenceResponse(evidenceResponse),
-      ...multiStepResearch.steps.flatMap((step) => step.documentIds),
-    ]);
-    const { candidateDocumentIds, manualEvidenceSelection } =
-      resolveAnswerCandidateDocumentIds({
+      await input.onStreamEvent?.({
+        type: "status",
+        message: "Planning multi-step research when needed",
+      });
+      multiStepResearch = await runMultiStepResearch({
+        question,
+        profile: officerQueryProfile,
+        deepReview: input.deepReview,
+        anchorDocumentIds,
+        anchorUrlIds,
+        sourceScope,
+        requestedWorkflowMode,
+        collectorPurposeId: input.collectorPurposeId ?? null,
+        ownerId: input.ownerId ?? "local",
+      });
+
+      if (multiStepResearch.enabled) {
+        await input.onStreamEvent?.({
+          type: "status",
+          message: `Retrieved ${multiStepResearch.steps.length} research lanes`,
+        });
+      }
+      graphRagSummary = buildGraphRagSummary(evidenceResponse);
+
+      const retrievedDocumentIds = uniq([
+        ...documentIdsFromEvidenceResponse(evidenceResponse),
+        ...multiStepResearch.steps.flatMap((step) => step.documentIds),
+      ]);
+      const resolved = resolveAnswerCandidateDocumentIds({
         retrievedDocumentIds,
         selectedDocumentIds: input.selectedDocumentIds,
         allowedDocumentIds,
       });
+      candidateDocumentIds = resolved.candidateDocumentIds;
+      manualEvidenceSelection = resolved.manualEvidenceSelection;
+    }
 
     await input.onStreamEvent?.({
       type: "status",

@@ -30,6 +30,23 @@ type AiTagObject = {
   rank?: number;
 };
 
+type NormalizedSmartTagItem = {
+  value: string;
+  category: string;
+  type: string;
+  source: string;
+  confidence: number | null;
+  confidenceBand: string | null;
+  matchedTaxonomy: string | null;
+  status: string | null;
+  evidence: Array<{
+    quote: string;
+    page?: number;
+    section?: string | null;
+    locator?: Record<string, any>;
+  }>;
+};
+
 const SMART_TAG_ARRAY_KEYS = [
   "taxonomyTags",
   "aiDiscoveredTags",
@@ -277,6 +294,148 @@ function normalizeSmartTagArray(value: unknown, fallbackCategory: string) {
   return out.slice(0, 80);
 }
 
+function structuredCategoryFromSmartTag(
+  item: NormalizedSmartTagItem,
+): (typeof STRUCTURED_INTELLIGENCE_CATEGORY_KEYS)[number] | null {
+  const category = item.category.toLowerCase();
+  const type = item.type.toLowerCase();
+  const value = item.value.toLowerCase();
+
+  if (category.includes("topic")) return "topics";
+  if (category.includes("action")) return "actionsDecisions";
+  if (category.includes("document type")) return "actionsDecisions";
+  if (category.includes("legal")) return "legalReferences";
+  if (category.includes("location") || category.includes("geograph")) {
+    return "locations";
+  }
+  if (category.includes("program") || category.includes("scheme")) {
+    return "programs";
+  }
+  if (category.includes("date") || type.includes("date")) {
+    return "datesDeadlines";
+  }
+  if (category.includes("entity")) {
+    if (type.includes("agency") || type.includes("organization")) return "agencies";
+    if (type.includes("location")) return "locations";
+    if (type.includes("legal")) return "legalReferences";
+    if (type.includes("program") || type.includes("scheme")) return "programs";
+  }
+  if (
+    type.includes("pollut") ||
+    ["pm25", "pm10", "no2", "o3", "co"].includes(value)
+  ) {
+    return "pollutantsMeasurements";
+  }
+  if (
+    value.includes("grap stage") ||
+    /^stage\s*(i|ii|iii|iv|v|vi|\d+)/i.test(item.value)
+  ) {
+    return "programStages";
+  }
+  if (value === "grap" || value.includes("graded response action plan")) {
+    return "programs";
+  }
+  if (
+    [
+      "construction_demolition",
+      "waste_burning",
+      "biomass_burning",
+      "industry_power",
+      "dg_sets",
+    ].includes(value)
+  ) {
+    return "sectors";
+  }
+  return null;
+}
+
+function synthesizeStructuredIntelligenceFromSmartTags(
+  smartTags: Record<string, any> | null,
+) {
+  if (!smartTags) return null;
+
+  const candidates: any[] = [];
+  const add = (rawItems: unknown) => {
+    if (!Array.isArray(rawItems)) return;
+    for (const raw of rawItems) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const item = raw as NormalizedSmartTagItem;
+      if (!Array.isArray(item.evidence) || item.evidence.length === 0) continue;
+      const category = structuredCategoryFromSmartTag(item);
+      if (!category) continue;
+      candidates.push({
+        label: item.value,
+        type: item.type,
+        category,
+        normalizedValue: item.value,
+        confidence: item.confidence,
+        source: item.source,
+        status: item.status,
+        evidence: item.evidence,
+      });
+    }
+  };
+
+  add(smartTags.items);
+  add(smartTags.taxonomyTags);
+  add(smartTags.aiDiscoveredTags);
+  add(smartTags.topics);
+  add(smartTags.documentType);
+  add(smartTags.actionsDecisions);
+  add(smartTags.taxonomySuggestions);
+
+  const entities =
+    smartTags.entities &&
+    typeof smartTags.entities === "object" &&
+    !Array.isArray(smartTags.entities)
+      ? smartTags.entities
+      : {};
+  add(entities.agencies);
+  add(entities.organizations);
+  add(entities.locations);
+  add(entities.people);
+  add(entities.legalReferences);
+  add(entities.schemesPrograms);
+  add(entities.datesDeadlines);
+
+  if (candidates.length === 0) return null;
+  return candidates;
+}
+
+function synthesizeStructuredIntelligenceFromAiTagObjects(
+  aiTagObjects: AiTagObject[],
+) {
+  const candidates = aiTagObjects
+    .filter((item) => item.evidence)
+    .map((item) => {
+      const category = structuredCategoryFromSmartTag({
+        value: item.value,
+        category: item.type,
+        type: item.type,
+        source: item.source,
+        confidence: item.confidence,
+        confidenceBand: null,
+        matchedTaxonomy: null,
+        status: "matched",
+        evidence: [{ quote: String(item.evidence) }],
+      });
+      if (!category) return null;
+      return {
+        label: item.display || item.value,
+        type: item.type,
+        category,
+        normalizedValue: item.value,
+        confidence: item.confidence,
+        source: item.source,
+        status: "matched",
+        evidence: [{ quote: String(item.evidence) }],
+      };
+    })
+    .filter(Boolean);
+
+  return candidates.length ? candidates : null;
+}
+
 function normalizeSmartTags(data: any, userTags: string[]) {
   const raw = data?.smart_tags ?? data?.smartTags ?? null;
   const hasRaw = raw && typeof raw === "object" && !Array.isArray(raw);
@@ -409,13 +568,16 @@ function normalizeStructuredIntelligenceItem(raw: any) {
   return parsed.success ? parsed.data : null;
 }
 
-function normalizeStructuredIntelligence(data: any) {
+function normalizeStructuredIntelligence(
+  data: any,
+  smartTags?: Record<string, any> | null,
+  aiTagObjects?: AiTagObject[],
+) {
   const raw =
     data?.structured_intelligence_v1 ??
     data?.structuredIntelligenceV1 ??
     data?.structuredIntelligence ??
     null;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
 
   const seen = new Set<string>();
   const grouped: Record<string, any[]> = {};
@@ -432,11 +594,27 @@ function normalizeStructuredIntelligence(data: any) {
     grouped[item.category].push(item);
   };
 
-  STRUCTURED_INTELLIGENCE_CATEGORY_KEYS.forEach((key) => {
-    const arr = Array.isArray(raw[key]) ? raw[key] : [];
-    arr.forEach(add);
-  });
-  (Array.isArray(raw.items) ? raw.items : []).forEach(add);
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    STRUCTURED_INTELLIGENCE_CATEGORY_KEYS.forEach((key) => {
+      const arr = Array.isArray(raw[key]) ? raw[key] : [];
+      arr.forEach(add);
+    });
+    (Array.isArray(raw.items) ? raw.items : []).forEach(add);
+  }
+
+  if (seen.size === 0) {
+    const smartFallback = synthesizeStructuredIntelligenceFromSmartTags(
+      smartTags ?? null,
+    );
+    (smartFallback ?? []).forEach(add);
+  }
+
+  if (seen.size === 0) {
+    const aiTagFallback = synthesizeStructuredIntelligenceFromAiTagObjects(
+      aiTagObjects ?? [],
+    );
+    (aiTagFallback ?? []).forEach(add);
+  }
 
   const items = STRUCTURED_INTELLIGENCE_CATEGORY_KEYS.flatMap((key) => grouped[key]);
   if (items.length === 0) return null;
@@ -524,7 +702,11 @@ function buildUnifiedTagsMeta(
   const hash = data?.hash ?? null;
   const aiTagObjects = normalizeAiTagObjects(data, args.aiTags);
   const smartTags = normalizeSmartTags(data, args.userTags);
-  const structuredIntelligenceV1 = normalizeStructuredIntelligence(data);
+  const structuredIntelligenceV1 = normalizeStructuredIntelligence(
+    data,
+    smartTags,
+    aiTagObjects,
+  );
 
   return {
     ...p,
@@ -794,3 +976,7 @@ export async function persistAiTagSuccessForUrl(
     aiTags,
   };
 }
+
+export const aiTagPersistenceTestHooks = {
+  normalizeStructuredIntelligence,
+};

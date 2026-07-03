@@ -629,6 +629,8 @@ function resolveWorkflowPlan(args: {
   const questionReviewSignals = [
     "what factors",
     "why",
+    "reason",
+    "reasons",
     "what evidence",
     "evidence supports",
     "actions followed",
@@ -769,8 +771,52 @@ function retrievalQuestionWithFilters(
   return [question, `Officer filters: ${terms.join("; ")}`].filter(Boolean).join("\n");
 }
 
+function expandRetrievalTokens(question: string, baseTokens: string[]) {
+  const text = String(question || "").toLowerCase();
+  const expanded = new Set(baseTokens);
+
+  const add = (...values: string[]) => {
+    for (const value of values) {
+      const clean = value.trim().toLowerCase();
+      if (clean && clean.length >= 3 && !STOP_WORDS.has(clean)) {
+        expanded.add(clean);
+      }
+    }
+  };
+
+  for (const token of baseTokens) {
+    if (token === "orders") add("order");
+    if (token === "directions") add("direction");
+    if (token === "reasons") add("reason", "factors", "considered", "basis");
+  }
+
+  const asksForReasons =
+    /\b(why|reason|reasons|what were the reasons|what factors|what was considered)\b/.test(
+      text,
+    );
+  const asksAboutGrapOrders =
+    /\bgrap\b/.test(text) && /\b(order|orders|direction|directions)\b/.test(text);
+
+  if (asksForReasons && asksAboutGrapOrders) {
+    add(
+      "factors",
+      "considered",
+      "basis",
+      "invoked",
+      "invocation",
+      "stage",
+      "aqi",
+      "forecast",
+      "adverse",
+      "pollution",
+    );
+  }
+
+  return Array.from(expanded).slice(0, 12);
+}
+
 function tokenizeQuestion(question: string): string[] {
-  return Array.from(
+  const baseTokens = Array.from(
     new Set(
       String(question || "")
         .toLowerCase()
@@ -784,6 +830,8 @@ function tokenizeQuestion(question: string): string[] {
         .slice(0, 8),
     ),
   );
+
+  return expandRetrievalTokens(question, baseTokens);
 }
 
 function extractTimeHints(question: string): string[] {
@@ -834,7 +882,7 @@ function resolveQueryType(args: {
 
   if (
     args.workflowMode === "question_review" ||
-    /\b(what factors|what evidence|evidence supports|what actions|actions followed|who acted|who was responsible|what was considered|considered|previous years|past years|why|how did|explain)\b/.test(
+    /\b(what factors|what evidence|evidence supports|what actions|actions followed|who acted|who was responsible|what was considered|considered|reason|reasons|previous years|past years|why|how did|explain)\b/.test(
       text,
     )
   ) {
@@ -2787,8 +2835,10 @@ function buildQuestionReviewSurface(args: {
 export const governanceWorkspaceQueryTestHooks = {
   resolveWorkflowPlan,
   resolveQueryType,
+  tokenizeQuestion,
   clusterRankedCandidates,
   documentAllowed,
+  buildPurposeFallbackDescriptor,
 };
 
 function buildCaseTrailFoundation(args: {
@@ -3006,6 +3056,40 @@ function buildCaseTrailFoundation(args: {
       overrideChainEventCount: overrideChainEvents.length,
     },
     events,
+  };
+}
+
+function buildPurposeFallbackDescriptor(args: {
+  doc: DocumentWithContext;
+  tokens: string[];
+  hasQuery: boolean;
+}) {
+  const descriptor = documentDescriptor(args.doc);
+  const hits = matchedTokens(
+    [
+      descriptor.title,
+      descriptor.sourceLabel,
+      args.doc.primaryFile?.fileName,
+      args.doc.primaryFile?.sourceUrl,
+      args.doc.url?.title,
+      args.doc.url?.url,
+    ],
+    args.tokens,
+  );
+  const cappedHits = hits.slice(0, 3);
+
+  if (cappedHits.length) {
+    return {
+      reason: `Purpose-scoped fallback: ${cappedHits.join(", ")}`,
+      signalScore: 18 + cappedHits.length * 4,
+    };
+  }
+
+  return {
+    reason: args.hasQuery
+      ? "Purpose-scoped fallback: captured evidence kept in scope despite weak extraction or title matches"
+      : "Purpose-scoped evidence available for retrieval",
+    signalScore: args.hasQuery ? 10 : 8,
   };
 }
 
@@ -4204,6 +4288,33 @@ export async function queryGovernanceWorkspaceEvidence(
         issueTitle: row.issue?.title ?? null,
         agencyNames: [row.fromAgency?.name, row.toAgency?.name],
         summary: row.rationale,
+        allowedDocumentIds,
+      });
+    }
+  }
+
+  if (allowedDocumentIds?.size && candidates.size < Math.min(3, input.limit)) {
+    const fallbackDocs = await prisma.document.findMany({
+      where: { id: { in: Array.from(allowedDocumentIds) } },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: Math.max(input.limit, 6),
+      select: documentContextSelect,
+    });
+
+    for (const doc of fallbackDocs) {
+      if (candidates.has(doc.id)) continue;
+      const fallback = buildPurposeFallbackDescriptor({
+        doc,
+        tokens,
+        hasQuery: retrievalQuestion.trim().length > 0,
+      });
+
+      addCandidate(candidates, {
+        doc,
+        scope: input.sourceScope,
+        reason: fallback.reason,
+        signalScore: fallback.signalScore,
+        lane: "metadata",
         allowedDocumentIds,
       });
     }
