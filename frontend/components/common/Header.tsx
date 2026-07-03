@@ -90,19 +90,19 @@ const Header: React.FC<HeaderProps> = ({
             onClick={onNavigateHome}
             className="group rounded-lg px-2 py-1 flex items-center gap-2 hover:bg-muted/70 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-primary/60"
             title="Home"
-            aria-label="Smart Scrape Home"
+            aria-label="AQlibrary+ Home"
           >
             <span className="flex items-center gap-2">
               <span className="relative inline-flex">
                 <img
                   src="/assets/logo.png"
-                  alt="Smart Scrape"
+                  alt="AQlibrary+"
                   className="w-6 h-6 rounded shadow-sm transition-transform duration-200 group-hover:scale-[1.04]"
                 />
                 <span className="pointer-events-none absolute inset-0 rounded-full ring-0 ring-brand-primary/40 opacity-0 group-hover:opacity-100 group-hover:ring-2 transition-all duration-200" />
               </span>
               <span className="hidden sm:inline text-sm font-semibold tracking-wide">
-                Smart Scrape
+                AQlibrary+
                 <span className="block h-0.5 w-0 bg-linear-to-r from-brand-primary/80 to-brand-secondary/80 rounded-full mt-0.5 group-hover:w-full transition-all duration-200 ease-out" />
               </span>
             </span>
@@ -114,13 +114,15 @@ const Header: React.FC<HeaderProps> = ({
           {/* Magnetic "Open Notebook" button */}
           <MagneticButton
             onClick={() => navigate("/notebook")}
-            className="landing-primary-btn inline-flex items-center gap-2 h-9 px-3 py-2"
+            className="ssl-notebook-cta landing-primary-btn inline-flex items-center gap-2 h-9 px-3 py-2"
             title="Open Notebook"
             aria-label="Open Notebook"
             type="button"
           >
+            <span className="ssl-notebook-cta__icon" aria-hidden="true">
+              <BookOpen className="h-4 w-4" />
+            </span>
             <span className="hidden sm:inline">Open Notebook</span>
-            <BookOpen className="h-4 w-4" />
           </MagneticButton>
 
           <div className="hidden items-center gap-2 sm:flex">

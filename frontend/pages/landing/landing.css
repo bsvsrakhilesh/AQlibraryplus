@@ -141,6 +141,74 @@
   padding-inline: 22px;
 }
 
+.ssl-notebook-cta {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(36, 95, 237, 0.18);
+  border-radius: 999px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 246, 255, 0.92));
+  color: var(--ssl-ink);
+  box-shadow:
+    0 10px 26px rgba(16, 25, 38, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.ssl-notebook-cta::before {
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  content: "";
+  background:
+    radial-gradient(circle at 20% 20%, rgba(36, 95, 237, 0.12), transparent 30%),
+    radial-gradient(circle at 80% 80%, rgba(17, 150, 106, 0.1), transparent 34%);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.ssl-notebook-cta:hover {
+  transform: translateY(-1px);
+  border-color: rgba(36, 95, 237, 0.28);
+  box-shadow:
+    0 14px 30px rgba(16, 25, 38, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  color: var(--ssl-ink);
+}
+
+.ssl-notebook-cta__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(36, 95, 237, 0.14), rgba(17, 150, 106, 0.12));
+  color: var(--ssl-blue-dark);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  flex: 0 0 auto;
+}
+
+.ssl-notebook-cta__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .ssl-header {
   position: fixed;
   z-index: 100;
@@ -363,6 +431,16 @@
 .ssl-header.is-scrolled .ssl-header__actions .ssl-btn--primary {
   min-height: 38px;
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+}
+
+.ssl-header .ssl-notebook-cta {
+  min-height: 38px;
+  padding-inline: 12px;
+}
+
+.ssl-header.is-scrolled .ssl-notebook-cta {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(238, 244, 255, 0.96));
 }
 
 .ssl-menu-button {
@@ -1818,6 +1896,18 @@
     min-height: 38px;
     padding-inline: 11px;
     font-size: 11px;
+  }
+
+  .ssl-header .ssl-notebook-cta {
+    min-height: 38px;
+    padding-inline: 10px;
+    font-size: 11px;
+    gap: 8px;
+  }
+
+  .ssl-notebook-cta__icon {
+    width: 24px;
+    height: 24px;
   }
 
   .ssl-menu-button {

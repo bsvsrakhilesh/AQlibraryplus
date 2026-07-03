@@ -916,12 +916,8 @@ const UrlCollectorPage: React.FC = () => {
 
       return [
         activePurpose?.researchQuestion ?? "",
-        source.label,
-        source.domain,
-        source.evidenceRole,
         queryHints,
         documentTerms,
-        "official source",
       ]
         .filter(Boolean)
         .join(", ");
@@ -932,7 +928,7 @@ const UrlCollectorPage: React.FC = () => {
   const searchAuthoritySource = useCallback(
     (source: AuthoritySearchSource) => {
       const nextKeywords = buildAuthorityKeywords(source);
-      const nextScope: CollectorScope = { ...scope, format: "pdfOnly" };
+      const nextScope: CollectorScope = { ...scope };
       setWebsite(source.domain);
       setKeywords(nextKeywords);
       setScope(nextScope);
@@ -992,7 +988,7 @@ const UrlCollectorPage: React.FC = () => {
 
       for (let index = 0; index < targets.length; index += 1) {
         const source = targets[index];
-        const nextScope: CollectorScope = { ...scope, format: "pdfOnly" };
+        const nextScope: CollectorScope = { ...scope };
         const query = buildCollectorSearchQuery(buildAuthorityKeywords(source));
         const opts = {
           ...buildSearchOpts(source.domain, nextScope),

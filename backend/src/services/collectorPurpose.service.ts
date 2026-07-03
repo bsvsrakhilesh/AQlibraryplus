@@ -444,6 +444,35 @@ function textIncludes(text: string, term: string) {
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
 }
 
+function purposeText(purpose: AuthorityPurpose) {
+  return [
+    purpose.title,
+    purpose.researchQuestion,
+    purpose.jurisdiction,
+    purpose.region,
+    purpose.outputGoal,
+    ...(purpose.sourcePreferences ?? []),
+    ...(purpose.targetActors ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function groundedTerms(terms: string[], purpose: AuthorityPurpose) {
+  const text = purposeText(purpose);
+  return terms.filter(
+    (term) =>
+      textIncludes(text, term) ||
+      textIncludes(text, `${term}s`) ||
+      textIncludes(text, `${term}es`),
+  );
+}
+
+function requestedFormat(purpose: AuthorityPurpose): CollectorLane["format"] {
+  return /\bpdfs?\b/i.test(purposeText(purpose)) ? "pdfOnly" : "any";
+}
+
 function scoreAuthority(entry: AuthorityRegistryEntry, text: string, domains: Set<string>) {
   let score = domains.has(entry.domain) ? 100 : 0;
   const aliasHits = entry.aliases.filter((term) => textIncludes(text, term));
@@ -475,18 +504,7 @@ function scoreAuthority(entry: AuthorityRegistryEntry, text: string, domains: Se
 }
 
 export function inferAuthoritySources(purpose: AuthorityPurpose): CollectorAuthoritySource[] {
-  const text = [
-    purpose.title,
-    purpose.researchQuestion,
-    purpose.jurisdiction,
-    purpose.region,
-    purpose.outputGoal,
-    ...(purpose.sourcePreferences ?? []),
-    ...(purpose.targetActors ?? []),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+  const text = purposeText(purpose);
   const preferredDomains = new Set(
     (purpose.sourcePreferences ?? []).map(cleanDomain).filter(Boolean),
   );
@@ -505,8 +523,10 @@ export function inferAuthoritySources(purpose: AuthorityPurpose): CollectorAutho
       evidenceRole: entry.evidenceRole,
       reason: entry.reason,
       confidence,
-      queryHints: entry.queryHints,
-      documentTerms: entry.documentTerms,
+      // Registry vocabulary helps select an authority, but only user-grounded
+      // terms may flow into searches. This prevents hidden scope expansion.
+      queryHints: groundedTerms(entry.queryHints, purpose),
+      documentTerms: groundedTerms(entry.documentTerms, purpose),
     }));
 
   const knownDomains = new Set(registryHits.map((hit) => hit.domain));
@@ -520,8 +540,11 @@ export function inferAuthoritySources(purpose: AuthorityPurpose): CollectorAutho
       evidenceRole: "Researcher seed",
       reason: "User-provided official or preferred source domain.",
       confidence: 92,
-      queryHints: ["official", "order", "notification", "report"],
-      documentTerms: ["order", "notification", "report", "guideline"],
+      queryHints: [],
+      documentTerms: groundedTerms(
+        ["order", "notification", "report", "guideline"],
+        purpose,
+      ),
     }));
 
   return [...registryHits, ...customDomains]
@@ -557,7 +580,7 @@ function authorityLane(source: CollectorAuthoritySource, purpose: AuthorityPurpo
     region: purpose.region ?? "",
     yearFrom: purpose.yearFrom ?? "",
     yearTo: purpose.yearTo ?? "",
-    format: "pdfOnly",
+    format: requestedFormat(purpose),
   };
 }
 
@@ -597,7 +620,7 @@ export function fallbackPurposeLanes(purpose: {
       rationale: "Find authoritative decisions, notifications, and source records.",
       website: officialSite,
       keywords: [topic, actorTerms, "order | notification | decision"].filter(Boolean).join(", "),
-      format: "pdfOnly",
+      format: requestedFormat(purpose),
       ...base,
     },
     {
@@ -606,7 +629,7 @@ export function fallbackPurposeLanes(purpose: {
       rationale: "Find compliance, monitoring, audit, and implementation evidence.",
       website: "",
       keywords: [topic, actorTerms, "compliance | implementation | audit | monitoring"].filter(Boolean).join(", "),
-      format: "pdfOnly",
+      format: requestedFormat(purpose),
       ...base,
     },
     {
@@ -621,24 +644,50 @@ export function fallbackPurposeLanes(purpose: {
   ], purpose);
 }
 
-function sanitizeLanes(lanes: CollectorLane[], fallback: CollectorLane[]) {
+function hasUnsupportedSpecificity(value: string, purpose: AuthorityPurpose) {
+  const source = purposeText(purpose);
+  const candidates = value.match(
+    /\b(?:stage|phase|level|tier|grade)\s*(?:[ivx]+|\d+)\b|\b(?:direction|order|case)\s*(?:no\.?\s*)?[a-z-]*\d+[a-z/-]*\b|\b(?:19|20)\d{2}\b/gi,
+  ) ?? [];
+  return candidates.some((candidate) => !textIncludes(source, candidate));
+}
+
+function sanitizeLanes(
+  lanes: CollectorLane[],
+  fallback: CollectorLane[],
+  purpose: AuthorityPurpose,
+) {
+  const allowedDomains = new Set([
+    ...(purpose.sourcePreferences ?? []).map(cleanDomain),
+    ...inferAuthoritySources(purpose).map((source) => source.domain),
+  ].filter(Boolean));
+  const format = requestedFormat(purpose);
   const cleaned = lanes
-    .map((lane, index) => ({
-      key: cleanText(lane.key, 40) || `lane-${index + 1}`,
-      label: cleanText(lane.label, 80) || `Search lane ${index + 1}`,
-      rationale: cleanText(lane.rationale, 240),
-      website: cleanText(lane.website, 255),
-      keywords: cleanText(lane.keywords, 500),
-      jurisdiction: cleanText(lane.jurisdiction, 120),
-      region: cleanText(lane.region, 120),
-      yearFrom: cleanYear(lane.yearFrom),
-      yearTo: cleanYear(lane.yearTo),
-      format: lane.format,
-    }))
-    .filter((lane) => lane.keywords.length >= 2)
+    .map((lane, index) => {
+      const website = cleanDomain(lane.website);
+      return {
+        key: cleanText(lane.key, 40) || `lane-${index + 1}`,
+        label: cleanText(lane.label, 80) || `Search lane ${index + 1}`,
+        rationale: cleanText(lane.rationale, 240),
+        website: allowedDomains.has(website) ? website : "",
+        keywords: cleanText(lane.keywords, 500),
+        jurisdiction: cleanText(purpose.jurisdiction, 120),
+        region: cleanText(purpose.region, 120),
+        yearFrom: cleanYear(purpose.yearFrom),
+        yearTo: cleanYear(purpose.yearTo),
+        format,
+      };
+    })
+    .filter(
+      (lane) =>
+        lane.keywords.length >= 2 &&
+        !hasUnsupportedSpecificity(`${lane.label} ${lane.rationale} ${lane.keywords}`, purpose),
+    )
     .slice(0, 6);
   return cleaned.length >= 2 ? cleaned : fallback;
 }
+
+export const collectorPurposePlanningTestHooks = { sanitizeLanes };
 
 export async function planCollectorPurpose(ownerId: string, purposeId: string) {
   const purpose = await requirePurpose(ownerId, purposeId);
@@ -657,9 +706,12 @@ export async function planCollectorPurpose(ownerId: string, purposeId: string) {
             content: [
               "Create editable evidence-discovery search lanes for a governance research URL collector.",
               "Each lane must support a distinct discovery job and preserve the user's stated scope.",
+              "Treat the purpose as a strict scope boundary. Related planning may vary evidence role or source, but must not narrow or broaden the subject.",
+              "Never add a stage, phase, level, tier, numbered order or direction, case identifier, year, place, actor, or subtype unless it appears in the purpose.",
               "Use commas for AND terms and pipes for OR alternatives in keywords.",
               "Prefer official sources for primary records; do not invent case numbers, agencies, dates, or domains.",
-              "When candidate authoritySources are provided, create direct website-scoped lanes for high-confidence primary agencies.",
+              "Candidate authoritySources identify possible websites only. Their labels and metadata are not permission to add new query concepts.",
+              "Create direct website-scoped lanes only for high-confidence primary agencies relevant to the stated jurisdiction and actors.",
               "Return 2 to 6 lanes with website blank only for mixed-source discovery lanes.",
             ].join("\n"),
           },
@@ -669,7 +721,7 @@ export async function planCollectorPurpose(ownerId: string, purposeId: string) {
       });
       if (response.output_parsed?.lanes) {
         lanes = ensureAuthorityLanes(
-          sanitizeLanes(response.output_parsed.lanes, fallback),
+          sanitizeLanes(response.output_parsed.lanes, fallback, purpose),
           purpose,
         );
       }

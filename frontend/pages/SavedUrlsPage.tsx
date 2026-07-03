@@ -3352,7 +3352,7 @@ const SavedUrlsPage: React.FC = () => {
           </div>
 
           <div className="saved-urls-command-actions">
-            <span className="page-header-pill">
+            <span className="page-header-pill saved-urls-command-state">
               <span className="page-header-pill-label">State</span>
               <span className="page-header-pill-value">
                 {savedSearchStateLabel}

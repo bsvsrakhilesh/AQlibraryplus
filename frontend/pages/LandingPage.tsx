@@ -156,7 +156,7 @@ function Brand() {
         </svg>
       </span>
       <span>
-        <strong>Smart Scrape</strong>
+        <strong>AQlibrary+</strong>
         <small>Research workspace</small>
       </span>
     </span>
@@ -246,7 +246,7 @@ function Header() {
         <button
           className="ssl-header__brand"
           onClick={() => goTo("home")}
-          aria-label="Smart Scrape home"
+          aria-label="AQlibrary+ home"
         >
           <Brand />
         </button>
@@ -263,10 +263,13 @@ function Header() {
         </nav>
         <div className="ssl-header__actions">
           <button
-            className="ssl-btn ssl-btn--quiet ssl-hide-mobile"
+            className="ssl-notebook-cta ssl-hide-mobile"
             onClick={() => navigate("/notebook")}
           >
-            <BookOpen /> Open Notebook
+            <span className="ssl-notebook-cta__icon" aria-hidden="true">
+              <BookOpen />
+            </span>
+            <span>Open Notebook</span>
           </button>
           <button className="ssl-btn ssl-btn--primary" onClick={() => navigate("/app/url-collector")}>
             Open App <ArrowRight />
@@ -506,7 +509,7 @@ function ProductMockup({ surface }: { surface: Surface }) {
 
 function HeroVisual() {
   return (
-    <div className="ssl-hero-visual" aria-label="Smart Scrape workspace overview">
+    <div className="ssl-hero-visual" aria-label="AQlibrary+ workspace overview">
       <div className="ssl-hero-visual__backdrop" aria-hidden="true" />
       <div className="ssl-hero-visual__masthead">
         <div>
@@ -521,7 +524,7 @@ function HeroVisual() {
         </div>
       </div>
       <CollectorMock compact />
-      <div className="ssl-hero-summary" aria-label="Smart Scrape workflow summary">
+      <div className="ssl-hero-summary" aria-label="AQlibrary+ workflow summary">
         <article>
           <FileSearch />
           <span>Find and preserve</span>
@@ -554,7 +557,7 @@ function Hero() {
           </div>
           <h1>Find the source. Keep the proof. Explain what happened.</h1>
           <p>
-            Smart Scrape gives research teams a calmer way to move through public records:
+            AQlibrary+ gives research teams a calmer way to move through public records:
             gather the trail, preserve what matters, and write answers that still hold up when
             someone asks, "where did this come from?"
           </p>
@@ -643,7 +646,7 @@ function Workspaces() {
             enough detail to understand how the app works before opening it.
           </p>
         </div>
-        <div className="ssl-surface-tabs" role="tablist" aria-label="Smart Scrape work surfaces" data-reveal>
+        <div className="ssl-surface-tabs" role="tablist" aria-label="AQlibrary+ work surfaces" data-reveal>
           {surfaces.map((surface) => {
             const Icon = surface.icon;
             return (
@@ -699,8 +702,8 @@ function Governance() {
           <span className="ssl-kicker">For governance questions</span>
           <h2>See who acted, what changed, and what still needs checking.</h2>
           <p>
-            When the question involves agencies, orders, timelines, or public decisions, Smart
-            Scrape helps you pull the relevant records together before drawing a conclusion.
+            When the question involves agencies, orders, timelines, or public decisions, AQlibrary+
+            helps you pull the relevant records together before drawing a conclusion.
           </p>
           <ul>
             <li><Check />Agency roles and actions</li>
@@ -825,7 +828,7 @@ function Footer() {
         </div>
 
         <div className="ssl-footer__bottom">
-          <small>Copyright {new Date().getFullYear()} Smart Scrape</small>
+          <small>Copyright {new Date().getFullYear()} AQlibrary+</small>
           <span>Keep the record. Check the source. Use AI carefully.</span>
         </div>
       </div>
@@ -837,7 +840,7 @@ export default function LandingPage() {
   useEffect(() => {
     document.documentElement.classList.add("landing-scroll-root");
     document.body.classList.add("landing-scroll-root");
-    document.title = "Smart Scrape | Public Records Research Workspace";
+    document.title = "AQlibrary+ | Public Records Research Workspace";
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const revealNodes = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));

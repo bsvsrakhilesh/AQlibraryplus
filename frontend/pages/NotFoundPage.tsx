@@ -11,11 +11,11 @@ const NotFoundPage: React.FC = () => {
         <div className="w-full rounded-3xl border border-white/70 bg-white/85 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.10)] backdrop-blur xl:p-10">
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-700">
             <SearchX className="h-4 w-4" />
-            404 · Page not found
+            404 Â· Page not found
           </div>
 
           <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">
-            This page doesn’t exist in Smart Scrape
+            This page doesn&apos;t exist in AQlibrary+
           </h1>
 
           <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">

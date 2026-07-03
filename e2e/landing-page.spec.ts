@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("Smart Scrape landing page", () => {
+test.describe("AQlibrary+ landing page", () => {
   test("explains the documented evidence workflow without running app operations", async ({ page }) => {
     const operationalRequests: string[] = [];
     page.on("request", (request) => {

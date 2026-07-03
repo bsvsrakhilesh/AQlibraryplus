@@ -18,14 +18,14 @@ export default function NotebookTopNav() {
             <span className="relative inline-flex">
               <img
                 src="/assets/logo.png"
-                alt="Smart Scrape"
+                alt="AQlibrary+"
                 className="w-6 h-6 rounded shadow-sm transition-transform duration-200 group-hover:scale-[1.04]"
               />
               <span className="pointer-events-none absolute inset-0 rounded-full ring-0 ring-brand-primary/40 opacity-0 group-hover:opacity-100 group-hover:ring-2 transition-all duration-200" />
             </span>
 
             <span className="hidden sm:inline text-sm font-semibold tracking-wide">
-              Smart Scrape
+              AQlibrary+
               <span className="block h-0.5 w-0 bg-linear-to-r from-brand-primary/80 to-brand-secondary/80 rounded-full mt-0.5 group-hover:w-full transition-all duration-200 ease-out" />
             </span>
           </button>

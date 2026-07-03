@@ -43,9 +43,122 @@ test("collector purpose authority inference finds CAQM for GRAP Stage IV questio
   const lanes = fallbackPurposeLanes(purpose);
   assert.ok(
     lanes.some(
-      (lane) => lane.website === "caqm.nic.in" && lane.format === "pdfOnly",
+      (lane) => lane.website === "caqm.nic.in" && lane.format === "any",
     ),
   );
+  assert.ok(lanes.some((lane) => /GRAP 4/i.test(lane.keywords)));
+});
+
+test("generic GRAP purposes do not acquire a stage or unrelated registry hints", async () => {
+  process.env.NODE_ENV = "test";
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
+
+  const { fallbackPurposeLanes, inferAuthoritySources } = await import(
+    "../services/collectorPurpose.service"
+  );
+  const purpose = {
+    title: "Reasons for GRAP orders",
+    researchQuestion: "Find reasons for GRAP orders.",
+    jurisdiction: "Delhi NCR",
+    region: null,
+    yearFrom: null,
+    yearTo: null,
+    sourcePreferences: [],
+    targetActors: [],
+  };
+
+  const caqm = inferAuthoritySources(purpose).find((source) => source.key === "caqm");
+  assert.ok(caqm);
+  assert.deepEqual(caqm.queryHints, ["GRAP"]);
+  assert.deepEqual(caqm.documentTerms, ["order"]);
+
+  const lanes = fallbackPurposeLanes(purpose);
+  assert.ok(lanes.some((lane) => lane.website === "caqm.nic.in"));
+  assert.ok(lanes.every((lane) => !/stage\s*(?:iv|4)|sub-committee/i.test(lane.keywords)));
+  assert.ok(lanes.every((lane) => lane.format === "any"));
+});
+
+test("an explicit PDF purpose retains its requested format constraint", async () => {
+  process.env.NODE_ENV = "test";
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
+
+  const { fallbackPurposeLanes } = await import("../services/collectorPurpose.service");
+  const lanes = fallbackPurposeLanes({
+    researchQuestion: "Find PDF copies of GRAP Stage IV orders.",
+    jurisdiction: "Delhi NCR",
+    region: null,
+    yearFrom: null,
+    yearTo: null,
+    sourcePreferences: [],
+    targetActors: [],
+  });
+
+  assert.ok(lanes.every((lane) => lane.format === "pdfOnly"));
+  assert.ok(lanes.some((lane) => /Stage IV/i.test(lane.keywords)));
+});
+
+test("AI lane sanitation cannot invent structured purpose scope", async () => {
+  process.env.NODE_ENV = "test";
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
+
+  const { collectorPurposePlanningTestHooks, fallbackPurposeLanes } = await import(
+    "../services/collectorPurpose.service"
+  );
+  const purpose = {
+    title: "GRAP orders",
+    researchQuestion: "Find GRAP orders.",
+    jurisdiction: "Delhi NCR",
+    region: null,
+    yearFrom: null,
+    yearTo: null,
+    sourcePreferences: [],
+    targetActors: [],
+  };
+  const fallback = fallbackPurposeLanes(purpose);
+  const proposed = [
+    {
+      key: "primary",
+      label: "Primary records",
+      rationale: "Find the requested records.",
+      website: "unrelated.example",
+      keywords: "GRAP orders",
+      jurisdiction: "Haryana",
+      region: "Gurugram",
+      yearFrom: "2024",
+      yearTo: "2025",
+      format: "pdfOnly" as const,
+    },
+    {
+      key: "official",
+      label: "Official records",
+      rationale: "Find official records.",
+      website: "caqm.nic.in",
+      keywords: "GRAP orders",
+      jurisdiction: "India",
+      region: "Delhi",
+      yearFrom: "2020",
+      yearTo: "2026",
+      format: "excludePdf" as const,
+    },
+  ];
+
+  const lanes = collectorPurposePlanningTestHooks.sanitizeLanes(
+    proposed,
+    fallback,
+    purpose,
+  );
+  assert.equal(lanes[0].website, "");
+  assert.equal(lanes[1].website, "caqm.nic.in");
+  assert.ok(lanes.every((lane) => lane.jurisdiction === "Delhi NCR"));
+  assert.ok(lanes.every((lane) => lane.region === ""));
+  assert.ok(lanes.every((lane) => lane.yearFrom === "" && lane.yearTo === ""));
+  assert.ok(lanes.every((lane) => lane.format === "any"));
 });
 
 test("collector purpose authority inference covers stubble and forecast evidence sources", async () => {
