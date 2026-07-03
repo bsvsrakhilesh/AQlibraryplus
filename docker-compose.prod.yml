@@ -100,7 +100,7 @@ services:
       dockerfile: Dockerfile
       target: prod
       args:
-        VITE_API_URL: /api
+        VITE_API_URL: ""
     restart: unless-stopped
     init: true
     ports:

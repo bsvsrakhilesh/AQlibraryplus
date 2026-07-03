@@ -1,6 +1,6 @@
 # AQlibrary+
 
-[![CI](https://github.com/bsvsrakhilesh/AQlibrary-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/bsvsrakhilesh/AQlibrary-plus/actions/workflows/ci.yml)
+[![CI](https://github.com/bsvsrakhilesh/AQlibraryplus/actions/workflows/ci.yml/badge.svg)](https://github.com/bsvsrakhilesh/AQlibraryplus/actions/workflows/ci.yml)
 
 AQlibrary+ is a research platform for collecting, organizing, preserving, and analyzing web-based and personal documents used in governance and policy work. It helps users build searchable, citation-backed evidence collections for reviewing past decisions, preparing new analyses, and preserving institutional knowledge.
 

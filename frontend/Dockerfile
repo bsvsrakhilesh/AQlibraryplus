@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.npm \
     if [ -f package-lock.json ]; then npm ci || (echo "npm ci failed; package-lock.json may be out of sync. Running npm install inside the image." && npm install); else npm install; fi
 COPY . .
 # Let API URL be configurable at build time (optional)
-ARG VITE_API_URL=/api
+ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
