@@ -28,6 +28,7 @@ export type PublishedAtSource =
   | "pdf_text_heuristic"
   | "jsonld"
   | "html_meta"
+  | "search_snippet"
   | "text_explicit"
   | "text_heuristic"
   | "filename_pattern"
@@ -140,6 +141,7 @@ function titleFromExtractedText(text: string) {
 
 const PUBLISHED_AT_SOURCE_PRIORITY: Record<PublishedAtSource, number> = {
   jsonld: 100,
+  search_snippet: 96,
   html_meta: 90,
   text_explicit: 88,
   pdf_pages: 86,
@@ -554,6 +556,36 @@ function parsePublishedDateExpression(raw: string | null | undefined) {
   }
 
   return tryParseDate(t);
+}
+
+export function publishedAtEvidenceFromSearchSnippet(
+  snippet: string | null | undefined,
+): { publishedAt: Date; publishedAtMeta: PublishedAtMeta } | null {
+  const text = cleanSnippet(String(snippet || ""));
+  if (!text) return null;
+
+  // Google CSE prefixes result snippets with the indexed document date.
+  // Anchoring to the start avoids treating dates discussed in the result as publication dates.
+  const match = text.match(new RegExp(`^(${DATE_EXPRESSION_PATTERN})(?=\\s*(?:[.·•—–-]|$))`, "i"));
+  if (!match) return null;
+
+  const publishedAt = parsePublishedDateExpression(match[1]);
+  if (!publishedAt) return null;
+
+  const candidate: PublishedAtCandidate = {
+    date: publishedAt,
+    source: "search_snippet",
+    confidence: 0.96,
+    raw: match[1],
+    evidenceText: text.slice(0, 180),
+    locator: { field: "snippet", position: "leading" },
+    reason: "Leading date supplied by the search result",
+  };
+
+  return {
+    publishedAt,
+    publishedAtMeta: publishedAtMetaFromCandidates([candidate]),
+  };
 }
 
 function evidenceWindow(text: string, index: number, rawLength: number) {

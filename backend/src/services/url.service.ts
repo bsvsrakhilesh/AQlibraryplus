@@ -17,7 +17,11 @@ import {
   countUpdatedSinceReview,
   filterUpdatedSinceReview,
 } from "./savedUrlReview.service";
-import { extractUrlMetadata, withPublishedAtMeta } from "./extract.service";
+import {
+  extractUrlMetadata,
+  publishedAtEvidenceFromSearchSnippet,
+  withPublishedAtMeta,
+} from "./extract.service";
 
 const SNAPSHOT_STALE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -42,6 +46,7 @@ export async function enrichUrlCreateRows(
   const enriched: CreateUrlInput[] = [];
 
   for (const row of rows) {
+    const snippetDate = publishedAtEvidenceFromSearchSnippet(row.snippet);
     const needsMetadata =
       !row.snippet ||
       !String(row.snippet).trim() ||
@@ -49,7 +54,18 @@ export async function enrichUrlCreateRows(
       row.title.trim() === row.url.trim();
 
     if (!needsMetadata) {
-      enriched.push(row);
+      enriched.push(
+        !row.publishedAt && snippetDate
+          ? {
+              ...row,
+              publishedAt: snippetDate.publishedAt,
+              tagsMeta: withPublishedAtMeta(
+                row.tagsMeta,
+                snippetDate.publishedAtMeta,
+              ),
+            }
+          : row,
+      );
       continue;
     }
 
@@ -66,8 +82,12 @@ export async function enrichUrlCreateRows(
             ? row.snippet
             : metadata.snippet,
         authors: metadata.authors,
-        publishedAt: metadata.publishedAt,
-        tagsMeta: withPublishedAtMeta(row.tagsMeta, metadata.publishedAtMeta),
+        publishedAt:
+          row.publishedAt ?? snippetDate?.publishedAt ?? metadata.publishedAt,
+        tagsMeta: withPublishedAtMeta(
+          row.tagsMeta,
+          snippetDate?.publishedAtMeta ?? metadata.publishedAtMeta,
+        ),
       });
     } catch {
       enriched.push(row);
@@ -484,8 +504,13 @@ function serializeUrlRow(
   latestSnapshot: any = null,
   discoverySummary: any = null,
 ) {
+  const snippetDate = publishedAtEvidenceFromSearchSnippet(url.snippet);
   return {
     ...url,
+    publishedAt: snippetDate?.publishedAt ?? url.publishedAt,
+    tagsMeta: snippetDate
+      ? withPublishedAtMeta(url.tagsMeta, snippetDate.publishedAtMeta)
+      : url.tagsMeta,
     collections: (url.collections || []).map((link) => link.collectionId),
     latestSnapshot,
     discoverySummary,

@@ -12,7 +12,7 @@ import SearchFilterUrls, {
 } from "../components/savedurls/SearchFilterUrls";
 import SavedUrlCard from "../components/savedurls/SavedUrlCard";
 import SavedUrlDetailModal from "../components/savedurls/SavedUrlDetailModal";
-import CollectionSidebar from "../components/savedurls/CollectionSidebar";
+import CollectionFilterMenu from "../components/savedurls/CollectionSidebar";
 import CollectionPickerModal from "../components/savedurls/CollectionPickerModal";
 import SavedUrlsEmptyState from "../components/savedurls/SavedUrlsEmptyState";
 import SavedUrlsOperationsPanel from "../components/savedurls/SavedUrlsOperationsPanel";
@@ -584,7 +584,7 @@ const SavedUrlsPage: React.FC = () => {
     getInitialOperationsPanelHidden,
   );
 
-  // Collections (left sidebar)
+  // Optional collection grouping and filter
   const [collections, setCollections] =
     useState<Collection[]>(getCollections());
   const [selectedCollectionId, setSelectedCollectionId] = useState<
@@ -3483,27 +3483,8 @@ const SavedUrlsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Grid inside AppShell content */}
-      <section className="grid grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)] gap-5 xl:gap-6 items-start min-w-0">
-        {/* Sidebar */}
-        <div className="saved-urls-grid-item min-w-0">
-          <div className="md:sticky md:top-20 lg:top-19">
-            <div className="saved-urls-panel saved-urls-sidebar-panel h-full p-4 sm:p-5">
-              <CollectionSidebar
-                collections={collections}
-                collectionCounts={collectionCounts}
-                totalUrlCount={libraryTotalCount}
-                selectedCollectionId={selectedCollectionId}
-                onSelect={(id) => setSelectedCollectionId(id)}
-                onCreateClick={openCollectionDialog}
-                onRenameClick={openRenameCollectionDialog}
-                onDeleteClick={deleteSelectedCollection}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Main content */}
+      {/* Source registry workspace */}
+      <section className="min-w-0">
         <div className="saved-urls-grid-item min-w-0">
           <div className="saved-urls-panel saved-urls-main-panel p-4 sm:p-5 lg:p-6 space-y-5 md:space-y-6 mb-10 min-w-0">
             {/* Toolbar: 2-row responsive grid to avoid collisions */}
@@ -3527,6 +3508,17 @@ const SavedUrlsPage: React.FC = () => {
               <div className="col-span-12">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between min-w-0">
                   <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                    <CollectionFilterMenu
+                      collections={collections}
+                      collectionCounts={collectionCounts}
+                      totalUrlCount={libraryTotalCount}
+                      selectedCollectionId={selectedCollectionId}
+                      onSelect={(id) => setSelectedCollectionId(id)}
+                      onCreateClick={openCollectionDialog}
+                      onRenameClick={openRenameCollectionDialog}
+                      onDeleteClick={deleteSelectedCollection}
+                    />
+
                     {/* Saved year */}
                     <label className="sr-only" htmlFor="year-filter">
                       Filter by saved year
@@ -3883,7 +3875,7 @@ const SavedUrlsPage: React.FC = () => {
                   pasteTitle={
                     selectedCollection
                       ? `Paste into "${selectedCollection.name}"`
-                      : "Select a collection in the sidebar, then paste into it"
+                      : "Select a collection filter, then paste into it"
                   }
                 />
               </div>

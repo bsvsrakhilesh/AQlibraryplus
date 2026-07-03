@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import axios from "axios";
 import dns from "dns/promises";
 
-import { extractUrlMetadata } from "../services/extract.service";
+import {
+  extractUrlMetadata,
+  publishedAtEvidenceFromSearchSnippet,
+} from "../services/extract.service";
 
 const SAFE_DNS_RESULT = [{ address: "93.184.216.34", family: 4 }];
 
@@ -27,6 +30,25 @@ function mockHtmlUrl(t: TestContext, html: string, status = 200) {
 function isoDate(value: Date | null) {
   return value ? value.toISOString().slice(0, 10) : null;
 }
+
+test("leading search-result dates are treated as publication evidence", () => {
+  const evidence = publishedAtEvidenceFromSearchSnippet(
+    "Mar 16, 2026 ... ORDER. Sub.: Revocation of actions under Stage I",
+  );
+
+  assert.equal(isoDate(evidence?.publishedAt ?? null), "2026-03-16");
+  assert.equal(evidence?.publishedAtMeta.source, "search_snippet");
+  assert.equal(evidence?.publishedAtMeta.confidence, 0.96);
+});
+
+test("dates mentioned later in search snippets are not publication evidence", () => {
+  assert.equal(
+    publishedAtEvidenceFromSearchSnippet(
+      "The Commission reviewed air quality data on Mar 16, 2026 before issuing its decision.",
+    ),
+    null,
+  );
+});
 
 test("extractUrlMetadata prioritizes article JSON-LD publication metadata", async (t) => {
   mockHtmlUrl(

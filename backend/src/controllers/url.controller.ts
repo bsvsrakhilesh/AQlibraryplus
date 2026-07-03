@@ -21,6 +21,7 @@ import {
 } from "../services/url.service";
 import {
   extractUrlMetadata,
+  publishedAtEvidenceFromSearchSnippet,
   withPublishedAtMeta,
 } from "../services/extract.service";
 import {
@@ -653,7 +654,13 @@ export async function refreshUrlMetadataHandler(
 
     const u = await prisma.url.findUnique({
       where: { id },
-      select: { id: true, url: true, tagsMeta: true },
+      select: {
+        id: true,
+        url: true,
+        snippet: true,
+        publishedAt: true,
+        tagsMeta: true,
+      },
     });
 
     if (!u) return res.status(404).json({ message: "URL not found" });
@@ -679,12 +686,17 @@ export async function refreshUrlMetadataHandler(
       });
     }
 
+    const snippetDate = publishedAtEvidenceFromSearchSnippet(u.snippet);
+    const publishedAt = snippetDate?.publishedAt ?? meta.publishedAt;
+    const publishedAtMeta =
+      snippetDate?.publishedAtMeta ?? meta.publishedAtMeta;
+
     const updatedUrl = await prisma.url.update({
       where: { id },
       data: {
-        publishedAt: meta.publishedAt,
+        publishedAt,
         authors: meta.authors ?? [],
-        tagsMeta: withPublishedAtMeta(u.tagsMeta, meta.publishedAtMeta) as any,
+        tagsMeta: withPublishedAtMeta(u.tagsMeta, publishedAtMeta) as any,
       },
       select: {
         id: true,
@@ -699,7 +711,7 @@ export async function refreshUrlMetadataHandler(
         OR: [{ sourcePublishedAt: null }, { sourceAuthors: { equals: [] } }],
       },
       data: {
-        sourcePublishedAt: meta.publishedAt ?? null,
+        sourcePublishedAt: publishedAt ?? null,
         sourceAuthors: meta.authors ?? [],
       },
     });
@@ -744,7 +756,7 @@ export async function refreshUrlMetadataHandler(
         ? updatedUrl.publishedAt.toISOString()
         : null,
       authors: updatedUrl.authors ?? [],
-      publishedAtMeta: meta.publishedAtMeta,
+      publishedAtMeta,
     });
   } catch (err) {
     next(err);

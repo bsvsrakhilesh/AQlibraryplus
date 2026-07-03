@@ -11,7 +11,10 @@ import {
   normalizeTagList,
   withSeparatedTagsMeta,
 } from "../utils/tagBuckets";
-import { extractUrlMetadata } from "./extract.service";
+import {
+  extractUrlMetadata,
+  publishedAtEvidenceFromSearchSnippet,
+} from "./extract.service";
 
 const TOPK = Number(process.env.TAGS_TOPK || 10);
 const USE_LLM = (process.env.TAGS_USE_LLM || "true").toLowerCase() === "true";
@@ -696,6 +699,7 @@ export async function persistAiTagSuccessForUrl(
     select: {
       id: true,
       url: true,
+      snippet: true,
       tags: true,
       tagsMeta: true,
       publishedAt: true,
@@ -718,6 +722,7 @@ export async function persistAiTagSuccessForUrl(
   const effectiveTags = mergeUniqueTags(userTags, aiTags);
 
   const governance = data?.governance ?? null;
+  const snippetDate = publishedAtEvidenceFromSearchSnippet(latest.snippet);
   const structuredPublishedAt = derivePublishedAtFromAiTaggerPayload(data);
   let extractedMeta: Awaited<ReturnType<typeof extractUrlMetadata>> | null =
     null;
@@ -732,7 +737,11 @@ export async function persistAiTagSuccessForUrl(
 
   const extractedPublishedAt = extractedMeta?.publishedAt ?? null;
   const nextPublishedAt =
-    latest.publishedAt ?? extractedPublishedAt ?? structuredPublishedAt ?? null;
+    snippetDate?.publishedAt ??
+    latest.publishedAt ??
+    extractedPublishedAt ??
+    structuredPublishedAt ??
+    null;
   const nextAuthors = latest.authors.length
     ? latest.authors
     : (extractedMeta?.authors ?? []);
@@ -744,7 +753,9 @@ export async function persistAiTagSuccessForUrl(
     aiTags,
   });
 
-  if (!latest.publishedAt && extractedPublishedAt && extractedMeta) {
+  if (snippetDate) {
+    nextTagsMeta.publishedAtMeta = snippetDate.publishedAtMeta;
+  } else if (!latest.publishedAt && extractedPublishedAt && extractedMeta) {
     nextTagsMeta.publishedAtMeta = extractedMeta.publishedAtMeta;
   } else if (!latest.publishedAt && structuredPublishedAt) {
     nextTagsMeta.publishedAtMeta = {
