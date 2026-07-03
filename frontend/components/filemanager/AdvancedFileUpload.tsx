@@ -137,7 +137,7 @@ const Chip: React.FC<{
     danger: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
   };
   return (
-    <span className={`badge ${tones[tone]} !text-[11px]`}>{children}</span>
+    <span className={`badge ${tones[tone]} text-[11px]!`}>{children}</span>
   );
 };
 
@@ -717,7 +717,7 @@ const AdvancedFileUpload: React.FC<AdvancedFileUploadProps> = ({
 
         {showPanel && (
           <div
-            className="fixed w-[440px] max-h-[560px] bg-white dark:bg-neutral-900 border rounded-2xl shadow-2xl p-4 z-[1000] overflow-auto"
+            className="fixed w-110 max-h-140 bg-white dark:bg-neutral-900 border rounded-2xl shadow-2xl p-4 z-1000 overflow-auto"
             style={{
               top: panelPosition?.top ?? 80,
               left: panelPosition?.left ?? Math.max(8, window.innerWidth - 460),

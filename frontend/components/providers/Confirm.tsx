@@ -92,7 +92,7 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
       {children}
       {state.open &&
         createPortal(
-          <div className="fixed inset-0 z-[9998] flex items-center justify-center">
+          <div className="fixed inset-0 z-9998 flex items-center justify-center">
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/40" />
             {/* Dialog */}
@@ -102,7 +102,7 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
               aria-modal="true"
               aria-labelledby={titleId}
               aria-describedby={state.description ? descriptionId : undefined}
-              className="relative z-[9999] w-full max-w-md rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-800 dark:bg-gray-900"
+              className="relative z-9999 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-800 dark:bg-gray-900"
             >
               <div className="flex items-start gap-3">
                 {/* Icon */}

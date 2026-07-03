@@ -24,7 +24,7 @@ function PanelCard({
 }) {
   return (
     <section
-      className={`rounded-[24px] border border-white/70 bg-white/75 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur ${className}`}
+      className={`rounded-3xl border border-white/70 bg-white/75 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur ${className}`}
     >
       {children}
     </section>
@@ -38,15 +38,15 @@ function WorkspaceSkeleton() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-3">
             <div className="h-8 w-64 animate-pulse rounded-xl bg-slate-200/80" />
-            <div className="h-4 w-[28rem] max-w-full animate-pulse rounded-lg bg-slate-200/70" />
-            <div className="h-4 w-[18rem] max-w-full animate-pulse rounded-lg bg-slate-200/60" />
+            <div className="h-4 w-112 max-w-full animate-pulse rounded-lg bg-slate-200/70" />
+            <div className="h-4 w-72 max-w-full animate-pulse rounded-lg bg-slate-200/60" />
           </div>
           <ToolbarSkeleton />
         </div>
       </PanelCard>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <PanelCard className="min-h-[420px]">
+        <PanelCard className="min-h-105">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div className="h-6 w-40 animate-pulse rounded-lg bg-slate-200/80" />
             <div className="h-9 w-28 animate-pulse rounded-xl bg-slate-200/70" />
@@ -80,7 +80,7 @@ function NotebookSkeleton() {
       className="grid h-full min-h-0 grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.2fr)_minmax(320px,0.85fr)] lg:px-6"
       aria-busy="true"
     >
-      <PanelCard className="min-h-[280px] lg:min-h-0">
+      <PanelCard className="min-h-70 lg:min-h-0">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="h-6 w-32 animate-pulse rounded-lg bg-slate-200/80" />
           <div className="h-9 w-24 animate-pulse rounded-xl bg-slate-200/70" />
@@ -93,7 +93,7 @@ function NotebookSkeleton() {
         </div>
       </PanelCard>
 
-      <PanelCard className="min-h-[320px] lg:min-h-0">
+      <PanelCard className="min-h-80 lg:min-h-0">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="h-6 w-40 animate-pulse rounded-lg bg-slate-200/80" />
           <div className="h-9 w-32 animate-pulse rounded-xl bg-slate-200/70" />
@@ -107,7 +107,7 @@ function NotebookSkeleton() {
         </div>
       </PanelCard>
 
-      <PanelCard className="min-h-[280px] lg:min-h-0">
+      <PanelCard className="min-h-70 lg:min-h-0">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="h-6 w-36 animate-pulse rounded-lg bg-slate-200/80" />
           <div className="h-9 w-24 animate-pulse rounded-xl bg-slate-200/70" />

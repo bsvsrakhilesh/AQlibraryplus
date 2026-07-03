@@ -31,19 +31,19 @@ export const PlusButton = React.forwardRef<HTMLButtonElement, PlusButtonProps>(
   ) => {
     const base =
       "inline-flex items-center justify-center gap-2 rounded-xl transition-all select-none " +
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] " +
-      "focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background)] " +
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent) " +
+      "focus-visible:ring-offset-2 focus-visible:ring-offset-(--color-background) " +
       "active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed";
 
     const variants: Record<Variant, string> = {
       solid:
-        "bg-[var(--color-accent)] text-[var(--color-accent-foreground)] " +
+        "bg-(--color-accent) text-(--color-accent-foreground) " +
         "hover:brightness-95 border border-transparent",
       outline:
-        "bg-transparent text-[var(--color-foreground)] border border-border " +
+        "bg-transparent text-(--color-foreground) border border-border " +
         "hover:bg-[color-mix(in_oklab,var(--color-foreground),transparent_96%)]",
       ghost:
-        "bg-transparent text-[var(--color-foreground)] border border-transparent " +
+        "bg-transparent text-(--color-foreground) border border-transparent " +
         "hover:bg-[color-mix(in_oklab,var(--color-foreground),transparent_96%)]",
     };
 

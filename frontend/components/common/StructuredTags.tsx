@@ -510,7 +510,7 @@ function SmartTagRow({
     <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="break-words text-[12px] font-semibold leading-snug text-slate-950">
+          <div className="wrap-break-word text-[12px] font-semibold leading-snug text-slate-950">
             {tag.value}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
@@ -611,7 +611,7 @@ function Pill({
         )}
         title={evidence ? evidence : label}
       >
-        <span className="max-w-[220px] truncate">{label}</span>
+        <span className="max-w-55 truncate">{label}</span>
         <span className="rounded-full border border-black/5 bg-white/70 px-1.5 py-0.5 text-[10px] leading-none text-slate-700">
           {scoreBadge(score)}
         </span>
@@ -619,7 +619,7 @@ function Pill({
 
       {showEvidence && evidence ? (
         <span className="mt-1 block w-full text-[11px] leading-snug text-[hsl(var(--muted-foreground))]">
-          <span className="block max-w-[620px] break-words">{evidence}</span>
+          <span className="block max-w-155 wrap-break-word">{evidence}</span>
         </span>
       ) : null}
     </span>
@@ -1163,7 +1163,7 @@ export default function StructuredTags({
                       {l.k}
                     </div>
                     <div className="min-w-0 text-right text-[12px] text-slate-900">
-                      <div className="truncate max-w-[520px]" title={l.v}>
+                      <div className="truncate max-w-130" title={l.v}>
                         {l.v}
                       </div>
                     </div>

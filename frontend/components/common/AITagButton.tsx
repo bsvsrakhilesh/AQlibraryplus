@@ -85,7 +85,7 @@ export default function AITagButton({
       </div>
 
       {liveLine ? (
-        <span className="max-w-[26rem] break-words text-[10px] text-gray-500">
+        <span className="max-w-104 wrap-break-word text-[10px] text-gray-500">
           {liveLine}
         </span>
       ) : null}

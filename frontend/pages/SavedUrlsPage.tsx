@@ -2951,7 +2951,7 @@ const SavedUrlsPage: React.FC = () => {
       </header>
 
       <section className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-[240px]">
+        <div className="min-w-60">
           <label htmlFor="saved-url-purpose-filter" className="text-xs font-semibold text-gray-600">
             Purpose intake
           </label>
@@ -3487,7 +3487,7 @@ const SavedUrlsPage: React.FC = () => {
       <section className="grid grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)] gap-5 xl:gap-6 items-start min-w-0">
         {/* Sidebar */}
         <div className="saved-urls-grid-item min-w-0">
-          <div className="md:sticky md:top-20 lg:top-[76px]">
+          <div className="md:sticky md:top-20 lg:top-19">
             <div className="saved-urls-panel saved-urls-sidebar-panel h-full p-4 sm:p-5">
               <CollectionSidebar
                 collections={collections}
@@ -3533,7 +3533,7 @@ const SavedUrlsPage: React.FC = () => {
                     </label>
                     <select
                       id="year-filter"
-                      className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      className="input-pill w-auto shrink-0 min-w-44 text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                       value={year}
                       onChange={(e) => setYear(e.target.value)}
                       title="Filter by saved year"
@@ -3552,7 +3552,7 @@ const SavedUrlsPage: React.FC = () => {
                     </label>
                     <select
                       id="sortKey"
-                      className="input-pill w-auto shrink-0 min-w-[11rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      className="input-pill w-auto shrink-0 min-w-44 text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                       value={sortKey}
                       onChange={(e) => setSortKey(e.target.value as SortKey)}
                       title="Sort key"
@@ -3568,7 +3568,7 @@ const SavedUrlsPage: React.FC = () => {
                     </label>
                     <select
                       id="sortOrder"
-                      className="input-pill w-auto shrink-0 min-w-[7rem] text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      className="input-pill w-auto shrink-0 min-w-28 text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                       value={sortOrder}
                       onChange={(e) =>
                         setSortOrder(e.target.value as SortOrder)
@@ -3680,7 +3680,7 @@ const SavedUrlsPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={cancelBulkAiTagRun}
-                        className="btn-ghost px-3 py-2 rounded-lg transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                        className="btn-ghost px-3 py-2 rounded-lg transition hover:-translate-y-px focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                       >
                         Cancel run
                       </button>
@@ -3688,7 +3688,7 @@ const SavedUrlsPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={dismissBulkAiTagRun}
-                        className="btn-ghost px-3 py-2 rounded-lg transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                        className="btn-ghost px-3 py-2 rounded-lg transition hover:-translate-y-px focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                       >
                         Dismiss
                       </button>
@@ -3783,7 +3783,7 @@ const SavedUrlsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={selectAllPage}
-                    className="btn-ghost px-2 py-1 rounded-lg transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                    className="btn-ghost px-2 py-1 rounded-lg transition hover:-translate-y-px focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                     title="Select every row on the current page"
                   >
                     Select page ({sorted.length})
@@ -3791,7 +3791,7 @@ const SavedUrlsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={clearSelection}
-                    className="btn-ghost px-2 py-1 rounded-lg transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                    className="btn-ghost px-2 py-1 rounded-lg transition hover:-translate-y-px focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                     title="Clear the current page selection"
                   >
                     Clear selection
@@ -3801,7 +3801,7 @@ const SavedUrlsPage: React.FC = () => {
                       onAutoTagSelected(selectedItems.map((u) => u.id))
                     }
                     disabled={selectedItems.length === 0 || bulkAiTagIsBusy}
-                    className="btn-primary inline-flex items-center gap-2 px-3 py-2 rounded-lg shadow-sm transition hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-brand-primary/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary inline-flex items-center gap-2 px-3 py-2 rounded-lg shadow-sm transition hover:-translate-y-px focus:outline-none focus:ring-2 focus:ring-brand-primary/40 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={
                       bulkAiTagIsBusy
                         ? "Bulk AI auto-tag is already running for a page selection"

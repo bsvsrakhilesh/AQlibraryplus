@@ -364,13 +364,13 @@ const FolderPickerModal: React.FC<Props> = ({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center px-4 py-8">
+    <div className="fixed inset-0 z-110 flex items-center justify-center px-4 py-8">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-[2px]" />
 
       {/* Panel */}
       <div className="relative w-full max-w-3xl">
-        <div className="bg-landing-gradient rounded-3xl p-[1px] shadow-2xl">
+        <div className="bg-landing-gradient rounded-3xl p-px shadow-2xl">
           <div
             ref={dialogRef}
             role="dialog"
@@ -618,7 +618,7 @@ const FolderPickerModal: React.FC<Props> = ({
                         void handleCreate();
                       }}
                     >
-                      <div className="bg-landing-gradient rounded-2xl p-[1px] flex-1">
+                      <div className="bg-landing-gradient rounded-2xl p-px flex-1">
                         <input
                           name="folder-create-name"
                           className="md3-input w-full rounded-2xl"
@@ -666,7 +666,7 @@ const FolderPickerModal: React.FC<Props> = ({
                         : "Saved as a text file."}
                     </p>
 
-                    <div className="mt-3 bg-landing-gradient rounded-2xl p-[1px]">
+                    <div className="mt-3 bg-landing-gradient rounded-2xl p-px">
                       <input
                         ref={fileNameInputRef}
                         name="capture-file-name"
@@ -839,7 +839,7 @@ const FolderPickerModal: React.FC<Props> = ({
                         </div>
 
                         {loginProvider === "custom" && (
-                          <div className="bg-landing-gradient rounded-2xl p-[1px]">
+                          <div className="bg-landing-gradient rounded-2xl p-px">
                             <input
                               name="institutional-login-url"
                               className="md3-input w-full rounded-2xl"

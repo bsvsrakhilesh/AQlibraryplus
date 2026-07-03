@@ -143,7 +143,7 @@ const SourceRegistryTable: React.FC<Props> = ({
   return (
     <div className="overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 bg-white/90 dark:bg-neutral-950/70 shadow-sm">
       <div className="overflow-x-auto">
-        <table className="min-w-[1100px] w-full text-sm">
+        <table className="min-w-275 w-full text-sm">
           <thead className="bg-neutral-50 dark:bg-neutral-900/90 border-b border-black/5 dark:border-white/10">
             <tr className="text-left text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
               <th className="px-4 py-3 w-12">
@@ -158,14 +158,14 @@ const SourceRegistryTable: React.FC<Props> = ({
                   className="h-4 w-4"
                 />
               </th>
-              <th className="px-4 py-3 min-w-[320px]">Source</th>
-              <th className="px-4 py-3 min-w-[160px]">Domain</th>
-              <th className="px-4 py-3 min-w-[120px]">Published</th>
-              <th className="px-4 py-3 min-w-[140px]">Last capture</th>
-              <th className="px-4 py-3 min-w-[120px]">Freshness</th>
-              <th className="px-4 py-3 min-w-[200px]">Tags</th>
-              <th className="px-4 py-3 min-w-[110px]">AI status</th>
-              <th className="px-4 py-3 min-w-[240px] text-right">Actions</th>
+              <th className="px-4 py-3 min-w-80">Source</th>
+              <th className="px-4 py-3 min-w-40">Domain</th>
+              <th className="px-4 py-3 min-w-30">Published</th>
+              <th className="px-4 py-3 min-w-35">Last capture</th>
+              <th className="px-4 py-3 min-w-30">Freshness</th>
+              <th className="px-4 py-3 min-w-50">Tags</th>
+              <th className="px-4 py-3 min-w-27.5">AI status</th>
+              <th className="px-4 py-3 min-w-60 text-right">Actions</th>
             </tr>
           </thead>
 
@@ -345,7 +345,7 @@ const SourceRegistryTable: React.FC<Props> = ({
                     className="px-4 py-4 align-top text-right"
                     onClick={stopPropagation}
                   >
-                    <div className="ml-auto grid w-[220px] grid-cols-2 gap-2">
+                    <div className="ml-auto grid w-55 grid-cols-2 gap-2">
                       <a
                         href={url.url}
                         target="_blank"

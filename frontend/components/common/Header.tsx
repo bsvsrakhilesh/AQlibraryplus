@@ -103,7 +103,7 @@ const Header: React.FC<HeaderProps> = ({
               </span>
               <span className="hidden sm:inline text-sm font-semibold tracking-wide">
                 Smart Scrape
-                <span className="block h-[2px] w-0 bg-gradient-to-r from-brand-primary/80 to-brand-secondary/80 rounded-full mt-[2px] group-hover:w-full transition-all duration-200 ease-out" />
+                <span className="block h-0.5 w-0 bg-linear-to-r from-brand-primary/80 to-brand-secondary/80 rounded-full mt-0.5 group-hover:w-full transition-all duration-200 ease-out" />
               </span>
             </span>
           </button>

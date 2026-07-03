@@ -746,7 +746,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
               name="results-query"
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
-              className="w-[260px] max-w-[70vw] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+              className="w-65 max-w-[70vw] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
               placeholder="Search title, snippet, or URL…"
             />
 
@@ -959,7 +959,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {showEvidenceRiskWarning && (
             <div
-              className={`max-w-[340px] rounded-xl border px-3 py-2 text-xs font-semibold ${
+              className={`max-w-85 rounded-xl border px-3 py-2 text-xs font-semibold ${
                 authorityCoverageRisk === "high"
                   ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200"
                   : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
@@ -1112,11 +1112,11 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
               tabIndex={0}
               className={[
                 "group relative rounded-xl border border-gray-100 bg-white/80 backdrop-blur-sm",
-                "hover:shadow-soft hover:-translate-y-[1px] hover:border-green-200/80 hover:bg-white",
+                "hover:shadow-soft hover:-translate-y-px hover:border-green-200/80 hover:bg-white",
                 "transition-all duration-200 ease-out cursor-pointer",
               ].join(" ")}
             >
-              <span className="absolute left-0 top-0 h-full w-[2px] rounded-l-xl bg-transparent group-hover:bg-green-400/90 group-hover:w-[3px] transition-all duration-200 ease-out" />
+              <span className="absolute left-0 top-0 h-full w-0.5 rounded-l-xl bg-transparent group-hover:bg-green-400/90 group-hover:w-0.75 transition-all duration-200 ease-out" />
 
               <div
                 className={[
@@ -1152,7 +1152,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
                     >
                       {r.title || r.url}
                     </a>
-                    <ExternalIcon className="mt-[2px] h-3.5 w-3.5 text-gray-400 opacity-0 transition-opacity group-hover/title:opacity-100" />
+                    <ExternalIcon className="mt-0.5 h-3.5 w-3.5 text-gray-400 opacity-0 transition-opacity group-hover/title:opacity-100" />
                   </div>
 
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-700">

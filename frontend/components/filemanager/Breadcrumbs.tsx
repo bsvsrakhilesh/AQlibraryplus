@@ -398,7 +398,7 @@ export default function Breadcrumbs({
         >
           <button
             type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-xl text-[hsl(var(--fm-accent))] shadow-[var(--fm-shadow)]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-xl text-[hsl(var(--fm-accent))] shadow-(--fm-shadow)"
             onClick={() => void runNavigate(null)}
             title="Go to root"
             aria-label="Go to root"

@@ -442,7 +442,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
               <span className="shrink-0 text-neutral-500 dark:text-neutral-400">
                 {filterChip.label}:
               </span>
-              <span className="max-w-[14rem] truncate">
+              <span className="max-w-56 truncate">
                 {filterChip.value}
               </span>
               <button
@@ -466,7 +466,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
         className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(18rem,0.95fr)] gap-4 text-sm min-w-0"
       >
         {/* Domains */}
-        <div className="saved-urls-section-card min-h-[14rem] p-4">
+        <div className="saved-urls-section-card min-h-56 p-4">
           <div className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
             Domains
           </div>
@@ -497,7 +497,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
         </div>
 
         {/* Tags */}
-        <div className="saved-urls-section-card min-h-[14rem] p-4">
+        <div className="saved-urls-section-card min-h-56 p-4">
           <div className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
             Tags
           </div>
@@ -528,7 +528,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
         </div>
 
         {/* Dates & status */}
-        <div className="saved-urls-section-card min-h-[14rem] p-4">
+        <div className="saved-urls-section-card min-h-56 p-4">
           <div className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
             Dates & status
           </div>

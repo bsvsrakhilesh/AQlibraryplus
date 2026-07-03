@@ -35,7 +35,7 @@ const CollectionSidebar: React.FC<CollectionSidebarProps> = ({
     "hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
 
   const chipClass =
-    "inline-flex min-w-[2rem] items-center justify-center rounded-full border border-black/10 dark:border-white/10 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-300";
+    "inline-flex min-w-8 items-center justify-center rounded-full border border-black/10 dark:border-white/10 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-300";
 
   const canDeleteSelected =
     !!selectedCollection && selectedCollection.id !== "c_general";

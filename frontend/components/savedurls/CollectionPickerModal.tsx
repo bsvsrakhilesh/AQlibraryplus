@@ -143,7 +143,7 @@ const CollectionPickerModal: React.FC<Props> = ({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionText ? descriptionId : undefined}
-        className="relative z-[51] w-full max-w-lg rounded-2xl border bg-white p-4 shadow-xl dark:bg-gray-900"
+        className="relative z-51 w-full max-w-lg rounded-2xl border bg-white p-4 shadow-xl dark:bg-gray-900"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>

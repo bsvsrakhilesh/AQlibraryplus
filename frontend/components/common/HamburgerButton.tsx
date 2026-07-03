@@ -31,20 +31,20 @@ export default function HamburgerButton({
     >
       {/* Top line */}
       <motion.span
-        className="absolute left-2 right-2 top-[11px] h-[2px] bg-gray-800 dark:bg-gray-100"
+        className="absolute left-2 right-2 top-2.75 h-0.5 bg-gray-800 dark:bg-gray-100"
         animate={open ? { y: 8, rotate: 45 } : { y: 0, rotate: 0 }}
         transition={LINE_TRANSITION}
       />
       {/* Middle line */}
       <motion.span
-        className="absolute left-2 right-2 top-[18px] h-[2px] bg-gray-800 dark:bg-gray-100"
+        className="absolute left-2 right-2 top-4.5 h-0.5 bg-gray-800 dark:bg-gray-100"
         animate={open ? { opacity: 0, scaleX: 0.3 } : { opacity: 1, scaleX: 1 }}
         transition={LINE_TRANSITION}
         style={{ transformOrigin: "center" }}
       />
       {/* Bottom line */}
       <motion.span
-        className="absolute left-2 right-2 top-[25px] h-[2px] bg-gray-800 dark:bg-gray-100"
+        className="absolute left-2 right-2 top-6.25 h-0.5 bg-gray-800 dark:bg-gray-100"
         animate={open ? { y: -8, rotate: -45 } : { y: 0, rotate: 0 }}
         transition={LINE_TRANSITION}
       />

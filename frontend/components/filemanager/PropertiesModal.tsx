@@ -32,8 +32,8 @@ const sectionClass =
 
 const labelClass =
   "text-xs font-semibold uppercase tracking-[0.14em] text-muted";
-const strongValueClass = "break-words text-sm text-foreground";
-const monoValueClass = "break-words font-mono text-xs text-foreground";
+const strongValueClass = "wrap-break-word text-sm text-foreground";
+const monoValueClass = "wrap-break-word font-mono text-xs text-foreground";
 
 function displayText(value: unknown, fallback = "—") {
   if (value == null) return fallback;
@@ -88,7 +88,7 @@ function SummaryCard({
         <span className="text-foreground/70">{icon}</span>
         <span>{label}</span>
       </div>
-      <div className="mt-2 break-words text-sm font-medium text-foreground">
+      <div className="mt-2 wrap-break-word text-sm font-medium text-foreground">
         {value}
       </div>
     </div>
@@ -384,10 +384,10 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
     <>
       <div
         aria-hidden="true"
-        className="fixed inset-0 z-[130] bg-slate-950/60 backdrop-blur-[3px]"
+        className="fixed inset-0 z-130 bg-slate-950/60 backdrop-blur-[3px]"
       />
 
-      <div className="fixed inset-0 z-[131] flex items-center justify-center p-4 md:p-6">
+      <div className="fixed inset-0 z-131 flex items-center justify-center p-4 md:p-6">
         <div
           ref={dialogRef}
           role="dialog"
@@ -575,7 +575,7 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
                       </div>
                       <div>
                         <div className={labelClass}>Job ID</div>
-                        <div className="mt-1 break-words font-mono text-xs text-foreground">
+                        <div className="mt-1 wrap-break-word font-mono text-xs text-foreground">
                           {displayText(file.taggingJobId, "—")}
                         </div>
                       </div>
@@ -638,7 +638,7 @@ const PropertiesModal: React.FC<PropertiesModalProps> = ({
 
                   <div className="rounded-2xl border border-[hsl(var(--border))] bg-black/[0.02] p-4 dark:bg-white/[0.03]">
                     <div className={labelClass}>Last error</div>
-                    <div className="mt-2 break-words whitespace-pre-wrap text-sm text-foreground">
+                    <div className="mt-2 wrap-break-word whitespace-pre-wrap text-sm text-foreground">
                       {displayText(file.taggingError, "—")}
                     </div>
                   </div>

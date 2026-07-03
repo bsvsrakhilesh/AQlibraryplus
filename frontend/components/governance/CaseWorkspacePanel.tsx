@@ -821,7 +821,7 @@ export default function CaseWorkspacePanel({
               </p>
             </div>
 
-            <div className="grid min-w-[240px] grid-cols-2 gap-3 text-sm">
+            <div className="grid min-w-60 grid-cols-2 gap-3 text-sm">
               <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-slate-300">
                   Readiness
@@ -1203,7 +1203,7 @@ export default function CaseWorkspacePanel({
                       </div>
                       <div className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs text-slate-600">
                         <div>{formatShortDate(record.date)}</div>
-                        <div className="mt-1 truncate max-w-[120px]">
+                        <div className="mt-1 truncate max-w-30">
                           {record.agency}
                         </div>
                       </div>
@@ -1254,7 +1254,7 @@ export default function CaseWorkspacePanel({
                       </div>
                       <div className="shrink-0 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-right text-xs text-emerald-800">
                         <div>{formatShortDate(record.date)}</div>
-                        <div className="mt-1 truncate max-w-[120px]">
+                        <div className="mt-1 truncate max-w-30">
                           {record.agency}
                         </div>
                       </div>
@@ -1580,7 +1580,7 @@ export default function CaseWorkspacePanel({
           </SmartCard>
 
           <SmartCard
-            className="sticky top-[92px] border-white/70 bg-white/90 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
+            className="sticky top-23 border-white/70 bg-white/90 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
             tabIndex={-1}
           >
             <SectionHeader

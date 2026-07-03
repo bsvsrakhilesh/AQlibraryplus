@@ -843,7 +843,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       {url.title}
                     </h2>
 
-                    <div className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 break-words">
+                    <div className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 wrap-break-word">
                       {sourceHost} • saved {formatDateTime(url.createdAt)}
                     </div>
 
@@ -900,7 +900,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid shrink-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:w-[18rem]">
+                    <div className="grid shrink-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:w-72">
                       <button
                         type="button"
                         onClick={openSourceInNewTab}
@@ -967,7 +967,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                     }}
                     aria-label="Saved URL notes"
                     disabled={notesSaveState === "saving"}
-                    className="mt-3 min-h-[140px] w-full rounded-xl border border-black/10 bg-white p-3 text-sm outline-none transition focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 disabled:cursor-wait disabled:opacity-70 dark:border-white/10 dark:bg-neutral-900"
+                    className="mt-3 min-h-35 w-full rounded-xl border border-black/10 bg-white p-3 text-sm outline-none transition focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 disabled:cursor-wait disabled:opacity-70 dark:border-white/10 dark:bg-neutral-900"
                     placeholder="Add context, review notes, follow-up tasks, or why this source matters."
                   />
 
@@ -1176,7 +1176,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       <div className="text-xs uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
                         Created
                       </div>
-                      <div className="mt-1 break-words text-neutral-900 dark:text-neutral-100">
+                      <div className="mt-1 wrap-break-word text-neutral-900 dark:text-neutral-100">
                         {formatDate(url.createdAt)}
                       </div>
                     </div>
@@ -1185,7 +1185,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       <div className="text-xs uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
                         Last visited
                       </div>
-                      <div className="mt-1 break-words text-neutral-900 dark:text-neutral-100">
+                      <div className="mt-1 wrap-break-word text-neutral-900 dark:text-neutral-100">
                         {url.lastVisitedAt
                           ? formatDate(url.lastVisitedAt)
                           : "—"}
@@ -1239,7 +1239,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                       <div className="text-xs uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
                         Authors
                       </div>
-                      <div className="mt-1 break-words text-neutral-900 dark:text-neutral-100">
+                      <div className="mt-1 wrap-break-word text-neutral-900 dark:text-neutral-100">
                         {authors.length ? authors.join(", ") : "—"}
                       </div>
                     </div>
@@ -1412,7 +1412,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                         className="flex items-start justify-between gap-3 rounded-xl border border-black/10 p-3 text-sm dark:border-white/10"
                       >
                         <div className="min-w-0">
-                          <div className="break-words font-medium">
+                          <div className="wrap-break-word font-medium">
                             {s.fileName}
                           </div>
                           <div className="mt-1 text-xs text-gray-500">

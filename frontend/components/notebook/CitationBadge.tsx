@@ -198,7 +198,7 @@ export default function CitationBadge({
           role="dialog"
           aria-label="Citation preview"
         >
-          <div className="p-3 border-b border-slate-200/70 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 rounded-t-2xl">
+          <div className="p-3 border-b border-slate-200/70 bg-white/90 backdrop-blur supports-backdrop-filter:bg-white/70 rounded-t-2xl">
             <div className="text-[11px] font-semibold text-slate-700">
               {peekChunk ? sourceTitle(peekChunk.source) : "Evidence"}
             </div>

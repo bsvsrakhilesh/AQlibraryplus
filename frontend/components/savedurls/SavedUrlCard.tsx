@@ -221,7 +221,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
       tabIndex={-1}
       className={[
         "saved-url-card relative h-full p-5 sm:p-6",
-        selected ? "ring-2 ring-[var(--color-accent)]" : "ring-0",
+        selected ? "ring-2 ring-(--color-accent)" : "ring-0",
       ].join(" ")}
     >
       {/* Optional selection checkbox */}
@@ -241,11 +241,11 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
           <img
             src={url.faviconUrl}
             alt=""
-            className="mt-[2px] h-5 w-5 rounded-sm"
+            className="mt-0.5 h-5 w-5 rounded-sm"
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="mt-[2px] h-5 w-5 rounded-sm bg-gray-200" />
+          <div className="mt-0.5 h-5 w-5 rounded-sm bg-gray-200" />
         )}
 
         <div className="min-w-0 flex-1">
@@ -337,11 +337,11 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
           )}
 
           {url.description ? (
-            <p className="mt-3 min-h-[4.5rem] line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
+            <p className="mt-3 min-h-18 line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
               {url.description}
             </p>
           ) : (
-            <p className="mt-3 min-h-[4.5rem] text-sm text-gray-400 dark:text-gray-500 italic">
+            <p className="mt-3 min-h-18 text-sm text-gray-400 dark:text-gray-500 italic">
               No description.
             </p>
           )}

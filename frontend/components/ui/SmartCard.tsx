@@ -45,8 +45,8 @@ const SmartCard = React.forwardRef(function SmartCardInner<
       className={cn(
         "group rounded-2xl border border-border bg-surface shadow-sm transition-all",
         "hover:shadow-lg hover:-translate-y-0.5",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]",
-        "focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background)]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)",
+        "focus-visible:ring-offset-2 focus-visible:ring-offset-(--color-background)",
         className
       )}
       tabIndex={tabIndex}

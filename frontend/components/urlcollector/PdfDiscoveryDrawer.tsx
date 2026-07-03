@@ -618,13 +618,13 @@ const PdfDiscoveryDrawer: React.FC<Props> = ({
 
   const node = (
     <>
-      <div className="fixed inset-0 z-[90] bg-slate-950/35 backdrop-blur-[2px]" />
+      <div className="fixed inset-0 z-90 bg-slate-950/35 backdrop-blur-[2px]" />
       <aside
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Discovered PDFs"
-        className="fixed bottom-3 left-1/2 top-3 z-[91] flex w-[min(1400px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-3xl border border-black/10 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-neutral-950"
+        className="fixed bottom-3 left-1/2 top-3 z-91 flex w-[min(1400px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-3xl border border-black/10 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-neutral-950"
       >
         <header className="border-b border-black/10 bg-white/95 px-5 py-4 dark:border-white/10 dark:bg-neutral-950/95">
           <div className="flex items-start justify-between gap-4">
@@ -881,7 +881,7 @@ const PdfDiscoveryDrawer: React.FC<Props> = ({
                                 {methodLabel(doc.discoveryMethod)}
                               </span>
                               {doc.fileNameHint && (
-                                <span className="max-w-[24rem] truncate">
+                                <span className="max-w-96 truncate">
                                   {doc.fileNameHint}
                                 </span>
                               )}
@@ -945,7 +945,7 @@ const PdfDiscoveryDrawer: React.FC<Props> = ({
                             {!captured && (
                               <button
                                 type="button"
-                                className="inline-flex h-11 min-w-[7.75rem] items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/35 disabled:opacity-60"
+                                className="inline-flex h-11 min-w-31 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/35 disabled:opacity-60"
                                 disabled={capturing}
                                 onClick={() => openCapturePicker([doc])}
                               >

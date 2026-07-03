@@ -402,7 +402,7 @@ export default function ExplorerPreviewModal(props: Props) {
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+        className="fixed inset-0 z-70 flex items-center justify-center bg-black/30 backdrop-blur-sm"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -419,7 +419,7 @@ export default function ExplorerPreviewModal(props: Props) {
           className="flex flex-col w-[min(900px,92vw)] max-h-[92vh] rounded-2xl border border-app surface shadow-xl overflow-hidden"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-app flex-shrink-0 gap-2">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-app shrink-0 gap-2">
             <div className="min-w-0">
               <h2
                 id="preview-title"
@@ -432,7 +432,7 @@ export default function ExplorerPreviewModal(props: Props) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Favorite (uses your shared component) */}
               {onToggleFavorite && (
                 <FavoriteButton
@@ -547,7 +547,7 @@ export default function ExplorerPreviewModal(props: Props) {
                       <iframe
                         src={`${pdfObjectUrl}#toolbar=1&navpanes=0&view=FitH`}
                         title={`Preview ${f.title}`}
-                        className="h-[68vh] min-h-[520px] w-full bg-white"
+                        className="h-[68vh] min-h-130 w-full bg-white"
                         onLoad={() => setIsLoading(false)}
                       />
                     </div>
@@ -559,7 +559,7 @@ export default function ExplorerPreviewModal(props: Props) {
               {!hadError && isText && (
                 <div className="w-full rounded-xl overflow-auto border border-app bg-white dark:bg-neutral-900 min-h-[55vh]">
                   {!isLoading && (
-                    <pre className="p-4 text-sm leading-6 whitespace-pre-wrap break-words font-mono">
+                    <pre className="p-4 text-sm leading-6 whitespace-pre-wrap wrap-break-word font-mono">
                       {textContent}
                     </pre>
                   )}
@@ -577,13 +577,13 @@ export default function ExplorerPreviewModal(props: Props) {
           </div>
 
           {/* Footer */}
-          <div className="border-t border-app p-4 text-sm grid gap-3 flex-shrink-0">
+          <div className="border-t border-app p-4 text-sm grid gap-3 shrink-0">
             {/* Metadata */}
             <div className="grid grid-cols-2 gap-4">
               {metaRows.map(([k, v]) => (
                 <div key={k}>
                   <div className="text-neutral-500">{k}</div>
-                  <div className="font-medium break-words">{v}</div>
+                  <div className="font-medium wrap-break-word">{v}</div>
                 </div>
               ))}
             </div>

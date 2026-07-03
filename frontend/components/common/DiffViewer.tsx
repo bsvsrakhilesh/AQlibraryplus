@@ -133,7 +133,7 @@ export default function DiffViewer(props: {
         )}
       </div>
 
-      <pre className="text-xs leading-5 p-3 overflow-auto max-h-[420px] bg-white">
+      <pre className="text-xs leading-5 p-3 overflow-auto max-h-105 bg-white">
         {ops.map((op, idx) => {
           const prefix = op.type === "add" ? "+" : op.type === "del" ? "-" : " ";
           const cls =

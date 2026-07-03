@@ -37,9 +37,9 @@ export default function AppShell({
   const shellClass =
     variant === "notebook"
       ? // Notebook: emerald-tinted canvas, matching its card palette
-        "app-shell app-shell--notebook min-h-screen bg-[radial-gradient(circle_at_top,_#ecfdf5,_#e0f2fe_60%,_#f8fafc_95%)]"
+        "app-shell app-shell--notebook min-h-screen bg-[radial-gradient(circle_at_top,#ecfdf5,#e0f2fe_60%,#f8fafc_95%)]"
       : // Workspace (File Manager, URL Collector, Saved URLs): same airy mint/sky gradient for all
-        "app-shell app-shell--workspace min-h-screen bg-[radial-gradient(circle_at_top,_#d2f9e6,_#c9f5ff_45%,_#b7e4ff_85%)]";
+        "app-shell app-shell--workspace min-h-screen bg-[radial-gradient(circle_at_top,#d2f9e6,#c9f5ff_45%,#b7e4ff_85%)]";
 
   return (
     <div className={shellClass} style={{ ["--sidebar-w" as any]: sidebarVar }}>
@@ -53,7 +53,7 @@ export default function AppShell({
 
       {/* DESKTOP SIDEBAR */}
       <aside
-        className="app-sidebar hidden lg:block fixed left-0 z-40 border-r border-border bg-card/90 supports-[backdrop-filter]:backdrop-blur-md elev-2 transition-[width] duration-200 ease-out will-change-[width]"
+        className="app-sidebar hidden lg:block fixed left-0 z-40 border-r border-border bg-card/90 supports-backdrop-filter:backdrop-blur-md elev-2 transition-[width] duration-200 ease-out will-change-[width]"
         style={{ top: "var(--header-h)", bottom: 0, width: "var(--sidebar-w)" }}
         aria-label="Primary navigation"
       >
@@ -61,7 +61,7 @@ export default function AppShell({
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="app-shell__offset min-h-screen pb-8 pt-[var(--header-h)]">
+      <main className="app-shell__offset min-h-screen pb-8 pt-(--header-h)">
         <div className="app-content app-shell__inner max-w-screen-2xl mx-auto w-full h-full min-w-0">
           {children}
         </div>
@@ -81,7 +81,7 @@ export default function AppShell({
               onClick={onToggleSidebar}
             />
             <motion.aside
-              className="app-sidebar fixed left-0 top-[var(--header-h)] z-50 h-[calc(100vh-var(--header-h))] w-[18rem] border-r border-border supports-[backdrop-filter]:backdrop-blur-md bg-card/90 elev-2 lg:hidden"
+              className="app-sidebar fixed left-0 top-(--header-h) z-50 h-[calc(100vh-var(--header-h))] w-72 border-r border-border supports-backdrop-filter:backdrop-blur-md bg-card/90 elev-2 lg:hidden"
               initial={{ x: -320 }}
               animate={{ x: 0 }}
               exit={{ x: -320 }}
@@ -100,7 +100,7 @@ export default function AppShell({
           className="pointer-events-none fixed inset-0 -z-10"
         >
           <motion.div
-            className="absolute -top-24 -left-24 w-[40rem] h-[40rem] rounded-full blur-3xl"
+            className="absolute -top-24 -left-24 w-160 h-160 rounded-full blur-3xl"
             style={{
               background:
                 "radial-gradient(closest-side, hsl(var(--accent)/.18), transparent 70%)",
@@ -109,7 +109,7 @@ export default function AppShell({
             transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
           />
           <motion.div
-            className="absolute -bottom-24 -right-24 w-[42rem] h-[42rem] rounded-full blur-3xl"
+            className="absolute -bottom-24 -right-24 w-168 h-168 rounded-full blur-3xl"
             style={{
               background:
                 "radial-gradient(closest-side, hsl(var(--info)/.16), transparent 70%)",

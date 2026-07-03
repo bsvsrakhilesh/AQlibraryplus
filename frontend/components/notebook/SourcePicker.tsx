@@ -680,11 +680,11 @@ export default function SourcePicker({
       }}
     >
       <div
-        className="bg-white w-[760px] max-w-[92vw] max-h-[76vh] rounded-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden"
+        className="bg-white w-190 max-w-[92vw] max-h-[76vh] rounded-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-3 border-b border-slate-200/80 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+        <div className="p-3 border-b border-slate-200/80 bg-white/85 backdrop-blur supports-backdrop-filter:bg-white/60">
           <div className="flex items-center gap-2">
             <div className="text-sm font-extrabold tracking-tight text-slate-900">
               Add {kind === "url" ? "URLs" : "Files"} to notebook
@@ -800,7 +800,7 @@ export default function SourcePicker({
         </div>
 
         {/* Footer */}
-        <div className="p-3 border-t border-slate-200/70 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 flex items-center justify-between">
+        <div className="p-3 border-t border-slate-200/70 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/60 flex items-center justify-between">
           <div className="text-[12px] text-slate-600">
             Selected:{" "}
             <span className="font-semibold text-slate-900">

@@ -202,7 +202,7 @@ const ToastView: React.FC<{
       className={[
         'pointer-events-auto',
         'rounded-2xl shadow-xl ring-1', palette.ring,
-        'px-3 py-2 min-w-[260px] max-w-[360px]',
+        'px-3 py-2 min-w-65 max-w-90',
         'flex items-center gap-2',
         palette.bg, palette.text,
         'focus:outline-none focus:ring-2 focus:ring-white/50',
@@ -215,13 +215,13 @@ const ToastView: React.FC<{
 
       {/* Text */}
       <div className="text-sm leading-snug min-w-0 flex-1">
-        <div className="break-words">{text}</div>
+        <div className="wrap-break-word">{text}</div>
       </div>
 
       {/* Action (optional) */}
       {actionLabel && onAction && (
         <button
-          className="btn-ghost !px-2 !py-1 !text-xs !bg-white/10 hover:!bg-white/20 rounded-lg"
+          className="btn-ghost px-2! py-1! text-xs! bg-white/10! hover:bg-white/20! rounded-lg"
           onClick={() => {
             onAction();
             setExiting(true);
@@ -234,7 +234,7 @@ const ToastView: React.FC<{
 
       {/* Close */}
       <button
-        className="btn-ghost !px-2 !py-1 rounded-lg"
+        className="btn-ghost px-2! py-1! rounded-lg"
         aria-label="Dismiss"
         onClick={() => {
           setExiting(true);
@@ -300,7 +300,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode; maxToasts?: nu
 
       {/* Container */}
       <div
-        className="fixed bottom-4 right-4 z-[9999] flex flex-col items-end gap-2 pointer-events-none"
+        className="fixed bottom-4 right-4 z-9999 flex flex-col items-end gap-2 pointer-events-none"
         aria-live="polite"
         aria-atomic="false"
       >

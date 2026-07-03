@@ -1003,7 +1003,7 @@ export default function ChatPanel({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white/10">
-      <div className="px-4 md:px-6 py-3 border-b border-emerald-200/70 bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/40">
+      <div className="px-4 md:px-6 py-3 border-b border-emerald-200/70 bg-white/60 backdrop-blur supports-backdrop-filter:bg-white/40">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={clsx(
@@ -1120,7 +1120,7 @@ export default function ChatPanel({
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-auto overscroll-contain px-4 md:px-6 py-5 relative"
       >
-        <div className="mx-auto w-full max-w-[760px]">
+        <div className="mx-auto w-full max-w-190">
           {/* Jump to bottom */}
           {showJump && (
             <button
@@ -1169,7 +1169,7 @@ export default function ChatPanel({
               <div className="max-w-xl w-full">
                 <div className="rounded-3xl border border-white/30 bg-white/70 backdrop-blur shadow-[0_24px_80px_rgba(15,23,42,0.18)] p-6 md:p-7">
                   <div className="flex items-start gap-4">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-b from-emerald-500 to-emerald-700 text-white grid place-items-center shadow-[0_18px_44px_rgba(16,185,129,0.35)]">
+                    <div className="w-11 h-11 rounded-2xl bg-linear-to-b from-emerald-500 to-emerald-700 text-white grid place-items-center shadow-[0_18px_44px_rgba(16,185,129,0.35)]">
                       <svg
                         width="20"
                         height="20"
@@ -1264,7 +1264,7 @@ export default function ChatPanel({
                         isFirstInGroup ? "opacity-100" : "opacity-0",
                       )}
                     >
-                      <div className="w-9 h-9 rounded-2xl bg-gradient-to-b from-slate-600 to-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.22)]">
+                      <div className="w-9 h-9 rounded-2xl bg-linear-to-b from-slate-600 to-slate-900 text-white grid place-items-center shadow-[0_14px_34px_rgba(15,23,42,0.22)]">
                         <span className="text-[12px] font-bold tracking-tight">
                           You
                         </span>
@@ -1275,7 +1275,7 @@ export default function ChatPanel({
                   {/* Bubble */}
                   <div
                     className={clsx(
-                      isUser ? "max-w-[520px] w-full" : "max-w-[720px] w-full",
+                      isUser ? "max-w-130 w-full" : "max-w-180 w-full",
                       isUser ? "items-end" : "items-start",
                     )}
                   >
@@ -1559,7 +1559,7 @@ export default function ChatPanel({
                   </span>
                 </div>
 
-                <div className="max-w-[720px] w-full">
+                <div className="max-w-180 w-full">
                   <div className="text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-2">
                     Assistant{" "}
                     <span className="text-slate-500 font-normal">
@@ -1582,8 +1582,8 @@ export default function ChatPanel({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-slate-200/70 bg-white/75 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-3 md:px-4 py-3">
-        <div className="mx-auto w-full max-w-[760px]">
+      <div className="border-t border-slate-200/70 bg-white/75 backdrop-blur supports-backdrop-filter:bg-white/60 px-3 md:px-4 py-3">
+        <div className="mx-auto w-full max-w-190">
           {displaySourceGuardMessage ? (
             <div className="mb-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900">
               <span className="font-semibold">Chat is waiting on sources.</span>{" "}

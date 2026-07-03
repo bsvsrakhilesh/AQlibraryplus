@@ -41,12 +41,12 @@ function uniqueById<T extends { id: string | number }>(items: T[]): T[] {
 const ACTIVE_KEY = "nb:lastId";
 const PENDING_ADD_KEY = "nb:pendingAddSource";
 const PANEL_SHELL =
-  "rounded-2xl border border-slate-200/70 bg-white/75 shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_18px_65px_rgba(15,23,42,0.12)] backdrop-blur supports-[backdrop-filter]:bg-white/60";
+  "rounded-2xl border border-slate-200/70 bg-white/75 shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_18px_65px_rgba(15,23,42,0.12)] backdrop-blur supports-backdrop-filter:bg-white/60";
 const PANEL_CONTENT = "flex flex-col overflow-hidden min-h-0";
 const PANEL_BAR =
-  "border-b border-slate-200/70 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.70)_inset,0_1px_0_rgba(15,23,42,0.06)]";
+  "border-b border-slate-200/70 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.70)_inset,0_1px_0_rgba(15,23,42,0.06)]";
 const PANEL_STICKY =
-  "rounded-2xl border border-slate-200/70 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.70)_inset,0_12px_34px_rgba(15,23,42,0.10)]";
+  "rounded-2xl border border-slate-200/70 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.70)_inset,0_12px_34px_rgba(15,23,42,0.10)]";
 
 function clampJobPct(value?: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;
@@ -1628,7 +1628,7 @@ export default function NotebookPage() {
                     title: `Notebook ${new Date().toLocaleTimeString()}`,
                   })
                 }
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-medium shadow-[0_10px_24px_rgba(15,23,42,0.35)] hover:bg-slate-950 hover:-translate-y-0.5 active:translate-y-[1px] active:shadow-[0_4px_14px_rgba(15,23,42,0.55)] transition-all duration-200 transform"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-medium shadow-[0_10px_24px_rgba(15,23,42,0.35)] hover:bg-slate-950 hover:-translate-y-0.5 active:translate-y-px active:shadow-[0_4px_14px_rgba(15,23,42,0.55)] transition-all duration-200 transform"
               >
                 New
               </button>
@@ -1646,8 +1646,8 @@ export default function NotebookPage() {
                         "group relative w-full h-9 flex items-center text-left px-3 pr-10 rounded-md text-sm transition-all duration-200 transform",
                         "shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]",
                         activeId === n.id
-                          ? "bg-slate-50 text-slate-900 shadow-[0_10px_26px_rgba(15,23,42,0.12)] -translate-y-[1px]"
-                          : "bg-white/85 text-slate-700 hover:bg-slate-50 hover:shadow-[0_10px_24px_rgba(15,23,42,0.10)] hover:-translate-y-[1px]",
+                          ? "bg-slate-50 text-slate-900 shadow-[0_10px_26px_rgba(15,23,42,0.12)] -translate-y-px"
+                          : "bg-white/85 text-slate-700 hover:bg-slate-50 hover:shadow-[0_10px_24px_rgba(15,23,42,0.10)] hover:-translate-y-px",
                       )}
                     >
                       <span
@@ -1655,7 +1655,7 @@ export default function NotebookPage() {
                           "absolute left-0 top-1/2 -translate-y-1/2 h-5 rounded-r transition-all duration-200",
                           activeId === n.id
                             ? "w-1.5 bg-slate-900/70"
-                            : "w-[3px] bg-slate-300/80 opacity-0 group-hover:opacity-100 group-hover:translate-x-[1px]",
+                            : "w-0.75 bg-slate-300/80 opacity-0 group-hover:opacity-100 group-hover:translate-x-px",
                         )}
                       />
                       <span className="truncate">{n.title}</span>
@@ -1705,7 +1705,7 @@ export default function NotebookPage() {
                     {confirmDeleteId === n.id ? (
                       <div
                         className={clsx(
-                          "absolute right-1 top-[calc(100%+6px)] z-20 w-[220px]",
+                          "absolute right-1 top-[calc(100%+6px)] z-20 w-55",
                           "rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.18)]",
                           "p-3",
                         )}
@@ -2223,10 +2223,10 @@ export default function NotebookPage() {
               }}
             >
               <div
-                className="w-[900px] max-w-[94vw] max-h-[78vh] bg-white rounded-2xl border border-slate-200/80 shadow-2xl overflow-hidden flex flex-col"
+                className="w-225 max-w-[94vw] max-h-[78vh] bg-white rounded-2xl border border-slate-200/80 shadow-2xl overflow-hidden flex flex-col"
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                <div className="px-4 py-3 border-b border-slate-200/70 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/60 flex items-center gap-2">
+                <div className="px-4 py-3 border-b border-slate-200/70 bg-white/85 backdrop-blur supports-backdrop-filter:bg-white/60 flex items-center gap-2">
                   <div className="font-extrabold tracking-tight text-slate-900">
                     Repair source
                   </div>
@@ -2750,7 +2750,7 @@ export default function NotebookPage() {
                             ))}
                           </div>
                         ) : (
-                          <pre className="mt-2 text-[12px] whitespace-pre-wrap text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-[280px] overflow-auto">
+                          <pre className="mt-2 text-[12px] whitespace-pre-wrap text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-70 overflow-auto">
                             {diag.textPreview || "No extracted text available."}
                           </pre>
                         )}

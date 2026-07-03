@@ -611,7 +611,7 @@ export default function NotesEditor({
   return (
     <div
       ref={editorRef}
-      className="p-4 flex flex-col gap-3 border border-slate-200/80 bg-white/85 rounded-xl shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/70"
+      className="p-4 flex flex-col gap-3 border border-slate-200/80 bg-white/85 rounded-xl shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur supports-backdrop-filter:bg-white/70"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">

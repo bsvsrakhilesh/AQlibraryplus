@@ -80,7 +80,7 @@ const JobRow: React.FC<{
             </span>
             {job.targetLabel && (
               <span
-                className="max-w-[30rem] truncate text-xs text-neutral-500 dark:text-neutral-400"
+                className="max-w-120 truncate text-xs text-neutral-500 dark:text-neutral-400"
                 title={job.targetLabel}
               >
                 {job.targetLabel}

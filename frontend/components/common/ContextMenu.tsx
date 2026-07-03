@@ -218,7 +218,7 @@ const ContextMenu: React.FC<Props> = ({ open, x, y, items, onClose }) => {
 
   const menu = (
     <div
-      className="fixed inset-0 z-[9999]"
+      className="fixed inset-0 z-9999"
       onMouseDown={() => onClose()}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -230,7 +230,7 @@ const ContextMenu: React.FC<Props> = ({ open, x, y, items, onClose }) => {
         role="menu"
         aria-orientation="vertical"
         tabIndex={-1}
-        className="absolute z-[10000] min-w-[180px] max-w-xs rounded-md border border-neutral-200/70 bg-white/95 shadow-lg ring-1 ring-black/5 backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95"
+        className="absolute z-10000 min-w-45 max-w-xs rounded-md border border-neutral-200/70 bg-white/95 shadow-lg ring-1 ring-black/5 backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95"
         style={{ top: position.top, left: position.left }}
         onMouseDown={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.preventDefault()}

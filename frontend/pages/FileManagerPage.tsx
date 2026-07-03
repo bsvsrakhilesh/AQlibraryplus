@@ -516,7 +516,7 @@ const Modal: React.FC<{
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -527,7 +527,7 @@ const Modal: React.FC<{
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
-        className={`relative z-[101] w-full ${maxWidthClassName} rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900`}
+        className={`relative z-101 w-full ${maxWidthClassName} rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900`}
       >
         <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
           <div className="min-w-0">
@@ -4290,7 +4290,7 @@ export default function FileManagerPage() {
                 <ToolbarButton
                   variant="primary"
                   onClick={() => setShowUpload(true)}
-                  className="min-w-[168px] h-11 rounded-full justify-center px-6"
+                  className="min-w-42 h-11 rounded-full justify-center px-6"
                 >
                   Upload evidence
                 </ToolbarButton>
@@ -5677,7 +5677,7 @@ export default function FileManagerPage() {
                   </div>
 
                   {!focusMode && inspectorOpen && (
-                    <div className="hidden xl:block w-[360px] min-w-0 shrink-0 sticky top-4">
+                    <div className="hidden xl:block w-90 min-w-0 shrink-0 sticky top-4">
                       <EvidenceInspector file={selectedSingle} />
                     </div>
                   )}
@@ -5893,7 +5893,7 @@ export default function FileManagerPage() {
 
       {/* Undo bar */}
       {undoTrash && Date.now() <= undoTrash.expiresAt && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[130]">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-130">
           <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-2xl px-4 py-3 flex items-center gap-3">
             <div className="text-sm">
               Moved <span className="font-medium">{undoTrash.label}</span> to

@@ -1692,7 +1692,7 @@ const UrlCollectorPage: React.FC = () => {
                 type="button"
                 onClick={() => void createPurpose()}
                 disabled={purposeBusy || purposeDeleting}
-                className="btn-primary min-h-[40px] px-4 py-2"
+                className="btn-primary min-h-10 px-4 py-2"
               >
                 {purposeBusy ? "Creating..." : "Create purpose"}
               </button>
@@ -1769,7 +1769,7 @@ const UrlCollectorPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  className="btn-primary min-h-[40px] px-4 py-2"
+                  className="btn-primary min-h-10 px-4 py-2"
                   disabled={purposeBusy || purposeDeleting}
                   onClick={() => void generatePurposeLanes()}
                 >
@@ -1777,7 +1777,7 @@ const UrlCollectorPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:border-red-800 dark:hover:bg-red-950/50"
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:border-red-800 dark:hover:bg-red-950/50"
                   disabled={purposeBusy || purposeDeleting}
                   onClick={() => void deleteActivePurpose()}
                   title="Delete this research purpose"

@@ -312,7 +312,7 @@ export default function NotebookTemplateModal({
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-90 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -416,7 +416,7 @@ export default function NotebookTemplateModal({
                     type="button"
                     onClick={() => setSelectedTemplateKey(template.key)}
                     className={[
-                      "rounded-[24px] border p-5 text-left transition",
+                      "rounded-3xl border p-5 text-left transition",
                       active
                         ? "border-slate-900 bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
                         : "border-slate-200 bg-white/85 text-slate-900 shadow-[0_14px_30px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white",

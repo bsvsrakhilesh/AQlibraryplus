@@ -142,7 +142,7 @@ const SearchForm: React.FC<SearchFormProps> = ({
             variant="solid"
             loading={isLoading}
             disabled={searchDisabled || isLoading}
-            className="w-full md:w-auto rounded-full min-h-[44px] px-5"
+            className="w-full md:w-auto rounded-full min-h-11 px-5"
             aria-label="Search the web"
             title="Search the web"
           >
@@ -156,7 +156,7 @@ const SearchForm: React.FC<SearchFormProps> = ({
             variant="outline"
             loading={aiAssistLoading}
             disabled={searchDisabled || !keywords.trim() || isLoading}
-            className="w-full md:w-auto rounded-full min-h-[44px] px-5"
+            className="w-full md:w-auto rounded-full min-h-11 px-5"
             aria-label="Use AI to improve the search plan"
             title="Use AI to improve the search plan"
             onClick={runAiAssist}

@@ -48,7 +48,7 @@ const TextEntryModal: React.FC<TextEntryModalProps> = ({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
         onClick={busy ? undefined : onClose}
@@ -58,7 +58,7 @@ const TextEntryModal: React.FC<TextEntryModalProps> = ({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="relative z-[101] w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950"
+        className="relative z-101 w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950"
       >
         <div className="border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
           <div className="flex items-start justify-between gap-3">

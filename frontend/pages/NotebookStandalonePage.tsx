@@ -36,7 +36,7 @@ export default function NotebookStandalonePage() {
     <ToastProvider>
       <ConfirmProvider>
         <div
-          className="h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top,_#ecfdf5,_#e0f2fe_60%,_#f8fafc_95%)]"
+          className="h-dvh overflow-hidden bg-[radial-gradient(circle_at_top,#ecfdf5,#e0f2fe_60%,#f8fafc_95%)]"
           style={{ ["--sidebar-w" as any]: "0px" }}
         >
           <header className="fixed inset-x-0 top-0 z-50">
@@ -44,7 +44,7 @@ export default function NotebookStandalonePage() {
           </header>
 
           {/* Fill the viewport under the fixed header */}
-          <main className="h-full pt-[var(--header-h)] overflow-hidden">
+          <main className="h-full pt-(--header-h) overflow-hidden">
             <div className="app-content app-shell__inner max-w-screen-2xl mx-auto w-full h-full">
               {isRouteContentReady ? (
                 <NotebookPage />

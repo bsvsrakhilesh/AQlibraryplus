@@ -1015,7 +1015,7 @@ function MetricCard({
       tabIndex={-1}
     >
       <div className="relative p-4">
-        <div className="absolute inset-0 bg-gradient-to-br pointer-events-none opacity-90" />
+        <div className="absolute inset-0 bg-linear-to-br pointer-events-none opacity-90" />
         <div className="relative flex items-start justify-between gap-3">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -2550,7 +2550,7 @@ function GovernanceAnswerPanel({
                         className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700"
                         title={citation.quote}
                       >
-                        <span className="max-w-[14rem] truncate">
+                        <span className="max-w-56 truncate">
                           {citationDisplayLabel(citation)}
                         </span>
                       </button>
@@ -2576,7 +2576,7 @@ function GovernanceAnswerPanel({
                   className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700"
                   title={citation.quote}
                 >
-                  <span className="max-w-[14rem] truncate">
+                  <span className="max-w-56 truncate">
                     {citationDisplayLabel(citation)}
                   </span>
                 </button>
@@ -2619,7 +2619,7 @@ function GovernanceAnswerPanel({
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Source
                 </div>
-                <div className="mt-2 text-sm font-semibold text-slate-950 break-words">
+                <div className="mt-2 text-sm font-semibold text-slate-950 wrap-break-word">
                   {citationDisplayLabel(selectedCitation)}
                 </div>
                 <div className="mt-2 text-xs leading-5 text-slate-500">
@@ -4416,7 +4416,7 @@ export default function GovernanceWorkspacePage() {
             </p>
           </div>
 
-          <div className="grid gap-3 lg:min-w-[580px]">
+          <div className="grid gap-3 lg:min-w-145">
             <div className="rounded-[26px] border border-white/70 bg-white/88 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -4434,7 +4434,7 @@ export default function GovernanceWorkspacePage() {
                   onChange={(e) => setWorkspaceQuestion(e.target.value)}
                   rows={1}
                   placeholder="Ask an air quality governance question"
-                  className="block min-h-[92px] max-h-44 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400"
+                  className="block min-h-23 max-h-44 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
 
@@ -4901,7 +4901,7 @@ export default function GovernanceWorkspacePage() {
               </div>
 
               {showAdvancedFilters ? (
-                <div className="grid gap-3 rounded-[24px] border border-white/70 bg-white/88 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur-sm xl:grid-cols-[minmax(0,1fr),300px]">
+                <div className="grid gap-3 rounded-3xl border border-white/70 bg-white/88 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur-sm xl:grid-cols-[minmax(0,1fr),300px]">
                   <div className="space-y-3">
                     <label className="block rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -5057,7 +5057,7 @@ export default function GovernanceWorkspacePage() {
           {workspaceQuestion.trim() ? (
             <span className="inline-flex max-w-full items-center rounded-full border border-sky-200/80 bg-sky-50/80 px-3 py-1 shadow-sm">
               <span className="font-medium text-sky-900">Question:</span>
-              <span className="ml-1 max-w-[34rem] truncate text-sky-800">
+              <span className="ml-1 max-w-136 truncate text-sky-800">
                 {workspaceQuestion.trim()}
               </span>
             </span>
@@ -7890,7 +7890,7 @@ export default function GovernanceWorkspacePage() {
                 </SmartCard>
 
                 <SmartCard
-                  className="sticky top-[92px] border-white/70 bg-white/90 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
+                  className="sticky top-23 border-white/70 bg-white/90 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
                   tabIndex={-1}
                 >
                   <SectionHeader

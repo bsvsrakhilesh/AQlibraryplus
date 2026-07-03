@@ -18,7 +18,7 @@ const TagChip: React.FC<{ text: string; onRemove?: () => void }> = ({
     onPointerDownCapture={(e) => e.stopPropagation()}
     onMouseDownCapture={(e) => e.stopPropagation()}
   >
-    <span className="truncate max-w-[140px]">{text}</span>
+    <span className="truncate max-w-35">{text}</span>
     {onRemove && (
       <button
         type="button"
