@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { googleSearch } from "../services/search.service";
+import { googleSearchWithFallback } from "../services/searchFallback.service";
 import { planCollectorQuery } from "../services/searchPlanner.service";
 import {
   enrichSearchResults,
@@ -62,11 +63,8 @@ export async function searchHandler(
 
   const startedAt = Date.now();
   try {
-    const { results, nextPage, totalResults } = await googleSearch(
-      q,
-      page,
-      opts,
-    );
+    const { results, nextPage, totalResults, retriedQueries, fallbackApplied } =
+      await googleSearchWithFallback(q, page, opts);
 
     const enrichedResults = await enrichSearchResults(results);
     const rerankedResults = await rerankSearchResults({
@@ -102,6 +100,13 @@ export async function searchHandler(
       "x-ai-reranked",
       env.OPENAI_ENABLED && env.OPENAI_API_KEY ? "1" : "0",
     );
+
+    if (fallbackApplied) {
+      res.setHeader("x-fallback-applied", "1");
+      if (retriedQueries && retriedQueries.length > 0) {
+        res.setHeader("x-retried-queries", JSON.stringify(retriedQueries));
+      }
+    }
 
     if (typeof totalResults === "number" && !Number.isNaN(totalResults)) {
       res.setHeader("x-total-results", String(totalResults));
