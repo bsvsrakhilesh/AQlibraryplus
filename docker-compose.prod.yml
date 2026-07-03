@@ -66,6 +66,8 @@ services:
       target: prod
     restart: unless-stopped
     init: true
+    healthcheck:
+      disable: true
     command: node dist/worker.js
     env_file:
       - ./backend/.env

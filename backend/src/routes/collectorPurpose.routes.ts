@@ -38,6 +38,10 @@ const selectionBody = z.object({
   ).min(1).max(100),
 });
 
+function parsePurposeId(req: Parameters<typeof idParams.parse>[0]) {
+  return idParams.parse(req).id;
+}
+
 r.get("/collector-purposes", async (req, res, next) => {
   try {
     res.json(await listCollectorPurposes(ownerIdForRequest(req)));
@@ -63,7 +67,7 @@ r.get(
   validate({ params: idParams }),
   async (req, res, next) => {
     try {
-      res.json(await getCollectorPurpose(ownerIdForRequest(req), req.params.id));
+      res.json(await getCollectorPurpose(ownerIdForRequest(req), parsePurposeId(req.params)));
     } catch (error) {
       next(error);
     }
@@ -76,7 +80,11 @@ r.patch(
   async (req, res, next) => {
     try {
       res.json(
-        await updateCollectorPurpose(ownerIdForRequest(req), req.params.id, req.body),
+        await updateCollectorPurpose(
+          ownerIdForRequest(req),
+          parsePurposeId(req.params),
+          req.body,
+        ),
       );
     } catch (error) {
       next(error);
@@ -89,7 +97,7 @@ r.delete(
   validate({ params: idParams }),
   async (req, res, next) => {
     try {
-      res.json(await deleteCollectorPurpose(ownerIdForRequest(req), req.params.id));
+      res.json(await deleteCollectorPurpose(ownerIdForRequest(req), parsePurposeId(req.params)));
     } catch (error) {
       next(error);
     }
@@ -101,7 +109,7 @@ r.post(
   validate({ params: idParams }),
   async (req, res, next) => {
     try {
-      res.json(await planCollectorPurpose(ownerIdForRequest(req), req.params.id));
+      res.json(await planCollectorPurpose(ownerIdForRequest(req), parsePurposeId(req.params)));
     } catch (error) {
       next(error);
     }
@@ -116,7 +124,7 @@ r.post(
       res.status(201).json(
         await saveCollectorPurposeSelection({
           ownerId: ownerIdForRequest(req),
-          purposeId: req.params.id,
+          purposeId: parsePurposeId(req.params),
           searchId: req.body.searchId,
           rows: req.body.urls,
         }),
@@ -132,7 +140,12 @@ r.get(
   validate({ params: idParams }),
   async (req, res, next) => {
     try {
-      res.json(await resolveCollectorPurposeEvidenceScope(ownerIdForRequest(req), req.params.id));
+      res.json(
+        await resolveCollectorPurposeEvidenceScope(
+          ownerIdForRequest(req),
+          parsePurposeId(req.params),
+        ),
+      );
     } catch (error) {
       next(error);
     }

@@ -1,6 +1,5 @@
 node_modules
 dist
-src/generated/prisma
 npm-debug.log
 .DS_Store
 .env
