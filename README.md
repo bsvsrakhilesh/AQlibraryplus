@@ -1,17 +1,17 @@
-# SmartScrape
+# AQlibrary+
 
-[![CI](https://github.com/bsvsrakhilesh/Smart-Scrape/actions/workflows/ci.yml/badge.svg)](https://github.com/bsvsrakhilesh/Smart-Scrape/actions/workflows/ci.yml)
+[![CI](https://github.com/bsvsrakhilesh/AQlibrary-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/bsvsrakhilesh/AQlibrary-plus/actions/workflows/ci.yml)
 
-SmartScrape is a research platform for collecting, organizing, preserving, and analyzing web-based and personal documents used in governance and policy work. It helps users build searchable, citation-backed evidence collections for reviewing past decisions, preparing new analyses, and preserving institutional knowledge.
+AQlibrary+ is a research platform for collecting, organizing, preserving, and analyzing web-based and personal documents used in governance and policy work. It helps users build searchable, citation-backed evidence collections for reviewing past decisions, preparing new analyses, and preserving institutional knowledge.
 
-The intended SmartScrape workflow uses **Google Programmable Search / Custom
+The intended AQlibrary+ workflow uses **Google Programmable Search / Custom
 Search JSON API** for web discovery and **OpenAI** for query assistance,
 embeddings, enhanced tag reranking, Notebook answers, and Governance Workspace
 analysis. Configure both integrations before evaluating the complete product.
 The AI tagger itself does not require OpenAI: it has a deterministic tagging,
 taxonomy, and structured-intelligence path, with optional LLM enhancement.
 
-For detailed page-by-page usage instructions, see the [User Manual](docs/SmartScrape_User_Manual.md).
+For detailed page-by-page usage instructions, see the [User Manual](docs/AQlibraryPlus_User_Manual.md).
 
 ## Overview
 
@@ -25,7 +25,7 @@ The platform brings together four connected workflows:
 
 4. Analyze archived evidence by assembling relevant sources into cited notes, summaries, and working drafts.
 
-The goal is to make air-quality governance faster to review, easier to trace, and more auditable across institutions such as CAQM and related state agencies. More broadly, SmartScrape is designed for any research or governance setting where documents are fragmented across websites, formats, and individual knowledge silos.
+The goal is to make air-quality governance faster to review, easier to trace, and more auditable across institutions such as CAQM and related state agencies. More broadly, AQlibrary+ is designed for any research or governance setting where documents are fragmented across websites, formats, and individual knowledge silos.
 
 ## Statement of need
 
@@ -33,7 +33,7 @@ Governance and policy work often depends on documents like orders, notices, comp
 
 Although analysts can collect and search documents manually, current workflows frequently break provenance across heterogeneous and changing sources. Existing LLM tools do not reliably support evidence-linked answers or grounded retrieval for relevant context. 
 
-Therefore, the approach is to develop an LLM-backed tool that allows you to extract text of the required documents if in text form using their URLs or if available in PDF form, download and save them in the tool's database with LLM-generated tags for better searchability, and create a metadata schema to structure the database. SmartScrape also includes a Notebook workspace where users can interact directly with the evidence database, ask questions, and generate cited answers through grounded document retrieval. By bringing government records, agency documents, and news sources into a single searchable archive, the platform supports faster review, stronger evidence traceability, and more informed planning for future work. The Governance Workspace further enables officers and analysts to ask work-related questions, automatically surface relevant documents, receive evidence-backed answers with citations, and identify suggested follow-up actions for further review.
+Therefore, the approach is to develop an LLM-backed tool that allows you to extract text of the required documents if in text form using their URLs or if available in PDF form, download and save them in the tool's database with LLM-generated tags for better searchability, and create a metadata schema to structure the database. AQlibrary+ also includes a Notebook workspace where users can interact directly with the evidence database, ask questions, and generate cited answers through grounded document retrieval. By bringing government records, agency documents, and news sources into a single searchable archive, the platform supports faster review, stronger evidence traceability, and more informed planning for future work. The Governance Workspace further enables officers and analysts to ask work-related questions, automatically surface relevant documents, receive evidence-backed answers with citations, and identify suggested follow-up actions for further review.
 
 ## Key features
 
@@ -61,7 +61,7 @@ Therefore, the approach is to develop an LLM-backed tool that allows you to extr
 ## Installation
 
 The supported local installation path is Docker Compose. It starts the complete
-SmartScrape stack: React frontend, Express backend, backend worker, PostgreSQL
+AQlibrary+ stack: React frontend, Express backend, backend worker, PostgreSQL
 with pgvector, Redis, FastAPI AI tagger, and AI tagger worker. Docker also runs
 the Node and Python dependency installation inside the containers, so reviewers
 do not need a local PostgreSQL, Redis, Node.js, or Python installation for the
@@ -77,7 +77,7 @@ standard setup.
 - Optional for non-Docker development only: Node.js 22+, npm, Python 3.12,
   PostgreSQL 16 with pgvector, and Redis 7.
 
-SmartScrape uses these local ports in the Docker development setup:
+AQlibrary+ uses these local ports in the Docker development setup:
 
 | Service | URL |
 | --- | --- |
@@ -91,12 +91,12 @@ SmartScrape uses these local ports in the Docker development setup:
 Clone the repository and enter the project directory:
 
 ```powershell
-git clone https://github.com/bsvsrakhilesh/Smart-Scrape.git
-cd Smart-Scrape
+git clone https://github.com/bsvsrakhilesh/AQlibrary-plus.git
+cd AQlibrary-plus
 ```
 
 If you downloaded a ZIP archive, extract it and open a terminal in the extracted
-`Smart-Scrape` directory.
+`AQlibrary-plus` directory.
 
 Check that Docker is available:
 
@@ -161,7 +161,7 @@ Set the required local values in `backend/.env`. Use the same password in
 NODE_ENV=development
 PORT=4000
 POSTGRES_PASSWORD=replace-with-your-password
-DATABASE_URL=postgresql://postgres:replace-with-your-password@db:5432/SmartScrape?schema=public
+DATABASE_URL=postgresql://postgres:replace-with-your-password@db:5432/AQlibraryPlus?schema=public
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 TAGGER_PY_URL=http://ai-tagger:7071
 GOOGLE_CSE_KEY=your-google-api-key
@@ -210,12 +210,12 @@ STRUCTURED_LLM_MODEL=gpt-4o-mini
 
 The containers can start with blank external credentials, which is useful for
 deterministic tests and infrastructure development. That degraded mode is not
-the intended SmartScrape experience: URL Collector web search requires Google,
+the intended AQlibrary+ experience: URL Collector web search requires Google,
 while source embeddings, grounded Notebook answers, Governance answers, and
 LLM-enhanced tag reranking require OpenAI. Baseline AI tagging remains available
 without an OpenAI key in `ai-tagger/.env`.
 
-### 5. Start SmartScrape
+### 5. Start AQlibrary+
 
 Start the full development stack:
 
@@ -224,7 +224,7 @@ docker compose -f docker-compose.dev.yml up --build
 ```
 
 The first run can take several minutes while Docker downloads base images,
-builds the SmartScrape images, installs dependencies, generates the Prisma
+builds the AQlibrary+ images, installs dependencies, generates the Prisma
 client, and applies database migrations. Keep the terminal open while the
 application is running.
 
@@ -344,7 +344,7 @@ For local services outside Docker, `backend/.env` must point at host services,
 for example:
 
 ```env
-DATABASE_URL=postgresql://postgres:replace-with-your-password@localhost:5432/SmartScrape?schema=public
+DATABASE_URL=postgresql://postgres:replace-with-your-password@localhost:5432/AQlibraryPlus?schema=public
 REDIS_URL=redis://localhost:6379/0
 TAGGER_PY_URL=http://localhost:7071
 FILE_STORAGE_DIR=./storage
@@ -390,7 +390,7 @@ Minimum `backend/.env` values:
 ```env
 NODE_ENV=production
 POSTGRES_PASSWORD=replace-with-a-strong-production-password
-DATABASE_URL=postgresql://postgres:replace-with-a-strong-production-password@db:5432/SmartScrape?schema=public
+DATABASE_URL=postgresql://postgres:replace-with-a-strong-production-password@db:5432/AQlibraryPlus?schema=public
 CORS_ORIGINS=https://your-production-domain.example
 GOOGLE_CSE_KEY=read-from-secret-manager
 GOOGLE_CSE_CX=read-from-secret-manager
@@ -429,8 +429,8 @@ backend and AI tagger on the internal Docker network.
 For the common local path, the complete setup is:
 
 ```powershell
-git clone https://github.com/bsvsrakhilesh/Smart-Scrape.git
-cd Smart-Scrape
+git clone https://github.com/bsvsrakhilesh/AQlibrary-plus.git
+cd AQlibrary-plus
 Copy-Item .env.example .env
 Copy-Item backend\.env.example backend\.env
 Copy-Item frontend\.env.example frontend\.env
@@ -472,7 +472,7 @@ research path:
 ## Repository structure
 
 ```text
-smart-scrape/
+aqlibrary-plus/
 |-- README.md                    # Project overview, installation, usage, and JOSS-facing documentation
 |-- docker-compose.dev.yml        # Local development stack: frontend, backend, database, Redis, AI tagger
 |-- docker-compose.prod.yml       # Production-oriented Docker Compose configuration
@@ -513,7 +513,7 @@ distribution and should not be edited directly.
 
 This README is the primary user and reviewer documentation for the current
 repository. It includes installation, configuration, example workflow, testing,
-and verification instructions for the main SmartScrape workflows:
+and verification instructions for the main AQlibrary+ workflows:
 
 - collecting URLs and PDFs
 - uploading and organizing documents
@@ -524,7 +524,7 @@ and verification instructions for the main SmartScrape workflows:
 
 ## Testing and verification
 
-SmartScrape provides automated tests for the TypeScript backend, frontend
+AQlibrary+ provides automated tests for the TypeScript backend, frontend
 collector utilities, and Python AI tagger components. The tests are intended to
 verify the core research-software behavior that supports reproducible evidence
 collection: URL normalization, search input validation, queue identifiers, OCR
@@ -559,11 +559,11 @@ npm -w backend test
 The backend suite includes optional database integration tests for URL Collector
 deduplication through the real `createManyUrls` Prisma write path and collector
 purpose save-selection flow. They are skipped unless
-`SMARTSCRAPE_TEST_DATABASE_URL` points to a disposable test PostgreSQL database
+`AQLIBRARYPLUS_TEST_DATABASE_URL` points to a disposable test PostgreSQL database
 with migrations applied:
 
 ```powershell
-$env:SMARTSCRAPE_TEST_DATABASE_URL="postgresql://postgres:<password>@localhost:5432/SmartScrape_test?schema=public"
+$env:AQLIBRARYPLUS_TEST_DATABASE_URL="postgresql://postgres:<password>@localhost:5432/AQlibraryPlus_test?schema=public"
 npm -w backend test
 ```
 
@@ -634,7 +634,7 @@ the tagger to operate.
 
 ## Development status
 
-SmartScrape is under active development. The current repository is suitable for
+AQlibrary+ is under active development. The current repository is suitable for
 local testing, research workflow evaluation, and continued development, but it
 should be treated as pre-release research software until a stable public release
 is tagged.
@@ -657,22 +657,22 @@ posting public issues or pull requests.
 
 ## Citation
 
-If you use SmartScrape in research, policy analysis, or institutional work,
+If you use AQlibrary+ in research, policy analysis, or institutional work,
 please cite the repository and the corresponding software release. Citation
 metadata is available in [CITATION.cff](CITATION.cff).
 
 Suggested citation format for now:
 
-> Boddu Sesha Venkata Sai Ranga Akhilesh et al. SmartScrape: Evidence collection
+> Boddu Sesha Venkata Sai Ranga Akhilesh et al. AQlibrary+: Evidence collection
 > and grounded analysis software for governance and policy workflows. GitHub
-> repository: https://github.com/bsvsrakhilesh/Smart-Scrape
+> repository: https://github.com/bsvsrakhilesh/AQlibrary-plus
 
 For archival citation, create a tagged release and archive it with a service
 such as Zenodo to obtain a DOI.
 
 ## License
 
-SmartScrape is licensed under the Apache License, Version 2.0. See
+AQlibrary+ is licensed under the Apache License, Version 2.0. See
 [LICENSE](LICENSE).
 
 ## Contact / support
@@ -680,4 +680,4 @@ SmartScrape is licensed under the Apache License, Version 2.0. See
 For questions, bug reports, feature requests, or reproducibility issues, use the
 GitHub issue tracker:
 
-https://github.com/bsvsrakhilesh/Smart-Scrape/issues
+https://github.com/bsvsrakhilesh/AQlibrary-plus/issues

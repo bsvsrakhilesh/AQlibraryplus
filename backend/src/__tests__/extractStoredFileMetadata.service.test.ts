@@ -21,7 +21,7 @@ async function withTempTextFile(
   content: string,
   fn: (filePath: string) => Promise<void>,
 ) {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "smartscrape-meta-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "aqlibraryplus-meta-"));
   const filePath = path.join(dir, fileName);
   try {
     await writeFile(filePath, content, "utf8");

@@ -233,7 +233,7 @@ async function ocrWithOcrmypdf(
   storagePath: string,
   opts: OcrOptions,
 ): Promise<OcrPdfResult> {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "smartscrape-ocrpdf-"));
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "aqlibraryplus-ocrpdf-"));
   const sidecarPath = path.join(tmp, "sidecar.txt");
   const outputPath = path.join(tmp, "ocr.pdf");
   const pageNumbers = parseOcrPageSelection(opts.pages, opts.pageCount);
@@ -318,7 +318,7 @@ async function ocrWithTesseract(
   opts: OcrOptions,
   fallbackUsed: boolean,
 ): Promise<OcrPdfResult> {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "smartscrape-ocr-"));
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "aqlibraryplus-ocr-"));
   const prefix = path.join(tmp, "page");
   const pageNumbers = parseOcrPageSelection(opts.pages, opts.pageCount);
 

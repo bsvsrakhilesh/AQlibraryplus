@@ -27,7 +27,7 @@ test("notebook ingestion accepts text documents and rejects image-only files", (
 });
 
 test("DOCX extraction returns document text instead of ZIP bytes", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "smartscrape-docx-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "aqlibraryplus-docx-"));
   const filePath = path.join(dir, "brief.docx");
   try {
     await writeFile(
@@ -47,7 +47,7 @@ test("DOCX extraction returns document text instead of ZIP bytes", async () => {
 });
 
 test("HTML extraction excludes scripts and returns readable text", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "smartscrape-html-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "aqlibraryplus-html-"));
   const filePath = path.join(dir, "page.html");
   try {
     await writeFile(

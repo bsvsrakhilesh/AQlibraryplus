@@ -13,7 +13,7 @@ after(async () => {
 
 async function loadCrawlHandlers() {
   process.env.DATABASE_URL ||=
-    "postgresql://user:pass@localhost:5432/smartscrape_test";
+    "postgresql://user:pass@localhost:5432/aqlibraryplus_test";
   const handlers = await import("../controllers/crawl.controller");
   const { aiTagFileQueue } = await import("../queues/aiTagFile.queue");
   aiTagFileQueue.on("error", () => undefined);

@@ -1,23 +1,23 @@
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: smartscrape_db
+    container_name: aqlibraryplus_db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_DB: SmartScrape
+      POSTGRES_DB: AQlibraryPlus
     env_file:
       - ./backend/.env
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d SmartScrape"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d AQlibraryPlus"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: smartscrape_redis
+    container_name: aqlibraryplus_redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -25,12 +25,12 @@ services:
       retries: 10
 
   backend:
-    image: smartscrape-backend:dev
+    image: aqlibraryplus-backend:dev
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: base
-    container_name: smartscrape_backend
+    container_name: aqlibraryplus_backend
     init: true
     command: sh ./docker-dev-entrypoint.sh api
     working_dir: /app
@@ -69,8 +69,8 @@ services:
         condition: service_healthy
 
   backend-worker:
-    image: smartscrape-backend:dev
-    container_name: smartscrape_backend_worker
+    image: aqlibraryplus-backend:dev
+    container_name: aqlibraryplus_backend_worker
     init: true
     working_dir: /app
     command: sh ./docker-dev-entrypoint.sh worker
@@ -100,12 +100,12 @@ services:
         condition: service_healthy
 
   frontend:
-    image: smartscrape-frontend:dev
+    image: aqlibraryplus-frontend:dev
     build:
       context: ./frontend
       dockerfile: Dockerfile
       target: dev
-    container_name: smartscrape_frontend
+    container_name: aqlibraryplus_frontend
     init: true
     working_dir: /app
     command: sh ./docker-dev-entrypoint.sh
@@ -123,11 +123,11 @@ services:
         condition: service_healthy
 
   ai-tagger:
-    image: smartscrape-ai-tagger:dev
+    image: aqlibraryplus-ai-tagger:dev
     build:
       context: ./ai-tagger
       dockerfile: Dockerfile
-    container_name: smartscrape_ai_tagger
+    container_name: aqlibraryplus_ai_tagger
     init: true
     environment:
       PORT: 7071
@@ -153,8 +153,8 @@ services:
     command: uvicorn app:app --host 0.0.0.0 --port 7071 --no-access-log
 
   ai-tagger-worker:
-    image: smartscrape-ai-tagger:dev
-    container_name: smartscrape_ai_tagger_worker
+    image: aqlibraryplus-ai-tagger:dev
+    container_name: aqlibraryplus_ai_tagger_worker
     init: true
     environment:
       REDIS_URL: redis://redis:6379/0

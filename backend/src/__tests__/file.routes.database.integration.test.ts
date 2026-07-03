@@ -54,19 +54,19 @@ async function jsonRequest(
 }
 
 test("file and folder API workflow persists through real database and disk", async (t) => {
-  const testDatabaseUrl = process.env.SMARTSCRAPE_TEST_DATABASE_URL;
+  const testDatabaseUrl = process.env.AQLIBRARYPLUS_TEST_DATABASE_URL;
   if (!testDatabaseUrl) {
     t.skip(
-      "set SMARTSCRAPE_TEST_DATABASE_URL to run the file/folder API database integration test",
+      "set AQLIBRARYPLUS_TEST_DATABASE_URL to run the file/folder API database integration test",
     );
     return;
   }
 
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = testDatabaseUrl;
-  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
   process.env.FILE_STORAGE_DIR = fs.mkdtempSync(
-    path.join(os.tmpdir(), "smart-scrape-file-api-it-"),
+    path.join(os.tmpdir(), "aqlibrary-plus-file-api-it-"),
   );
 
   const [{ default: router }, { default: prisma }] = await Promise.all([

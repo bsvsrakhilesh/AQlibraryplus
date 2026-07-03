@@ -70,7 +70,7 @@ async function fetchWithTimeout(
         signal: ctrl.signal,
         redirect: "manual",
         headers: {
-          "User-Agent": "SmartScrape/1.0",
+          "User-Agent": "AQlibrary+/1.0",
           ...(init.headers || {}),
         },
       });

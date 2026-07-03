@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: SmartScrape README
-    url: https://github.com/bsvsrakhilesh/Smart-Scrape#readme
+  - name: AQlibrary+ README
+    url: https://github.com/bsvsrakhilesh/AQlibrary-plus#readme
     about: Start here for installation, configuration, testing, and reviewer instructions.
   - name: User manual
-    url: https://github.com/bsvsrakhilesh/Smart-Scrape/blob/main/docs/SmartScrape_User_Manual.md
+    url: https://github.com/bsvsrakhilesh/AQlibrary-plus/blob/main/docs/AQlibraryPlus_User_Manual.md
     about: Detailed workflow documentation for URL Collector, Saved URLs, File Manager, Notebook, and Governance Workspace.

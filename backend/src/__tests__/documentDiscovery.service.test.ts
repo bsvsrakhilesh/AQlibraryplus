@@ -6,7 +6,7 @@ const SAFE_DNS_RESULT = [{ address: "93.184.216.34", family: 4 }];
 
 async function loadDiscoveryService() {
   process.env.DATABASE_URL ||=
-    "postgresql://user:pass@localhost:5432/smartscrape_test";
+    "postgresql://user:pass@localhost:5432/aqlibraryplus_test";
 
   const [{ discoverDocumentsForUrl, extractStaticPdfCandidates }, prisma] =
     await Promise.all([

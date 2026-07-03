@@ -190,7 +190,7 @@ async function isRobotsAllowed(targetUrl: string) {
     if (!r.ok) return true;
     const body = await r.text();
     const robots = robotsParser(robotsUrl, body);
-    return robots.isAllowed(targetUrl, "SmartScrape/1.0") !== false;
+    return robots.isAllowed(targetUrl, "AQlibrary+/1.0") !== false;
   } catch (error: any) {
     if (isSecurityPolicyError(error)) throw error;
     return true;

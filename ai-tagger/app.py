@@ -22,7 +22,7 @@ log = logging.getLogger("ai_tagger")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 app = FastAPI(
-    title="SmartScrape AI Tagger", version=os.getenv("TAGGER_VERSION", "0.1.0")
+    title="AQlibrary+ AI Tagger", version=os.getenv("TAGGER_VERSION", "0.1.0")
 )
 
 app.add_middleware(

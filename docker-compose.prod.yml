@@ -4,12 +4,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_DB: SmartScrape
+      POSTGRES_DB: AQlibraryPlus
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a root .env file or shell before production deploy}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d SmartScrape"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d AQlibraryPlus"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -27,7 +27,7 @@ services:
       retries: 10
 
   backend:
-    image: smartscrape-backend:prod
+    image: aqlibraryplus-backend:prod
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -59,7 +59,7 @@ services:
         condition: service_healthy
 
   backend-worker:
-    image: smartscrape-backend:prod
+    image: aqlibraryplus-backend:prod
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -92,7 +92,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: smartscrape-frontend:prod
+    image: aqlibraryplus-frontend:prod
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -108,7 +108,7 @@ services:
         condition: service_healthy
 
   ai-tagger:
-    image: smartscrape-ai-tagger:prod
+    image: aqlibraryplus-ai-tagger:prod
     build:
       context: ./ai-tagger
       dockerfile: Dockerfile
@@ -138,7 +138,7 @@ services:
     command: uvicorn app:app --host 0.0.0.0 --port 7071 --no-access-log
 
   ai-tagger-worker:
-    image: smartscrape-ai-tagger:prod
+    image: aqlibraryplus-ai-tagger:prod
     build:
       context: ./ai-tagger
       dockerfile: Dockerfile

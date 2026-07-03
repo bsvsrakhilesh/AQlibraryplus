@@ -1,5 +1,5 @@
 {
-  "name": "@smart-scrape/backend",
+  "name": "@aqlibrary-plus/backend",
   "private": true,
   "version": "1.0.0",
   "main": "index.js",

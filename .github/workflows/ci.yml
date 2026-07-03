@@ -22,10 +22,10 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test
-      FILE_STORAGE_DIR: /tmp/smart-scrape-storage
+      FILE_STORAGE_DIR: /tmp/aqlibrary-plus-storage
       OPENAI_ENABLED: "false"
       DEV_AUTH_ENABLED: "false"
-      SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE: "true"
+      AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE: "true"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

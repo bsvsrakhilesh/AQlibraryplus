@@ -81,7 +81,7 @@ async function fetchWithTimeout(
       const res = await fetch(currentUrl, {
         signal: ctrl.signal,
         redirect: "manual",
-        headers: { "User-Agent": "SmartScrape/1.0", ...headers },
+        headers: { "User-Agent": "AQlibrary+/1.0", ...headers },
       });
 
       if (!isRedirectStatus(res.status)) return res;
@@ -114,7 +114,7 @@ async function isRobotsAllowed(targetUrl: string) {
     if (!r.ok) return true;
     const body = await r.text();
     const robots = robotsParser(robotsUrl, body);
-    return robots.isAllowed(targetUrl, "SmartScrape/1.0") !== false;
+    return robots.isAllowed(targetUrl, "AQlibrary+/1.0") !== false;
   } catch (error: any) {
     if (isSecurityPolicyError(error)) throw error;
     return true;
@@ -773,7 +773,7 @@ async function persistFile(
   await recordCaptureEvent({
     pipelineName: meta?.captureType === "URL_PDF" ? "crawl.pdf" : "crawl.text",
     pipelineConfig: {
-      userAgent: "SmartScrape/1.0",
+      userAgent: "AQlibrary+/1.0",
       ssrfGuard: true,
       robotsRespect: true,
       captureType: meta?.captureType ?? "UPLOAD",
@@ -913,7 +913,7 @@ async function navigateWithRetries(
   }
 
   if (pdfLike) {
-    // Exhausted retries but still pdfLike — let the response listener decide.
+    // Exhausted retries but still pdfLike â€” let the response listener decide.
     return;
   }
 
@@ -1055,7 +1055,7 @@ export async function crawlTextHandler(
             capturedUrl: captured.finalUrl || url,
             contentType: captured.mimeType,
             bytes: captured.buffer.byteLength,
-            notes: noteBits.join(" • "),
+            notes: noteBits.join(" â€¢ "),
           },
         },
       );
@@ -1184,7 +1184,7 @@ export async function crawlTextHandler(
       `Title: ${title}`,
       `URL: ${url}`,
       `Captured: ${new Date().toISOString()}`,
-      "".padEnd(80, "—"),
+      "".padEnd(80, "â€”"),
       "",
     ].join("\n");
 
@@ -1386,7 +1386,7 @@ export async function crawlPdfHandler(
             ...lineageMeta,
             contentType: captured.mimeType || "application/pdf",
             bytes: captured.buffer.byteLength,
-            notes: noteBits.join(" • "),
+            notes: noteBits.join(" â€¢ "),
           },
         },
       );
@@ -1762,7 +1762,7 @@ export async function crawlPdfHandler(
             await new Promise((r) => setTimeout(r, 700));
           } else {
             // Let the response interception path catch the real PDF bytes.
-            // Government / institutional servers can be slow — give them more time.
+            // Government / institutional servers can be slow â€” give them more time.
             await new Promise((r) => setTimeout(r, 8000));
           }
         }

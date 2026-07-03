@@ -137,7 +137,7 @@ export async function runAiTagForUrl(
  */
 export function scheduleAiTagForUrl(urlId: number, opts?: { force?: boolean }) {
   if (
-    String(process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE || "").toLowerCase() ===
+    String(process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE || "").toLowerCase() ===
     "true"
   ) {
     return;

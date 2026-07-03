@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 # Generate Prisma client inside the image so clean clones do not depend on
 # untracked src/generated output from a developer machine.
-ARG DATABASE_URL="postgresql://postgres:postgres@localhost:5432/SmartScrape?schema=public"
+ARG DATABASE_URL="postgresql://postgres:postgres@localhost:5432/AQlibraryPlus?schema=public"
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 RUN DATABASE_URL="$DATABASE_URL" npx prisma generate

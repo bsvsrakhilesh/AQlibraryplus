@@ -14,7 +14,7 @@ const MAX_HTML_BYTES = Number(
   process.env.EXTRACT_MAX_HTML_BYTES || 10 * 1024 * 1024,
 );
 const PREVIEW_SNIPPET_CHARS = Number(process.env.EXTRACT_PREVIEW_CHARS || 260);
-const USER_AGENT = process.env.EXTRACT_USER_AGENT || "SmartScrapeBot/1.0";
+const USER_AGENT = process.env.EXTRACT_USER_AGENT || "AQlibrary+Bot/1.0";
 const URL_METADATA_TIMEOUT_MS = Number(
   process.env.EXTRACT_URL_TIMEOUT_MS || 30000,
 );
@@ -1069,7 +1069,7 @@ export async function extractUrlMetadata(url: string): Promise<{
     };
   }
 
-  // Paywall/login/blocked → don't throw, just return safe fallback
+  // Paywall/login/blocked â†’ don't throw, just return safe fallback
   if (resp.status >= 400) {
     return {
       title: url,

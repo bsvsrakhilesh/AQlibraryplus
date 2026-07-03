@@ -1,8 +1,8 @@
-# Contributing to SmartScrape
+# Contributing to AQlibrary+
 
-Thank you for considering a contribution to SmartScrape. This guide explains how to propose changes, run the project locally, and verify work before it is reviewed.
+Thank you for considering a contribution to AQlibrary+. This guide explains how to propose changes, run the project locally, and verify work before it is reviewed.
 
-SmartScrape is research software for evidence collection, preservation, tagging, and grounded analysis in governance and policy workflows. Contributions should preserve that purpose: make evidence easier to collect, audit, cite, search, and verify without weakening provenance, privacy, or reproducibility.
+AQlibrary+ is research software for evidence collection, preservation, tagging, and grounded analysis in governance and policy workflows. Contributions should preserve that purpose: make evidence easier to collect, audit, cite, search, and verify without weakening provenance, privacy, or reproducibility.
 
 ## Ways to contribute
 
@@ -20,14 +20,14 @@ Please keep changes focused. Separate unrelated refactors, UI redesigns, depende
 
 Search existing GitHub issues first:
 
-https://github.com/bsvsrakhilesh/Smart-Scrape/issues
+https://github.com/bsvsrakhilesh/AQlibrary-plus/issues
 
 Use the structured issue template that best matches the report: bug,
 feature request, documentation issue, or reproducibility/JOSS reviewer report.
 
 For bug reports, include:
 
-- the SmartScrape version, branch, or commit;
+- the AQlibrary+ version, branch, or commit;
 - operating system and browser;
 - whether you used Docker Compose or local services;
 - the exact command or workflow that failed;
@@ -42,8 +42,8 @@ Do not paste API keys, passwords, private documents, personal data, screenshots 
 The recommended local setup uses Docker Compose. It starts the React frontend, Express backend, backend worker, PostgreSQL with pgvector, Redis, FastAPI AI tagger, and AI tagger worker.
 
 ```powershell
-git clone https://github.com/bsvsrakhilesh/Smart-Scrape.git
-cd Smart-Scrape
+git clone https://github.com/bsvsrakhilesh/AQlibrary-plus.git
+cd AQlibrary-plus
 Copy-Item .env.example .env
 Copy-Item backend\.env.example backend\.env
 Copy-Item frontend\.env.example frontend\.env
@@ -110,7 +110,7 @@ Run end-to-end tests only when the required services and test data are available
 npm run test:e2e
 ```
 
-Some backend database integration tests are intentionally skipped unless `SMARTSCRAPE_TEST_DATABASE_URL` points to a disposable PostgreSQL test database with migrations applied. Never point integration tests at production or irreplaceable research data.
+Some backend database integration tests are intentionally skipped unless `AQLIBRARYPLUS_TEST_DATABASE_URL` points to a disposable PostgreSQL test database with migrations applied. Never point integration tests at production or irreplaceable research data.
 
 ## Manual verification
 
@@ -135,7 +135,7 @@ For user-facing changes, run the Docker Compose stack and perform a short smoke 
 
 ## Evidence, safety, and external services
 
-SmartScrape may process public web pages, uploaded files, and organization-specific evidence. Contributions must respect privacy, copyright, access controls, robots rules, retention requirements, and local institutional policies.
+AQlibrary+ may process public web pages, uploaded files, and organization-specific evidence. Contributions must respect privacy, copyright, access controls, robots rules, retention requirements, and local institutional policies.
 
 Do not add code that bypasses authentication, captchas, access controls, network safety checks, or site restrictions. Do not log source text, prompts, API keys, credentials, personal data, or uploaded-file contents unless the log is explicitly designed for safe local debugging and is disabled by default.
 
@@ -147,13 +147,13 @@ AI tools may be used to assist with coding or documentation, but contributors re
 
 ## Documentation changes
 
-Update documentation when behavior, setup, environment variables, reviewer instructions, or workflow semantics change. The README is the primary reviewer-facing document, and `docs/SmartScrape_User_Manual.md` is the detailed user manual.
+Update documentation when behavior, setup, environment variables, reviewer instructions, or workflow semantics change. The README is the primary reviewer-facing document, and `docs/AQlibraryPlus_User_Manual.md` is the detailed user manual.
 
 For JOSS-related changes, keep `paper/paper.md`, `paper/paper.bib`, `CITATION.cff`, README citation instructions, and release metadata consistent.
 
 ## Licensing
 
-SmartScrape is licensed under the Apache License, Version 2.0. By submitting a contribution, you agree that your contribution may be distributed under the same license.
+AQlibrary+ is licensed under the Apache License, Version 2.0. By submitting a contribution, you agree that your contribution may be distributed under the same license.
 
 Include appropriate attribution for any third-party code, data, documentation, or assets that are copied into the repository. Do not vendor third-party material unless its license is compatible with Apache-2.0 and the attribution requirements are documented.
 

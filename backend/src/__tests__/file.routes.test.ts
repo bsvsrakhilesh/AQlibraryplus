@@ -6,10 +6,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const storageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "smart-scrape-files-"));
+const storageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "aqlibrary-plus-files-"));
 process.env.FILE_STORAGE_DIR = storageRoot;
 process.env.DATABASE_URL ||=
-  "postgresql://user:pass@localhost:5432/smartscrape_test";
+  "postgresql://user:pass@localhost:5432/aqlibraryplus_test";
 
 type TestServer = {
   baseUrl: string;

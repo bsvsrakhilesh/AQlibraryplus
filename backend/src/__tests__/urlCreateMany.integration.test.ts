@@ -2,15 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 test("createManyUrls deduplicates noisy collector URLs by canonical_url in the database", async (t) => {
-  const testDatabaseUrl = process.env.SMARTSCRAPE_TEST_DATABASE_URL;
+  const testDatabaseUrl = process.env.AQLIBRARYPLUS_TEST_DATABASE_URL;
   if (!testDatabaseUrl) {
-    t.skip("set SMARTSCRAPE_TEST_DATABASE_URL to run the URL dedup database integration test");
+    t.skip("set AQLIBRARYPLUS_TEST_DATABASE_URL to run the URL dedup database integration test");
     return;
   }
 
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = testDatabaseUrl;
-  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
 
   const [{ canonicalizeUrl }, { default: prisma }, { createManyUrls }] =
     await Promise.all([

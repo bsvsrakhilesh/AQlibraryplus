@@ -818,7 +818,7 @@ function Footer() {
             </div>
             <div>
               <strong>Contact</strong>
-              <a href="mailto:hello@smartscrape.local">hello@smartscrape.local</a>
+              <a href="mailto:hello@aqlibraryplus.local">hello@aqlibraryplus.local</a>
               <span>For research teams, policy analysts, and public-record review.</span>
             </div>
           </nav>

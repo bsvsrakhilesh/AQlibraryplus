@@ -5,7 +5,7 @@ test("collector purpose authority inference finds CAQM for GRAP Stage IV questio
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
-  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
 
   const { authoritySourceForUrl, fallbackPurposeLanes, inferAuthoritySources } = await import(
     "../services/collectorPurpose.service"
@@ -52,7 +52,7 @@ test("collector purpose authority inference covers stubble and forecast evidence
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ?? "postgresql://smart_scrape:smart_scrape@localhost:5432/smart_scrape_test";
-  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
 
   const { inferAuthoritySources } = await import(
     "../services/collectorPurpose.service"
@@ -76,15 +76,15 @@ test("collector purpose authority inference covers stubble and forecast evidence
 });
 
 test("saveCollectorPurposeSelection deduplicates noisy selected collector rows before linking", async (t) => {
-  const testDatabaseUrl = process.env.SMARTSCRAPE_TEST_DATABASE_URL;
+  const testDatabaseUrl = process.env.AQLIBRARYPLUS_TEST_DATABASE_URL;
   if (!testDatabaseUrl) {
-    t.skip("set SMARTSCRAPE_TEST_DATABASE_URL to run the collector purpose dedup database integration test");
+    t.skip("set AQLIBRARYPLUS_TEST_DATABASE_URL to run the collector purpose dedup database integration test");
     return;
   }
 
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = testDatabaseUrl;
-  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
 
   const [{ canonicalizeUrl }, { default: prisma }, { saveCollectorPurposeSelection }] =
     await Promise.all([
@@ -164,15 +164,15 @@ test("saveCollectorPurposeSelection deduplicates noisy selected collector rows b
 });
 
 test("deleteCollectorPurpose removes purpose-only records and keeps saved URLs", async (t) => {
-  const testDatabaseUrl = process.env.SMARTSCRAPE_TEST_DATABASE_URL;
+  const testDatabaseUrl = process.env.AQLIBRARYPLUS_TEST_DATABASE_URL;
   if (!testDatabaseUrl) {
-    t.skip("set SMARTSCRAPE_TEST_DATABASE_URL to run the collector purpose delete database integration test");
+    t.skip("set AQLIBRARYPLUS_TEST_DATABASE_URL to run the collector purpose delete database integration test");
     return;
   }
 
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = testDatabaseUrl;
-  process.env.SMARTSCRAPE_DISABLE_AUTO_TAG_QUEUE = "true";
+  process.env.AQLIBRARYPLUS_DISABLE_AUTO_TAG_QUEUE = "true";
 
   const [{ default: prisma }, { deleteCollectorPurpose }] = await Promise.all([
     import("../config/database"),

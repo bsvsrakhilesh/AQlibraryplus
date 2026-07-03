@@ -253,7 +253,7 @@ app.use("/api", faviconRoutes);
 app.get("/", (_req: Request, res: Response) => {
   res.json({
     ok: true,
-    service: "SmartScrape backend",
+    service: "AQlibrary+ backend",
     ping: "/ping",
     apiPing: "/api/ping",
     health: "/health",

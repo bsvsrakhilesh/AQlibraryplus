@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in SmartScrape.
+description: Report a reproducible problem in AQlibrary+.
 title: "[Bug]: "
 labels:
   - bug
@@ -30,7 +30,7 @@ body:
   - type: dropdown
     id: setup
     attributes:
-      label: How are you running SmartScrape?
+      label: How are you running AQlibrary+?
       options:
         - Docker Compose development stack
         - Local services without Docker
@@ -72,7 +72,7 @@ body:
       label: Environment
       description: Provide versions and platform details relevant to the report.
       value: |
-        - SmartScrape commit or version:
+        - AQlibrary+ commit or version:
         - Operating system:
         - Browser:
         - Docker version:
