@@ -271,6 +271,12 @@ _AGENCY_RULES = [
     ("IMD", "agency", "agencies", "imd", [_compile(r"\bIMD\b"), _compile(r"\bIndia\s+Meteorological\s+Department\b")], 0.84),
     ("NGT", "agency", "agencies", "ngt", [_compile(r"\bNGT\b"), _compile(r"\bNational\s+Green\s+Tribunal\b")], 0.86),
     ("MoEFCC", "agency", "agencies", "moefcc", [_compile(r"\bMoEFCC\b"), _compile(r"\bMinistry\s+of\s+Environment,\s*Forest\s+and\s+Climate\s+Change\b")], 0.84),
+    ("MCD", "agency", "agencies", "mcd", [_compile(r"\bMCD\b"), _compile(r"\bMunicipal\s+Corporation\s+of\s+Delhi\b")], 0.86),
+    ("World Health Organization", "agency", "agencies", "world_health_organization", [_compile(r"\bWHO\b"), _compile(r"\bWorld\s+Health\s+Organization\b")], 0.86),
+    ("IQAir", "agency", "agencies", "iqair", [_compile(r"\bIQAir\b")], 0.84),
+    ("Comptroller and Auditor General of India", "oversight_body", "agencies", "cag", [_compile(r"\bCAG\b"), _compile(r"\bComptroller\s+and\s+Auditor\s+General\s+of\s+India\b")], 0.88),
+    ("Supreme Court of India", "judiciary", "agencies", "supreme_court_of_india", [_compile(r"\bSupreme\s+Court(?:\s+of\s+India)?\b")], 0.88),
+    ("Delhi Assembly", "legislature", "agencies", "delhi_assembly", [_compile(r"\bDelhi\s+(?:Legislative\s+)?Assembly\b")], 0.86),
 ]
 
 _LOCATION_RULES = [
@@ -283,9 +289,10 @@ _LOCATION_RULES = [
 ]
 
 _SECTOR_RULES = [
-    ("Transport", "sector", "sectors", "transport", [_compile(r"\b(?:vehicle|vehicular|traffic|PUC|PUCC|diesel|petrol|BS[-\s]?VI)\b")], 0.76),
+    ("Transport", "sector", "sectors", "transport", [_compile(r"\b(?:vehicle|vehicular|traffic|PUC|PUCC|diesel|petrol|BS[-\s]?VI)\b|\bPollution\s+Under\s+Control\b|\bodd[-\s]even\b")], 0.76),
     ("Construction & Demolition", "sector", "sectors", "construction_demolition", [_compile(r"\bC\s*&\s*D\b|\bconstruction\s+(?:and\s+)?demolition\b|\bconstruction\s+dust\b")], 0.8),
-    ("Road Dust", "sector", "sectors", "road_dust", [_compile(r"\broad\s+dust\b|\bmechanized\s+road\s+sweeping\b|\bwater\s+sprinkling\b")], 0.76),
+    ("Road Dust", "sector", "sectors", "road_dust", [_compile(r"\broad\s+dust\b|\bmechanized\s+road\s+sweeping\b|\bwater\s+sprinkling\b|\broad[-\s]+cleaning\b|\brepair\s+roads\b")], 0.76),
+    ("Municipal Waste", "sector", "sectors", "municipal_waste", [_compile(r"\bgarbage\s+mountains?\b|\bmunicipal\s+(?:solid\s+)?waste\b|\blandfills?\b")], 0.76),
     ("Open Waste Burning", "sector", "sectors", "waste_burning", [_compile(r"\bopen\s+burning\b|\bgarbage\s+burning\b|\bwaste\s+burning\b|\bMSW\b")], 0.78),
     ("Biomass / Stubble Burning", "sector", "sectors", "biomass_burning", [_compile(r"\bstubble\s+burning\b|\bcrop\s+residue\b|\bpaddy\s+straw\b|\bparali\b")], 0.78),
     ("Industry & Power", "sector", "sectors", "industry_power", [_compile(r"\bindustr(?:y|ial)\b|\bpower\s+plant\b|\bstack\s+emissions?\b")], 0.74),
@@ -318,14 +325,14 @@ _RESTRICTION_RULES = [
 ]
 
 _DATE_RE = _compile(
-    r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})\b"
+    r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4})\b"
 )
 _DIRECTION_RE = _compile(r"\bDirection\s*No\.?\s*[:\-]?\s*([A-Za-z0-9./()\-\[\]]{3,})")
 _ORDER_RE = _compile(r"\bOrder\s*No\.?\s*[:\-]?\s*([A-Za-z0-9./()\-\[\]]{3,})")
 _REF_RE = _compile(r"\b(?:F\.?\s*No\.?|Ref\.?\s*No\.?|File\s*No\.?)\s*[:\-]?\s*([A-Za-z0-9./()\-\[\]]{3,})")
 _ACT_RE = _compile(r"\b(?:CAQM\s+Act|Environment\s+\(Protection\)\s+Act|Air\s+\(Prevention\s+and\s+Control\s+of\s+Pollution\)\s+Act|EP\s+Act)\b")
 _SECTION_RE = _compile(r"\bSection\s+\d+[A-Za-z]?(?:\(\d+\))?\b")
-_MEASURE_RE = _compile(r"\b(?:PM\s*2\.?5|PM\s*10|NO2|O3|CO|AQI|Air\s+Quality\s+Index)(?:\s*(?:level|value|concentration)?\s*(?:of|:|=|-)?\s*\d{2,4}(?:\.\d+)?)?", re.IGNORECASE)
+_MEASURE_RE = _compile(r"\b(?:PM\s*2\.?5|PM\s*10|NO2|O3|CO|AQI|Air\s+Quality\s+Index)\b(?:\s*(?:level|value|concentration)?\s*(?:of|:|=|-)?\s*\d{2,4}(?:\.\d+)?)?", re.IGNORECASE)
 _GRAP_PROGRAM_RE = _compile(r"\bGRAP\b|\bGraded\s+Response\s+Action\s+Plan\b")
 _GRAP_STAGE_GROUP_RE = _compile(
     r"\b(?:GRAP\s*)?Stages?\s*[-:]?\s*((?:IV|III|II|I|[1-4])(?:\s*(?:,|/|&|and|to|-)\s*(?:IV|III|II|I|[1-4]))*)\b",
@@ -374,6 +381,11 @@ def _add_rule_matches(
 
 
 def _extract_grap(items: List[Dict[str, Any]], units: Sequence[Dict[str, Any]]) -> None:
+    document_mentions_grap = any(
+        _GRAP_PROGRAM_RE.search(str(unit.get("text") or "")) for unit in units
+    )
+    if not document_mentions_grap:
+        return
     program_added = False
     for unit in units:
         text = str(unit.get("text") or "")
@@ -674,6 +686,86 @@ def _payload_items(payload: Any) -> List[Dict[str, Any]]:
     return out
 
 
+_CLOSED_INTELLIGENCE_CATEGORIES = {
+    "agencies",
+    "programs",
+    "programStages",
+    "locations",
+    "sectors",
+    "pollutantsMeasurements",
+}
+
+
+def _evidence_supported_by_content(quote: Any, content: str) -> bool:
+    """Conservatively verify that an LLM evidence quote comes from the source."""
+    raw_quote = str(quote or "")
+    raw_quote = re.sub(r"^\s*\[[^]]+\]\s*", "", raw_quote)
+    quote_words = re.findall(r"[a-z0-9]+", raw_quote.casefold())
+    content_words = re.findall(r"[a-z0-9]+", (content or "").casefold())
+    if len(quote_words) < 4 or not content_words:
+        return False
+    quote_norm = " ".join(quote_words)
+    content_norm = " ".join(content_words)
+    if quote_norm in content_norm:
+        return True
+    content_set = set(content_words)
+    meaningful = [word for word in quote_words if len(word) >= 3]
+    if len(meaningful) < 4:
+        return False
+    overlap = sum(1 for word in meaningful if word in content_set) / len(meaningful)
+    return overlap >= 0.85
+
+
+def _validated_llm_items(
+    llm_payload: Any,
+    content: str,
+    deterministic: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    deterministic_keys = {
+        _dedupe_key(item) for item in _payload_items(deterministic)
+    }
+    accepted: List[Dict[str, Any]] = []
+    for item in _payload_items(llm_payload):
+        confidence = float(item.get("confidence") or 0)
+        if confidence < 0.65:
+            continue
+        evidence = item.get("evidence") if isinstance(item.get("evidence"), list) else []
+        supported_evidence = [
+            ev
+            for ev in evidence
+            if isinstance(ev, dict)
+            and _evidence_supported_by_content(ev.get("quote"), content)
+        ]
+        if not supported_evidence:
+            continue
+        label_tokens = re.findall(r"[a-z0-9]+", str(item.get("label") or "").casefold())
+        label_phrase = " ".join(label_tokens)
+        evidence_text = " ".join(
+            re.findall(
+                r"[a-z0-9]+",
+                " ".join(str(ev.get("quote") or "") for ev in supported_evidence).casefold(),
+            )
+        )
+        label_is_explicit = bool(
+            label_phrase
+            and (
+                len(label_phrase) >= 3
+                or (len(label_tokens) == 1 and label_tokens[0].isdigit())
+            )
+            and re.search(rf"\b{re.escape(label_phrase)}\b", evidence_text)
+        )
+        if (
+            item.get("category") in _CLOSED_INTELLIGENCE_CATEGORIES
+            and _dedupe_key(item) not in deterministic_keys
+            and not label_is_explicit
+        ):
+            continue
+        item["evidence"] = supported_evidence[:5]
+        item["source"] = "llm_validated"
+        accepted.append(item)
+    return accepted
+
+
 def _make_payload(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     merged: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     for raw in items:
@@ -835,7 +927,14 @@ Rules:
 - Every item must have direct document evidence.
 - Extract plural facts; never collapse multiple GRAP stages, agencies, orders, dates, restrictions, or requirements into one item.
 - Use the category keys exactly as defined by the schema.
-- Do not invent facts not supported by the text."""
+- Do not invent facts not supported by the text.
+- For agencies, programmes, stages, locations, sectors, and pollutants, the
+  emitted label must be explicitly named in its evidence. Semantic association
+  is not enough: Pollution Under Control is not CPCB, national capital is not
+  NCR, odd-even is not GRAP, and generic pollution names no pollutant.
+- Prefer full official names while retaining a stated acronym in the label when
+  useful.
+"""
     excerpt = body[:STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS]
     det_preview = json.dumps(
         {
@@ -934,7 +1033,12 @@ def build_structured_intelligence(
     if not llm_payload:
         return deterministic
 
-    return _make_payload([*_payload_items(deterministic), *_payload_items(llm_payload)])
+    return _make_payload(
+        [
+            *_payload_items(deterministic),
+            *_validated_llm_items(llm_payload, content, deterministic),
+        ]
+    )
 
 
 __all__ = [

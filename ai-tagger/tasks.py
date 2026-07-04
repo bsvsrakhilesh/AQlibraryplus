@@ -29,7 +29,10 @@ JOB_HARD_LIMIT = int(os.getenv("JOB_HARD_LIMIT", "60"))  # seconds
 JOB_MAX_RETRIES = int(os.getenv("JOB_MAX_RETRIES", "3"))
 CACHE_TTL = int(os.getenv("TAGGER_CACHE_TTL", "86400"))  # seconds (24h)
 CACHE_NAMESPACE = os.getenv("TAGGER_CACHE_NS", "tagger:v2-smart-tags")
-CACHE_ALGORITHM_VERSION = os.getenv("TAGGER_CACHE_ALGORITHM_VERSION", "2026-05-13-noise-filter-v1")
+CACHE_ALGORITHM_VERSION = os.getenv(
+    "TAGGER_CACHE_ALGORITHM_VERSION",
+    "2026-07-03-structured-evidence-gate-v2",
+)
 
 CELERY = Celery("ai_tagger", broker=BROKER_URL, backend=BACKEND_URL)
 log = logging.getLogger("ai_tagger.tasks")
@@ -109,7 +112,7 @@ def _fingerprint_payload(payload: Dict[str, Any]) -> str:
     use_llm = str(payload.get("use_llm", ""))
     llm_model = os.getenv("LLM_MODEL", "")
     structured_model = os.getenv("STRUCTURED_LLM_MODEL", "")
-    tagger_version = os.getenv("TAGGER_VERSION", "")
+    tagger_version = os.getenv("TAGGER_VERSION") or "0.6.0"
     ocr_options = json.dumps(payload.get("ocr_options") or {}, sort_keys=True)
     if t == "text":
         base = _normalize_ws(payload.get("text") or "")
@@ -180,7 +183,7 @@ def _emit_progress(
             "progress": max(0, min(100, int(progress))),
             "message": message,
             "attempt": _task_attempt(task),
-            "tagger_version": os.getenv("TAGGER_VERSION", "0.1.0"),
+            "tagger_version": os.getenv("TAGGER_VERSION") or "0.6.0",
         }
         payload.update(meta)
         task.update_state(state="STARTED", meta=payload)
@@ -275,7 +278,7 @@ def process_job(self: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
                     use_llm=use_llm,
                 )
             else:
-                out = _fallback_tag(text, version=os.getenv("TAGGER_VERSION", "0.1.0"))
+                out = _fallback_tag(text, version=os.getenv("TAGGER_VERSION") or "0.6.0")
 
         elif input_type == "url":
             url = payload.get("url") or ""
@@ -303,11 +306,11 @@ def process_job(self: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
                         ocr_options=ocr_options,
                     )  # type: ignore
                     out = _fallback_tag(
-                        text or "", version=os.getenv("TAGGER_VERSION", "0.1.0")
+                        text or "", version=os.getenv("TAGGER_VERSION") or "0.6.0"
                     )
                 else:
                     out = _fallback_tag(
-                        "", version=os.getenv("TAGGER_VERSION", "0.1.0")
+                        "", version=os.getenv("TAGGER_VERSION") or "0.6.0"
                     )
 
         elif input_type == "file":
@@ -358,11 +361,11 @@ def process_job(self: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
 
                     text = _call_with_supported(extract_text, **kwargs)  # type: ignore
                     out = _fallback_tag(
-                        text or "", version=os.getenv("TAGGER_VERSION", "0.1.0")
+                        text or "", version=os.getenv("TAGGER_VERSION") or "0.6.0"
                     )
                 else:
                     out = _fallback_tag(
-                        "", version=os.getenv("TAGGER_VERSION", "0.1.0")
+                        "", version=os.getenv("TAGGER_VERSION") or "0.6.0"
                     )
 
             if cleanup_file_after_read and file_path:
@@ -405,7 +408,7 @@ def process_job(self: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
                     "message": "Tagger job failed",
                     "attempt": _task_attempt(self),
                     "error": str(e),
-                    "tagger_version": os.getenv("TAGGER_VERSION", "0.1.0"),
+                    "tagger_version": os.getenv("TAGGER_VERSION") or "0.6.0",
                 },
             )
         except Exception:

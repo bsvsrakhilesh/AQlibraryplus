@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import re
 import pathlib
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -74,6 +75,10 @@ _RE_DATE_WORD = re.compile(
 # GRAP stage
 _RE_GRAP_STAGE = re.compile(
     r"\b(?:GRAP\s*)?Stages?\s*[-:]?\s*((?:IV|III|II|I|[1-4])(?:\s*(?:,|/|&|and|to|-)\s*(?:IV|III|II|I|[1-4]))*)\b|\bGRAP\s*[-:]?\s*(IV|III|II|I|[1-4])\b",
+    re.IGNORECASE,
+)
+_RE_DATE_MDY = re.compile(
+    r"\b((?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4})\b",
     re.IGNORECASE,
 )
 
@@ -164,9 +169,12 @@ class PolicyTaxonomy:
         if hits <= 0:
             return 0.0, None
 
-        score = 0.45 + 0.20 * min(2, hits - 1)
+        # An exact, boundary-aware taxonomy alias is meaningful evidence.  The
+        # old 0.45 default made real exact matches indistinguishable from the
+        # weak 0.5 guesses commonly returned by an LLM.
+        score = 0.72 + 0.12 * min(2, hits - 1)
         if hits >= 3:
-            score = 0.85
+            score = 0.94
 
         if best_idx is not None:
             best_span = (best_idx, min(len(t), best_idx + max(6, len(rule.keywords[0]) if rule.keywords else 10)))
@@ -251,7 +259,11 @@ def _extract_entities(text: str) -> Dict[str, List[str]]:
     direction_numbers = uniq([m.group(1) for m in _RE_DIR_NO.finditer(t)])
     order_numbers = uniq([m.group(1) for m in _RE_ORDER_NO.finditer(t)])
     ref_numbers = uniq([m.group(1) for m in _RE_REF_NO.finditer(t)])
-    dates = uniq([m.group(1) for m in _RE_DATE_DMY.finditer(t)] + [m.group(1) for m in _RE_DATE_WORD.finditer(t)])
+    dates = uniq(
+        [m.group(1) for m in _RE_DATE_DMY.finditer(t)]
+        + [m.group(1) for m in _RE_DATE_WORD.finditer(t)]
+        + [m.group(1) for m in _RE_DATE_MDY.finditer(t)]
+    )
 
     return {
         "directionNumbers": direction_numbers,
@@ -271,6 +283,9 @@ def _extract_grap(text: str) -> Dict[str, Any]:
     stages: List[Dict[str, Any]] = []
     seen_stages = set()
 
+    if not mentioned:
+        return {"mentioned": False, "stage": None, "stages": [], "evidence": ""}
+
     for m in _RE_GRAP_STAGE.finditer(t):
         raw_group = (m.group(1) or m.group(2) or "").upper()
         for raw in re.findall(r"\b(?:IV|III|II|I|[1-4])\b", raw_group, flags=re.IGNORECASE):
@@ -284,8 +299,6 @@ def _extract_grap(text: str) -> Dict[str, Any]:
             if stage is None:
                 stage = value
                 ev = evidence
-        mentioned = True
-
     return {"mentioned": bool(mentioned), "stage": stage, "stages": stages, "evidence": ev}
 
 
@@ -332,4 +345,119 @@ def classify_structured(
     }
 
 
-__all__ = ["load_policy_taxonomy", "classify_structured"]
+def _validated_taxonomy_item(
+    category: str,
+    raw: Any,
+    text: str,
+) -> Optional[Dict[str, Any]]:
+    """Return a closed-taxonomy item only when the document names its trigger.
+
+    LLM output is useful for interpretation, but closed fields such as agency,
+    pollutant, programme, and geography must not be inferred from a related
+    sentence.  Re-grounding evidence here also prevents a correct label from
+    being paired with an unrelated quotation.
+    """
+    if not isinstance(raw, dict):
+        return None
+    value = str(raw.get("value") or "").strip()
+    rule = (_TAX.categories.get(category) or {}).get(value)
+    if not value or rule is None:
+        return None
+    score, span = _TAX.score_rule(rule, text)
+    if score <= 0 or span is None:
+        return None
+    item = dict(raw)
+    item["value"] = value
+    item["score"] = round(score, 3)
+    item["evidence"] = _snippet(text, span[0], span[1])
+    return item
+
+
+def validate_structured(
+    structured: Optional[Dict[str, Any]],
+    text: str,
+    *,
+    file_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Evidence-gate the stable structured schema without changing its shape."""
+    source = structured if isinstance(structured, dict) else {}
+    out: Dict[str, Any] = deepcopy(source)
+    cleaned = _clean_text_for_scan(text)
+    if file_name:
+        cleaned = f"{file_name}\n\n{cleaned}"
+
+    doc_type = _validated_taxonomy_item("doc_type", out.get("docType"), cleaned)
+    out["docType"] = doc_type or {"value": None, "score": 0.0, "evidence": ""}
+
+    labels = out.get("labels") if isinstance(out.get("labels"), dict) else {}
+    category_map = {
+        "sectors": "sector",
+        "agencies": "agency",
+        "geography": "geography",
+        "programs": "program",
+        "pollutants": "pollutant",
+    }
+    validated_labels: Dict[str, List[Dict[str, Any]]] = {}
+    for output_key, taxonomy_key in category_map.items():
+        raw_items = labels.get(output_key) if isinstance(labels, dict) else []
+        validated_labels[output_key] = [
+            item
+            for item in (
+                _validated_taxonomy_item(taxonomy_key, raw, cleaned)
+                for raw in (raw_items if isinstance(raw_items, list) else [])
+            )
+            if item is not None
+        ]
+    out["labels"] = validated_labels
+
+    grap = out.get("grap") if isinstance(out.get("grap"), dict) else {}
+    grap_rule = (_TAX.categories.get("program") or {}).get("grap")
+    grap_supported = bool(grap_rule and _TAX.score_rule(grap_rule, cleaned)[0] > 0)
+    if not grap_supported:
+        out["grap"] = {
+            "mentioned": False,
+            "stage": None,
+            "stages": [],
+            "evidence": "",
+        }
+    else:
+        # Stages are accepted only if a GRAP mention exists and the stage is
+        # explicitly present in the same document.  Generic "Stage I" text no
+        # longer creates a GRAP programme by itself.
+        stages = []
+        for raw in grap.get("stages") or []:
+            if not isinstance(raw, dict):
+                continue
+            stage = str(raw.get("value") or "").strip().upper()
+            stage_pattern = re.compile(
+                rf"\b(?:GRAP\s*)?Stage\s*[-:]?\s*{re.escape(stage)}\b",
+                re.IGNORECASE,
+            )
+            match = stage_pattern.search(cleaned)
+            if not match:
+                continue
+            item = dict(raw)
+            item["score"] = 0.9
+            item["evidence"] = _snippet(cleaned, match.start(), match.end())
+            stages.append(item)
+        out["grap"] = {
+            "mentioned": True,
+            "stage": (stages[0].get("value") if stages else None),
+            "stages": stages,
+            "evidence": (stages[0].get("evidence") if stages else ""),
+        }
+
+    entities = out.get("entities") if isinstance(out.get("entities"), dict) else {}
+    out["entities"] = {
+        key: list(entities.get(key) or [])
+        for key in (
+            "directionNumbers",
+            "orderNumbers",
+            "referenceNumbers",
+            "dates",
+        )
+    }
+    return out
+
+
+__all__ = ["load_policy_taxonomy", "classify_structured", "validate_structured"]

@@ -4,6 +4,11 @@ version: 1
 # This is intentionally compact (v1): easy to extend without retraining.
 categories:
   doc_type:
+    news_article:
+      keywords: ["news article", "photo credit", "published -"]
+      patterns:
+        - "\\bPhoto\\s+Credit\\s*:"
+        - "\\bPublished\\s*[-:]\\s*[A-Z][a-z]+\\s+\\d{1,2},\\s+\\d{4}"
     direction:
       keywords: ["direction", "directions", "direction no", "issued by caqm", "commission hereby directs"]
       patterns:
@@ -39,15 +44,28 @@ categories:
 
   sector:
     transport:
-      keywords: ["traffic", "vehicular", "vehicle", "PUC", "PUCC", "end of life", "EoL", "diesel", "petrol", "BS-VI", "BS VI"]
+      keywords: ["traffic", "vehicular", "vehicle", "PUC", "PUCC", "Pollution Under Control", "odd-even", "end of life", "EoL", "diesel", "petrol", "BS-VI", "BS VI"]
       patterns:
         - "\\bPUC(C)?\\b"
+        - "\\bPollution\\s+Under\\s+Control\\b"
+        - "\\bodd[-\\s]even\\b"
         - "\\bend\\s+of\\s+life\\b"
     construction_demolition:
-      keywords: ["construction", "demolition", "C&D", "C and D", "dust", "debris", "construction waste", "demolition waste"]
+      keywords: ["construction", "demolition", "C&D", "C and D", "construction dust", "debris", "construction waste", "demolition waste"]
       patterns:
         - "\\bC\\s*&\\s*D\\b"
         - "\\bconstruction\\s+and\\s+demolition\\b"
+    road_dust:
+      keywords: ["road dust", "road cleaning", "road-cleaning", "road sweeping", "repair roads"]
+      patterns:
+        - "\\broad[-\\s]+cleaning\\b"
+        - "\\brepair\\s+roads\\b"
+        - "\\broad\\s+dust\\b"
+    municipal_waste:
+      keywords: ["garbage", "garbage mountains", "municipal waste", "solid waste", "landfill"]
+      patterns:
+        - "\\bgarbage\\s+mountains?\\b"
+        - "\\bmunicipal\\s+(?:solid\\s+)?waste\\b"
     waste_burning:
       keywords: ["waste burning", "garbage burning", "open burning", "municipal solid waste", "MSW"]
       patterns:
@@ -98,6 +116,11 @@ categories:
       keywords: ["IIT", "Indian Institute of Technology"]
       patterns:
         - "\\bIIT\\b"
+    mcd:
+      keywords: ["MCD", "Municipal Corporation of Delhi"]
+      patterns:
+        - "\\bMCD\\b"
+        - "\\bMunicipal\\s+Corporation\\s+of\\s+Delhi\\b"
 
   geography:
     delhi:

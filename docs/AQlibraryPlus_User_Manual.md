@@ -1,6 +1,6 @@
 # AQlibrary+ - User Manual
 
-*Archive analysis tool for environmental governance*
+*Archive analysis tool for air quality governance*
 
 ## Contents
 
@@ -26,7 +26,7 @@ The normal workflow is:
 
 > Define a research purpose, discover and save relevant sources, preserve important evidence, analyse it with cited Notebook or Governance workflows, verify the cited evidence.
 
-AQlibrary+ is intended for researchers, environmental-governance organisations, public agencies, analysts, and other teams that need a traceable archive of documents, organisations, decisions, and interventions.
+AQlibrary+ is intended for researchers, air quality governance organisations, public agencies, analysts, and other teams that need a traceable archive of documents, organisations, decisions, and interventions.
 
 AQlibrary+ links generated answers to retrieved source passages to support verification. Users must inspect the cited evidence before relying on an answer.
 
@@ -183,7 +183,7 @@ The first build may take several minutes or longer depending on network speed an
 
 The page chapters below include a continuing real-world example. Follow the sections headed **Continue the worked example** to carry one investigation from discovery to a cited governance review. The existing page instructions remain the general reference for controls and troubleshooting.
 
-**Scenario:** An environmental-governance analyst needs to determine how Commission for Air Quality Management (CAQM) directions translated into construction-and-demolition (C&D) dust enforcement and reporting in Delhi between January 2023 and December 2025.
+**Scenario:** An air quality-governance analyst needs to determine how Commission for Air Quality Management (CAQM) directions translated into construction-and-demolition (C&D) dust enforcement and reporting in Delhi between January 2023 and December 2025.
 
 Use these values throughout the walkthrough:
 
@@ -281,7 +281,7 @@ URL Collector ties searches and saved links to a Research Purpose so the researc
 10. Review the **Coverage check**. Missing official-source families or evidence roles are prompts to broaden the search; they do not prove that evidence is absent.
 11. Filter the loaded results by domain or saved state, hide duplicates if needed, and sort the current result set.
 12. Open promising results in their source sites and verify relevance before saving them.
-13. Save one result with **Save to purpose**, or select multiple result checkboxes and use the toolbarâ€™s **Save to purpose** action.
+13. Save one result with **Save to purpose**, or select multiple result checkboxes and use the toolbar’s **Save to purpose** action.
 14. For a URL already present in the registry, use **Add to purpose** to associate it with the active purpose. Use **Open in Saved URLs** when it is already associated.
 15. Open **Saved URLs** from the sidebar to add notes and tags, organise records, or create durable Text/PDF captures.
 
@@ -350,7 +350,7 @@ Saved URLs is the source registry used after discovery. It supports purpose-scop
 5. Select **Save current search** when this combination of filters will be reused. Select **Mark visible reviewed** only after checking the visible records.
 6. Switch between **Registry** and **Cards** when both views are available. Registry is suited to dense comparison; Cards exposes per-record actions more visibly.
 7. To add a known link without running discovery again, paste it into **Quick add URL** and submit it. Duplicate URLs remain a single registry record.
-8. Open a recordâ€™s **Details** view to inspect metadata and provenance, edit notes or tags, refresh metadata, or send the source to Notebook.
+8. Open a record’s **Details** view to inspect metadata and provenance, edit notes or tags, refresh metadata, or send the source to Notebook.
 9. To preserve the page, choose its Text capture or PDF capture action. Text prioritises searchable content; PDF prioritises visual form.
 10. In the destination picker, select the File Manager folder and confirm the capture. Wait for success before assuming that a durable copy exists.
 11. Reopen the record or refresh the registry to confirm the capture status and stored-file link.
@@ -362,7 +362,7 @@ Saved URLs is the source registry used after discovery. It supports purpose-scop
 
 1. Select the Research Purpose `Delhi C&D dust enforcement, 2023-2025` so unrelated registry records are excluded from this review.
 2. Create the Saved URL collection `Delhi C&D enforcement`. Add the verified example records to it without removing their Research Purpose membership; a collection and a purpose serve different roles.
-3. Open each recordâ€™s **Details** view and confirm title, source domain, publication or issue date when available, and original URL.
+3. Open each record’s **Details** view and confirm title, source domain, publication or issue date when available, and original URL.
 4. Add the core tags `construction-dust`, `Delhi`, and `enforcement`, plus the issuing agency name such as `CAQM` or `DPCC`. Add one concise note identifying the evidence role: `direction`, `implementation/enforcement`, or `reporting`.
 5. Capture the CAQM direction or order as PDF into `Delhi C&D enforcement/Official directions`. Use PDF because pagination, the issuing authority, and the original order format matter.
 6. Capture official explanatory or enforcement web pages as Text when searchable page content is the important evidence. Capture attached formal reports as PDF into `Delhi C&D enforcement/Implementation reports`.
@@ -383,7 +383,7 @@ Saved URLs is the source registry used after discovery. It supports purpose-scop
 - **Text capture is disabled for a PDF URL:** use PDF capture for a source already identified as PDF.
 - **Capture is blocked:** `robots.txt`, SSRF protection, authentication, CAPTCHA, unsupported content, or access controls may prevent server-side capture. Do not bypass access controls; use an authorised copy or alternate public representation.
 - **PDF capture times out:** complex pages, large documents, or slow rendering can exceed the capture timeout. Retry once, then inspect backend logs or preserve an authorised copy manually.
-- **Capture reports success but no file is visible:** confirm the destination folder selected in the picker, refresh File Manager, and inspect the saved recordâ€™s capture details.
+- **Capture reports success but no file is visible:** confirm the destination folder selected in the picker, refresh File Manager, and inspect the saved record’s capture details.
 - **AI tagging remains pending or fails:** confirm that the AI tagger and its queue/Redis dependency are healthy. The deterministic tagger does not require an OpenAI key; only its optional LLM enhancement does.
 - **Bulk actions affect fewer records than expected:** actions operate on the selected or currently loaded records described by the control. Recheck selection and filters before retrying.
 
@@ -434,9 +434,9 @@ The Evidence Inspector shows origin, capture method, SHA-256 state, revisions, A
 1. In the normal Drive view, create the folder `Delhi C&D enforcement` if the capture destination picker did not already create it.
 2. Inside it, confirm or create the subfolders `Official directions` and `Implementation reports`. Move only the corresponding example files into those locations.
 3. If a capture was blocked, open the correct subfolder, upload the authorised copy, and give it a descriptive name containing the issuing agency, document identifier or subject, and year. Do not imply that the uploaded file was captured automatically.
-4. Open each fileâ€™s **Properties** or **Evidence Inspector**. Check the source URL or recorded origin, capture method, date and title metadata, integrity or SHA-256 state, AI tags, and Notebook readiness.
+4. Open each file’s **Properties** or **Evidence Inspector**. Check the source URL or recorded origin, capture method, date and title metadata, integrity or SHA-256 state, AI tags, and Notebook readiness.
 5. Correct organisation or descriptive metadata using only the controls available. Do not alter source content to make records agree with one another.
-6. Search the folder for `construction` and filter by agency or capture type to confirm that the exampleâ€™s direction and implementation/reporting files are discoverable.
+6. Search the folder for `construction` and filter by agency or capture type to confirm that the example’s direction and implementation/reporting files are discoverable.
 7. Wait for the files required for analysis to become Notebook-ready. If a source fails, open diagnostics and follow the existing extraction, OCR, ingestion, or indexing guidance before continuing.
 8. Open Notebook and add files from these folders, or use an available file-level Notebook action.
 
@@ -453,7 +453,7 @@ The Evidence Inspector shows origin, capture method, SHA-256 state, revisions, A
 - **Preview fails but download works:** very large files and browser-unsupported formats may not render inline. Download the authorised file and open it with an appropriate local application.
 - **Integrity shows pending or unavailable:** hashing or metadata processing may still be running or may have failed. Refresh the item, inspect Properties/Evidence Inspector, and review service logs if it does not progress.
 - **AI tags are pending or failed:** verify AI-tagger and queue health, then use the available retry action. An AI-tagger OpenAI key is optional and is not required for deterministic tagging.
-- **A Notebook source is not ready:** open the fileâ€™s Evidence Inspector or Notebook diagnostics to distinguish extraction, OCR, ingestion, and embedding failures.
+- **A Notebook source is not ready:** open the file’s Evidence Inspector or Notebook diagnostics to distinguish extraction, OCR, ingestion, and embedding failures.
 - **Move, paste, or folder actions are disabled:** some operations are blocked in Trash, Favourites, archive/ZIP browsing, or for incompatible mixed selections. Return to Drive and reduce the selection.
 - **An item was moved to Trash accidentally:** use the immediate **Undo** action when visible, or open Trash and choose **Restore**. Do not permanently delete evidence unless authorised.
 
@@ -501,14 +501,14 @@ If no included source is Ready, grounded chat cannot use it. A citation is an ev
 
 1. Create the Notebook `Delhi C&D enforcement review`.
 2. Add the formal direction and the implementation/reporting files from `Delhi C&D enforcement`. Add the corresponding Saved URL only when it contributes searchable content not already represented by the captured file.
-3. Wait until every essential source is **Ready**, then mark those sources **Included**. Exclude duplicates, unrelated results, and sources outside the exampleâ€™s date or geographic scope.
+3. Wait until every essential source is **Ready**, then mark those sources **Included**. Exclude duplicates, unrelated results, and sources outside the example’s date or geographic scope.
 4. Choose **Evidence** mode and ask:
 
    > Using only the included sources, build a dated table for Delhi from January 2023 through December 2025 with these columns: date; issuing or reporting agency; action or obligation; legal or administrative authority; responsible implementing body; evidence of implementation; and citation. Separate mandatory directions from advisory or reported actions. After the table, list contradictions and evidence gaps. Do not infer implementation merely because a direction was issued.
 
 5. Open every citation supporting a material table row. Confirm that the passage supports the date, actor, action, authority, and implementation statement attributed to it.
 6. Remove or mark as unverified any row whose citation is absent, irrelevant, or weaker than the claim. If evidence is missing, add a better official source rather than repeatedly prompting for a stronger conclusion.
-7. Copy the verified table, source substitutions, contradictions, and unresolved gaps into **Notes**. Label the note `Verified through [todayâ€™s date]` using the actual review date.
+7. Copy the verified table, source substitutions, contradictions, and unresolved gaps into **Notes**. Label the note `Verified through [today’s date]` using the actual review date.
 8. Preserve a specific distinction in Notes between `direction issued` and `implementation evidenced`; the former does not prove the latter.
 
 **Expected state:** The Notebook contains a source-bounded table with openable citations and a durable note that separates verified findings from unresolved gaps. The actual findings depend on the selected evidence and are not supplied by this walkthrough.
@@ -569,10 +569,10 @@ Governance Workspace retrieves official-source evidence before generating an ans
 
 3. Set **Question type** to **Compliance/follow-up**, **Time window** to **Any period**, **Issue hint** to `Construction`, and **Location hint** to `Delhi NCR`. The exact 2023â€“2025 limit remains in the question because the selector does not provide that custom range.
 4. Choose **Case tracing** and set **Source scope** to **Mixed anchors** so the investigation can use both captured files and saved official URLs.
-5. Select **Find evidence**. Review the ranked set and include only records that address an assigned duty, implementation action, enforcement result, or reporting gap within the questionâ€™s scope.
+5. Select **Find evidence**. Review the ranked set and include only records that address an assigned duty, implementation action, enforcement result, or reporting gap within the question’s scope.
 6. Inspect coverage before generation. If an agency, time period, or evidence role is missing, refine retrieval or return to the archive; do not interpret retrieval silence as proof of non-compliance.
 7. Select **Generate answer from retrieved evidence** only after the included set is suitable.
-8. Open every citation supporting a claimed mandate, agency relationship, enforcement event, or gap. Compare those claims with the Notebookâ€™s verified table and record genuine conflicts rather than forcing alignment.
+8. Open every citation supporting a claimed mandate, agency relationship, enforcement event, or gap. Compare those claims with the Notebook’s verified table and record genuine conflicts rather than forcing alignment.
 9. Reopen the investigation through **Investigation Library** and confirm that its question, source scope, retrieved evidence, citations, and follow-up gaps persist.
 
 **Expected state:** Governance Workspace shows a saved, evidence-first investigation connecting the pinned direction to retrieved implementation or reporting records. Any agency map, timeline, contradiction, or gap panel is an evidence-dependent output, not a guaranteed conclusion.

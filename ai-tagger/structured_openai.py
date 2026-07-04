@@ -26,6 +26,7 @@ STRUCTURED_LLM_MAX_CHARS = int(os.getenv("STRUCTURED_LLM_MAX_CHARS", "14000"))
 STRUCTURED_LLM_MAX_UNITS = int(os.getenv("STRUCTURED_LLM_MAX_UNITS", "12"))
 
 _DOC_TYPES = [
+    "news_article",
     "direction",
     "order",
     "office_memorandum",
@@ -37,6 +38,8 @@ _DOC_TYPES = [
 _SECTORS = [
     "transport",
     "construction_demolition",
+    "road_dust",
+    "municipal_waste",
     "waste_burning",
     "biomass_burning",
     "industry_power",
@@ -50,6 +53,7 @@ _AGENCIES = [
     "spcb",
     "imd",
     "iit",
+    "mcd",
 ]
 
 _GEOGRAPHY = [
@@ -525,6 +529,12 @@ Rules:
 - If a field is unknown, return null (for single values) or [] (for arrays).
 - Evidence should be a short, specific snippet from the document text.
 - Prefer precise labels that are actually supported by evidence in the text.
+- Closed labels (agency, programme, pollutant, geography, sector, and document
+  type) must be explicitly named by the text; semantic association alone is
+  insufficient. For example, "Pollution Under Control" is not CPCB, "national
+  capital" is not NCR, and generic pollution does not imply PM2.5 or NO2.
+- Classify a news report as news_article, not minutes, even when it describes a
+  meeting, hearing, or legislative session.
 """
 
 _GOVERNANCE_SYSTEM_PROMPT = """You extract governance intelligence from the provided document into a strict JSON schema.

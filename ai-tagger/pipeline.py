@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover
 
 
 log = logging.getLogger("pipeline")
-TAGGER_VERSION = os.getenv("TAGGER_VERSION", "0.5.0")
+TAGGER_VERSION = os.getenv("TAGGER_VERSION") or "0.6.0"
 
 # Optional advanced candidate generator (KeyBERT/YAKE/spaCy).
 try:
@@ -142,7 +142,7 @@ where whether which while who whom whose why will with within without won would 
 _ACRONYM_RE = re.compile(r"\b[A-Z]{2,10}\b")
 _ACRONYM_WITH_WORD_RE = re.compile(r"\b([A-Z]{2,10})\s+([A-Z][a-z]{2,})\b")
 _ALPHANUM_RE = re.compile(r"\b[A-Z]{1,6}\d+(?:\.\d+)?\b")
-_TITLE_SEQ_RE = re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b")
+_TITLE_SEQ_RE = re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4})\b")
 _GENERIC_TAG_WORDS = {
     "dated",
     "letter",
@@ -150,6 +150,9 @@ _GENERIC_TAG_WORDS = {
     "office",
     "order",
     "page",
+    "said",
+    "says",
+    "stated",
     "subject",
     "sub",
     "the",
@@ -158,6 +161,13 @@ _ALLOWED_GENERIC_PHRASES = {
     "dc office",
     "bsnl office",
     "grap stage",
+}
+_BOILERPLATE_TAG_PHRASES = {
+    "photo credit",
+    "image credit",
+    "file photo",
+    "url",
+    "ist",
 }
 _KNOWN_SHORT_TAG_WORDS = {
     "aqi",
@@ -184,6 +194,8 @@ def _candidate_quality_reason(value: Any) -> Optional[str]:
         return "empty"
 
     norm = text.casefold()
+    if norm in _BOILERPLATE_TAG_PHRASES:
+        return "source_boilerplate"
     words = re.findall(r"[a-z0-9]+", norm)
     if not words:
         return "no_words"
@@ -210,6 +222,20 @@ def _candidate_quality_reason(value: Any) -> Optional[str]:
 
 def _is_good_tag_candidate(value: Any) -> bool:
     return _candidate_quality_reason(value) is None
+
+
+def _is_redundant_subphrase(value: str, existing: Sequence[str]) -> bool:
+    words = re.findall(r"[a-z0-9]+", (value or "").casefold())
+    if len(words) < 2:
+        return False
+    phrase = " ".join(words)
+    for prior in existing:
+        prior_words = re.findall(r"[a-z0-9]+", (prior or "").casefold())
+        if len(prior_words) <= len(words):
+            continue
+        if re.search(rf"\b{re.escape(phrase)}\b", " ".join(prior_words)):
+            return True
+    return False
 
 
 def _extract_signal_terms(text: str, limit: int = 60000) -> List[str]:
@@ -522,6 +548,25 @@ def _clean_confidence(value: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return max(0.0, min(1.0, n))
+
+
+def _validate_structured_safe(
+    structured: Any,
+    content: str,
+    file_name: Optional[str],
+) -> Any:
+    """Evidence-gate closed taxonomy output, including LLM suggestions."""
+    if not isinstance(structured, dict):
+        return structured
+    try:
+        try:
+            from policy_taxonomy import validate_structured  # type: ignore
+        except ImportError:
+            from .policy_taxonomy import validate_structured  # type: ignore
+        return validate_structured(structured, content, file_name=file_name)
+    except Exception as exc:
+        log.warning("structured validation failed; using deterministic fallback: %s", exc)
+        return None
 
 
 def _safe_int(value: Any) -> Optional[int]:
@@ -881,6 +926,12 @@ def _classify_structured_combined(
     allow_llm: bool,
 ):
     rule_structured = _classify_structured_safe(content, file_name, tags) or None
+    if rule_structured:
+        rule_structured = _validate_structured_safe(
+            rule_structured,
+            content,
+            file_name,
+        )
 
     llm_structured = None
     structured_llm_used = False
@@ -896,6 +947,11 @@ def _classify_structured_combined(
                 grounding_units=grounding_units,
             )
             if llm_structured:
+                llm_structured = _validate_structured_safe(
+                    llm_structured,
+                    content,
+                    file_name,
+                )
                 structured_llm_used = True
                 structured_llm_model = get_structured_model()
         except Exception as e:
@@ -906,6 +962,7 @@ def _classify_structured_combined(
         if llm_structured
         else rule_structured
     )
+    structured = _validate_structured_safe(structured, content, file_name)
     structured = _ground_structured(structured, grounding_units)
 
     governance = None
@@ -949,10 +1006,13 @@ def _tag_display(value: Any) -> str:
         "spcb": "SPCB",
         "imd": "IMD",
         "iit": "IIT",
+        "mcd": "MCD",
         "ncr": "NCR",
         "delhi": "Delhi",
         "uttar_pradesh": "Uttar Pradesh",
         "construction_demolition": "C&D",
+        "road_dust": "Road dust / cleaning",
+        "municipal_waste": "Municipal waste",
         "waste_burning": "Waste burning",
         "biomass_burning": "Biomass burning",
         "industry_power": "Industry & power",
@@ -1261,6 +1321,7 @@ _SMART_BAD_TAGS = {
 }
 
 _SMART_DOC_TYPE_DISPLAY = {
+    "news_article": "News Article",
     "direction": "Government Direction",
     "order": "Government Order",
     "office_memorandum": "Office Memorandum",
@@ -2451,7 +2512,7 @@ def extract_and_tag_sync(
     combined: List[str] = []
     for seq in (signals, adv, phrases, unigrams):
         for s in seq:
-            if s and s not in combined:
+            if s and s not in combined and not _is_redundant_subphrase(s, combined):
                 combined.append(s)
 
     tags = apply_taxonomy(combined)[:topk]

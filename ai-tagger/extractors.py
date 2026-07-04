@@ -170,6 +170,14 @@ def _cleanup_extracted_text(text: str) -> str:
         line = (raw or "").strip()
         if not line:
             continue
+        # Drop corrupted decorative separators such as repeated mojibake em
+        # dashes while retaining real non-Latin document text.
+        if (
+            len(line) > 12
+            and len(set(line)) <= 12
+            and not re.search(r"[A-Za-z0-9]", line)
+        ):
+            continue
         if len(line) <= 2:
             continue
         if _NOISE_LINE_RE.search(line):

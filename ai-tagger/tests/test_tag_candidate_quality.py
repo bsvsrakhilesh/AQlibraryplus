@@ -13,11 +13,21 @@ from pipeline import (  # noqa: E402
     _extract_phrases,
     _extract_signal_terms,
     _is_good_tag_candidate,
+    _is_redundant_subphrase,
     _tokenize,
 )
 
 
 class TagCandidateQualityTests(unittest.TestCase):
+    def test_drops_partial_names_when_full_name_already_exists(self) -> None:
+        existing = ["Environment Minister Manjinder Singh Sirsa"]
+        self.assertTrue(_is_redundant_subphrase("Manjinder Singh", existing))
+        self.assertFalse(_is_redundant_subphrase("MCD", existing))
+
+    def test_rejects_source_credit_boilerplate(self) -> None:
+        for value in ("Photo Credit", "Image Credit", "File Photo", "URL", "IST"):
+            self.assertFalse(_is_good_tag_candidate(value), value)
+
     def test_rejects_short_noisy_ocr_phrases_from_logs(self) -> None:
         for value in ("ncr the", "cr the", "order sub", "caqm dated", "tci tur"):
             self.assertFalse(_is_good_tag_candidate(value), value)

@@ -150,7 +150,10 @@ function cleanLocator(value: unknown): Record<string, any> | null {
 
 function displayFromValue(value: string) {
   const map: Record<string, string> = {
+    news_article: "News article",
     construction_demolition: "C&D",
+    road_dust: "Road dust / cleaning",
+    municipal_waste: "Municipal waste",
     waste_burning: "Waste burning",
     biomass_burning: "Biomass burning",
     industry_power: "Industry & power",
