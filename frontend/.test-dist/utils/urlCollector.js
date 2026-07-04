@@ -4,6 +4,9 @@ exports.toYYYY = toYYYY;
 exports.normalizeCollectorWebsite = normalizeCollectorWebsite;
 exports.normalizeCollectorKeywords = normalizeCollectorKeywords;
 exports.buildCollectorSearchQuery = buildCollectorSearchQuery;
+exports.resolveCollectorSearchTargets = resolveCollectorSearchTargets;
+exports.resolveWebsiteSuggestions = resolveWebsiteSuggestions;
+exports.collectWebsiteSuggestionsFromSearchResults = collectWebsiteSuggestionsFromSearchResults;
 exports.collectorResultDedupKey = collectorResultDedupKey;
 exports.mergeCollectorSearchResults = mergeCollectorSearchResults;
 exports.formatAppliedCollectorSearchPlan = formatAppliedCollectorSearchPlan;
@@ -83,6 +86,101 @@ function normalizeCollectorKeywords(raw) {
 }
 function buildCollectorSearchQuery(kws) {
     return (kws || "").trim();
+}
+function resolveCollectorSearchTargets(input) {
+    const limit = typeof input.limit === "number" && Number.isFinite(input.limit)
+        ? Math.max(1, Math.floor(input.limit))
+        : 6;
+    const targets = [];
+    const seen = new Set();
+    const push = (site, label, confidence) => {
+        const normalized = normalizeCollectorWebsite(String(site ?? ""));
+        if (!normalized || seen.has(normalized))
+            return;
+        seen.add(normalized);
+        targets.push({
+            site: normalized,
+            label: String(label ?? normalized).trim() || normalized,
+            confidence: Number.isFinite(confidence) ? Number(confidence) : 0,
+        });
+    };
+    const sources = Array.isArray(input.authoritySources)
+        ? input.authoritySources
+        : [];
+    if (input.site) {
+        const normalizedSite = normalizeCollectorWebsite(input.site);
+        const match = sources.find((source) => normalizeCollectorWebsite(source.domain) === normalizedSite);
+        push(normalizedSite, match?.label ?? normalizedSite, match?.confidence ?? 100);
+    }
+    for (const source of sources) {
+        push(source.domain, source.label, source.confidence ?? 0);
+        if (targets.length >= limit)
+            break;
+    }
+    return targets.slice(0, limit);
+}
+function resolveWebsiteSuggestions(input) {
+    const query = String(input.query ?? "").trim().toLowerCase();
+    const limit = typeof input.limit === "number" && Number.isFinite(input.limit)
+        ? Math.max(1, Math.floor(input.limit))
+        : 8;
+    const sources = Array.isArray(input.authoritySources)
+        ? input.authoritySources
+        : [];
+    const matches = [];
+    const seen = new Set();
+    const push = (domain, label, confidence, source) => {
+        const normalized = normalizeCollectorWebsite(String(domain ?? ""));
+        if (!normalized || seen.has(normalized))
+            return;
+        seen.add(normalized);
+        matches.push({
+            domain: normalized,
+            label: String(label ?? normalized).trim() || normalized,
+            confidence: Number.isFinite(confidence) ? Number(confidence) : 0,
+            source,
+        });
+    };
+    const tokens = query
+        .split(/[\s,./_-]+/g)
+        .map((token) => token.trim())
+        .filter(Boolean);
+    for (const source of sources) {
+        const haystack = `${source.label} ${source.domain}`.toLowerCase();
+        if (!query ||
+            tokens.some((token) => token.length >= 2 && haystack.includes(token))) {
+            push(source.domain, source.label, source.confidence ?? 0, "authority");
+        }
+    }
+    return matches.slice(0, limit);
+}
+function collectWebsiteSuggestionsFromSearchResults(rows, limit = 6) {
+    const seen = new Set();
+    const suggestions = [];
+    const push = (domain, label, confidence) => {
+        const normalized = normalizeCollectorWebsite(domain);
+        if (!normalized || seen.has(normalized))
+            return;
+        seen.add(normalized);
+        suggestions.push({
+            domain: normalized,
+            label: label.trim() || normalized,
+            confidence,
+            source: "search",
+        });
+    };
+    for (let index = 0; index < rows.length && suggestions.length < limit; index += 1) {
+        const row = rows[index];
+        let domain = "";
+        try {
+            domain = new URL(row.url).hostname.replace(/^www\./i, "");
+        }
+        catch {
+            domain = normalizeCollectorWebsite(row.url);
+        }
+        push(domain, row.title || domain, Math.max(10, 100 - index * 10));
+    }
+    return suggestions.slice(0, limit);
 }
 function collectorResultDedupKey(url) {
     const canonical = (0, urlCanonical_1.canonicalizeUrl)(url);

@@ -821,7 +821,7 @@ function Footer() {
             </div>
             <div>
               <strong>Contact</strong>
-              <a href="mailto:hello@aqlibraryplus.local">hello@aqlibraryplus.local</a>
+              <a href="mailto:naaq.iitd@gmail.com">naaq.iitd@gmail.com</a>
               <span>For research teams, policy analysts, and public-record review.</span>
             </div>
           </nav>
