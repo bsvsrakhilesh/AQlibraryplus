@@ -2,14 +2,9 @@
 
 [![CI](https://github.com/bsvsrakhilesh/AQlibraryplus/actions/workflows/ci.yml/badge.svg)](https://github.com/bsvsrakhilesh/AQlibraryplus/actions/workflows/ci.yml)
 
-AQlibrary+ is a research platform for collecting, organizing, preserving, and analyzing web-based and personal documents used in governance and policy work. It helps users build searchable, citation-backed evidence collections for reviewing past decisions, preparing new analyses, and preserving institutional knowledge.
+AQlibrary+ is an evidence-management and research platform for collecting, preserving, organizing, and analyzing web content and personal documents used in governance and policy work. It helps users collect, preserve, organize, and analyze web pages, PDFs, and text documents in a structured, searchable library. It enabling users to ask questions then its grounded AI workflows generate citation-backed answers, enabling users to verify evidence, review past decisions, develop new analyses, and preserve institutional knowledge.
 
-The intended AQlibrary+ workflow uses **Google Programmable Search / Custom
-Search JSON API** for web discovery and **OpenAI** for query assistance,
-embeddings, enhanced tag reranking, Notebook answers, and Governance Workspace
-analysis. Configure both integrations before evaluating the complete product.
-The AI tagger itself does not require OpenAI: it has a deterministic tagging,
-taxonomy, and structured-intelligence path, with optional LLM enhancement.
+The intended AQlibrary+ workflow uses **Google Programmable Search / Custom Search JSON API** for web discovery and **OpenAI** for query assistance,embeddings, enhanced tag reranking,Notebook answers, and Governance Workspace analysis. Configure both integrations before evaluating the complete product. The AI tagger which is made for strcutured metadata itself does not require OpenAI: it has a deterministic tagging,taxonomy, and structured-intelligence path, with optional LLM enhancement.
 
 For detailed page-by-page usage instructions, see the [User Manual](docs/AQlibraryPlus_User_Manual.md).
 
