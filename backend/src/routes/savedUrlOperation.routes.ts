@@ -4,6 +4,7 @@ import { validate } from "../middlewares/validate";
 import { ownerIdForRequest } from "../utils/requestOwner";
 import {
   cancelSavedUrlOperation,
+  clearSavedUrlOperations,
   createSavedUrlOperation,
   getSavedUrlOperation,
   listSavedUrlOperations,
@@ -34,6 +35,10 @@ const listQuery = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
 });
 
+const clearQuery = z.object({
+  scope: z.enum(["done", "history"]),
+});
+
 r.get(
   "/saved-url-operations",
   validate({ query: listQuery }),
@@ -45,6 +50,21 @@ r.get(
         Number(req.query.limit ?? 20),
       );
       res.json({ items: rows });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+r.delete(
+  "/saved-url-operations",
+  validate({ query: clearQuery }),
+  async (req, res, next) => {
+    try {
+      const ownerId = ownerIdForRequest(req);
+      const scope = req.query.scope === "done" ? "done" : "history";
+      const result = await clearSavedUrlOperations(ownerId, scope);
+      res.json(result);
     } catch (e) {
       next(e);
     }

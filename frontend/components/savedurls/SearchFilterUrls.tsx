@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { X } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useDebounce } from "../../hooks/useDebounce";
 
 export interface UrlFilterState {
@@ -22,7 +22,6 @@ interface SearchFilterUrlsProps {
   availableTags: string[];
   initial?: Partial<UrlFilterState>;
   onChange: (state: UrlFilterState) => void;
-  isLoading?: boolean;
 }
 
 const buildFilterState = (
@@ -136,7 +135,6 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   availableTags,
   initial = {},
   onChange,
-  isLoading = false,
 }) => {
   const [state, setState] = useState<UrlFilterState>(() =>
     buildFilterState(initial),
@@ -344,11 +342,13 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
     <div className="saved-urls-filter space-y-4 min-w-0" data-search-filter>
       {/* Search row */}
       <div className="saved-urls-search-workbench">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-          <div className="min-w-0">
+        <div className="saved-urls-filter-bar">
+          <div className="saved-urls-search-field min-w-0">
             <label className="sr-only" htmlFor="saved-urls-query">
               Search saved URLs
             </label>
+
+            <Search className="saved-urls-search-icon" aria-hidden="true" />
 
             <input
               id="saved-urls-query"
@@ -366,61 +366,49 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
                   applyFiltersNow(state);
                 }
               }}
-              className="saved-urls-search-input input w-full min-w-0 rounded-2xl px-4 py-3 text-sm md:text-base shadow-sm focus:ring-2 focus:ring-brand-primary/40"
+              className="saved-urls-search-input input w-full min-w-0 rounded-2xl py-3 pl-11 pr-4 text-sm md:text-base focus:ring-2 focus:ring-brand-primary/40"
             />
-
-            <p className="mt-2 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
-              Searches title, URL, domain, description, notes, and exact user
-              tags. Filters update automatically; press Enter to apply now.
-            </p>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2.5 xl:justify-end">
-            <span className="rounded-full border border-black/10 dark:border-white/10 px-3 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
-              {activeFilterCount === 0
-                ? "No active filters"
-                : `${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"}`}
-            </span>
-
+          <div className="saved-urls-filter-actions">
             <button
               type="button"
               onClick={() => setAdvancedOpen((open) => !open)}
               className={[
-                "rounded-xl border px-4 py-3 text-sm font-medium transition hover:bg-neutral-50 dark:hover:bg-neutral-800 whitespace-nowrap",
+                "saved-urls-filter-button",
                 advancedOpen || advancedFilterCount > 0
-                  ? "border-brand-primary/40 bg-brand-primary/10 text-brand-primary"
-                  : "border-black/10 dark:border-white/10",
+                  ? "saved-urls-filter-button--active"
+                  : "",
               ].join(" ")}
               aria-expanded={advancedOpen}
               aria-controls="saved-urls-advanced-filters"
               title="Show or hide advanced filters"
             >
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
               {advancedOpen ? "Hide filters" : "Advanced filters"}
-              {advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ""}
+              {advancedFilterCount > 0 && (
+                <span className="saved-urls-filter-count">
+                  {advancedFilterCount}
+                </span>
+              )}
             </button>
 
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={() => applyFiltersNow(state)}
-              className="btn-primary rounded-xl px-5 py-3 disabled:opacity-60 whitespace-nowrap"
-              aria-label="Apply filters now"
-              title="Apply filters now"
-            >
-              {isLoading ? "Applying…" : "Apply now"}
-            </button>
-
-            <button
-              type="button"
-              disabled={activeFilterCount === 0}
-              onClick={clearAllFilters}
-              className="rounded-xl border px-5 py-3 text-sm font-medium transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-neutral-800 whitespace-nowrap"
-              aria-label="Clear all search filters"
-              title="Clear all search filters"
-            >
-              Reset filters
-            </button>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="saved-urls-filter-reset"
+                aria-label="Clear all search filters"
+                title="Clear all search filters"
+              >
+                Reset
+              </button>
+            )}
           </div>
+        </div>
+
+        <div className="saved-urls-search-meta">
+          Search titles, URLs, domains, notes, descriptions, and exact tags.
         </div>
       </div>
 

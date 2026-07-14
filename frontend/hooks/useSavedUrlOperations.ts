@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cancelSavedUrlOperation,
+  clearSavedUrlOperations,
   createSavedUrlOperation,
   fetchSavedUrlOperations,
   retryFailedSavedUrlOperation,
@@ -54,11 +55,22 @@ export function useSavedUrlOperationsQuery(limit = 20) {
     },
   });
 
+  const clearOperations = useMutation({
+    mutationFn: (scope: "done" | "history") =>
+      clearSavedUrlOperations(scope),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["saved-url-operations"],
+      });
+    },
+  });
+
   return {
     ...query,
     createOperation,
     cancelOperation,
     retryFailedOperation,
+    clearOperations,
     hasLiveOperation: hasLiveOperation(query.data?.items),
   };
 }

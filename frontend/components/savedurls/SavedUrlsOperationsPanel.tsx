@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   RotateCcw,
+  Trash2,
   X,
 } from "lucide-react";
 import type {
@@ -16,6 +17,9 @@ type Props = {
   loading?: boolean;
   onCancel: (id: string) => void;
   onRetryFailed: (id: string) => void;
+  onClearDone: () => void;
+  onClearHistory: () => void;
+  clearing?: "done" | "history" | null;
   onDismiss?: () => void;
 };
 
@@ -84,12 +88,19 @@ const SavedUrlsOperationsPanel: React.FC<Props> = ({
   loading = false,
   onCancel,
   onRetryFailed,
+  onClearDone,
+  onClearHistory,
+  clearing = null,
   onDismiss,
 }) => {
   if (!operations.length && !loading) return null;
 
   const active = operations.filter((op) => isLive(op.status)).length;
   const failed = operations.filter((op) => op.status === "failed").length;
+  const done = operations.filter(
+    (op) => op.status === "success" || op.status === "canceled",
+  ).length;
+  const history = operations.length - active;
 
   return (
     <section
@@ -130,6 +141,25 @@ const SavedUrlsOperationsPanel: React.FC<Props> = ({
           <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
             {failed} failed
           </span>
+          <button
+            type="button"
+            onClick={onClearDone}
+            disabled={done === 0 || clearing !== null}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-black/10 px-2.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/10"
+            title="Clear completed and canceled operations"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            {clearing === "done" ? "Clearing..." : "Clear done"}
+          </button>
+          <button
+            type="button"
+            onClick={onClearHistory}
+            disabled={history === 0 || clearing !== null}
+            className="h-8 rounded-full border border-black/10 px-2.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/10"
+            title="Clear all finished operation history"
+          >
+            {clearing === "history" ? "Clearing..." : "Clear history"}
+          </button>
         </div>
       </div>
 

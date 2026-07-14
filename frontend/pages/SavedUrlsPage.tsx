@@ -71,6 +71,14 @@ import TextEntryModal from "../components/common/TextEntryModal";
 import { useToast } from "../components/providers/Toast";
 import { useConfirm } from "../components/providers/Confirm";
 import { openGovernanceWorkspace } from "../lib/governanceWorkspace";
+import {
+  ArrowDown,
+  ArrowUp,
+  LayoutGrid,
+  Link2,
+  ListTree,
+  Plus,
+} from "lucide-react";
 
 type SortKey = "createdAt" | "updatedAt" | "title";
 type SortOrder = "asc" | "desc";
@@ -953,6 +961,8 @@ const SavedUrlsPage: React.FC = () => {
 
   // Poll saved URLs briefly so newly-generated AI tags show up automatically
   const tagPollRef = useRef<number | null>(null);
+  const quickAddInputRef = useRef<HTMLInputElement>(null);
+  const [quickAddValue, setQuickAddValue] = useState("");
 
   const rowsRequestSeqRef = useRef(0);
   const facetRequestSeqRef = useRef(0);
@@ -3304,6 +3314,39 @@ const SavedUrlsPage: React.FC = () => {
           operations={savedUrlOperations.data?.items ?? []}
           loading={savedUrlOperations.isLoading}
           onDismiss={() => setOperationsPanelHidden(true)}
+          clearing={
+            savedUrlOperations.clearOperations.isPending
+              ? savedUrlOperations.clearOperations.variables
+              : null
+          }
+          onClearDone={() => {
+            savedUrlOperations.clearOperations.mutate("done", {
+              onSuccess: ({ deletedCount }) =>
+                notify({
+                  text: `Cleared ${deletedCount} completed operation${deletedCount === 1 ? "" : "s"}.`,
+                  kind: "success",
+                }),
+              onError: (e: any) =>
+                notify({
+                  text: e?.message ?? "Could not clear completed operations.",
+                  kind: "error",
+                }),
+            });
+          }}
+          onClearHistory={() => {
+            savedUrlOperations.clearOperations.mutate("history", {
+              onSuccess: ({ deletedCount }) =>
+                notify({
+                  text: `Cleared ${deletedCount} finished operation${deletedCount === 1 ? "" : "s"}.`,
+                  kind: "success",
+                }),
+              onError: (e: any) =>
+                notify({
+                  text: e?.message ?? "Could not clear operation history.",
+                  kind: "error",
+                }),
+            });
+          }}
           onCancel={(id) => {
             savedUrlOperations.cancelOperation.mutate(id, {
               onSuccess: () => {
@@ -3487,27 +3530,26 @@ const SavedUrlsPage: React.FC = () => {
       <section className="min-w-0">
         <div className="saved-urls-grid-item min-w-0">
           <div className="saved-urls-panel saved-urls-main-panel p-4 sm:p-5 lg:p-6 space-y-5 md:space-y-6 mb-10 min-w-0">
-            {/* Toolbar: 2-row responsive grid to avoid collisions */}
             <header
-              className="saved-urls-toolbar relative grid grid-cols-12 gap-4 rounded-2xl p-4 md:p-5 min-w-0"
+              className="saved-urls-toolbar relative min-w-0"
               role="toolbar"
               aria-label="Saved URLs controls"
             >
-              {/* Row 1: Search (full width) */}
-              <div className="col-span-12">
+              <div className="saved-urls-toolbar-search">
                 <SearchFilterUrls
                   availableDomains={availableDomains}
                   availableTags={availableTags}
                   initial={filter}
                   onChange={setFilter}
-                  isLoading={loading}
                 />
               </div>
 
-              {/* Row 2: ALL SELECTS IN ONE ROW */}
-              <div className="col-span-12">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between min-w-0">
-                  <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+              <div className="saved-urls-toolbar-controls">
+                <div className="saved-urls-toolbar-controls-main">
+                  <div className="saved-urls-toolbar-section-label">
+                    Organize and sort
+                  </div>
+                  <div className="saved-urls-toolbar-control-row">
                     <CollectionFilterMenu
                       collections={collections}
                       collectionCounts={collectionCounts}
@@ -3519,61 +3561,74 @@ const SavedUrlsPage: React.FC = () => {
                       onDeleteClick={deleteSelectedCollection}
                     />
 
-                    {/* Saved year */}
                     <label className="sr-only" htmlFor="year-filter">
                       Filter by saved year
                     </label>
                     <select
                       id="year-filter"
-                      className="input-pill w-auto shrink-0 min-w-44 text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      className="saved-urls-toolbar-select saved-urls-toolbar-select--year"
                       value={year}
-                      onChange={(e) => setYear(e.target.value)}
+                      onChange={(event) => setYear(event.target.value)}
                       title="Filter by saved year"
                       aria-label="Filter by saved year"
                     >
-                      {availableYears.map((y) => (
-                        <option key={y} value={y}>
-                          {y === "all" ? "All saved years" : y}
+                      {availableYears.map((value) => (
+                        <option key={value} value={value}>
+                          {value === "all" ? "All years" : value}
                         </option>
                       ))}
                     </select>
 
-                    {/* Sort key */}
                     <label className="sr-only" htmlFor="sortKey">
                       Sort key
                     </label>
                     <select
                       id="sortKey"
-                      className="input-pill w-auto shrink-0 min-w-44 text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                      className="saved-urls-toolbar-select saved-urls-toolbar-select--sort"
                       value={sortKey}
-                      onChange={(e) => setSortKey(e.target.value as SortKey)}
-                      title="Sort key"
-                    >
-                      <option value="createdAt">Sort: Saved date</option>
-                      <option value="updatedAt">Sort: Updated</option>
-                      <option value="title">Sort: Title</option>
-                    </select>
-
-                    {/* Sort order */}
-                    <label className="sr-only" htmlFor="sortOrder">
-                      Sort order
-                    </label>
-                    <select
-                      id="sortOrder"
-                      className="input-pill w-auto shrink-0 min-w-28 text-sm py-2.5 px-3 hover:cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
-                      value={sortOrder}
-                      onChange={(e) =>
-                        setSortOrder(e.target.value as SortOrder)
+                      onChange={(event) =>
+                        setSortKey(event.target.value as SortKey)
                       }
-                      title="Sort order"
+                      title="Sort saved URLs"
                     >
-                      <option value="desc">Desc</option>
-                      <option value="asc">Asc</option>
+                      <option value="createdAt">Saved date</option>
+                      <option value="updatedAt">Last updated</option>
+                      <option value="title">Title</option>
                     </select>
-                  </div>
 
+                    <button
+                      type="button"
+                      className="saved-urls-sort-direction"
+                      onClick={() =>
+                        setSortOrder((current) =>
+                          current === "desc" ? "asc" : "desc",
+                        )
+                      }
+                      title={`Change to ${sortOrder === "desc" ? "ascending" : "descending"} order`}
+                      aria-label={`Sort direction: ${sortOrder === "desc" ? "descending" : "ascending"}`}
+                    >
+                      {sortOrder === "desc" ? (
+                        <ArrowDown className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      <span>
+                        {sortKey === "title"
+                          ? sortOrder === "desc"
+                            ? "Z–A"
+                            : "A–Z"
+                          : sortOrder === "desc"
+                            ? "Newest"
+                            : "Oldest"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="saved-urls-toolbar-view">
+                  <div className="saved-urls-toolbar-section-label">View</div>
                   <div
-                    className="inline-flex self-start xl:self-auto items-center rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/70 p-1 shadow-sm"
+                    className="saved-urls-view-toggle"
                     aria-label="Saved URLs view mode"
                   >
                     {canUseRegistryView && (
@@ -3581,15 +3636,14 @@ const SavedUrlsPage: React.FC = () => {
                         type="button"
                         onClick={() => setViewMode("registry")}
                         className={[
-                          "rounded-lg px-3 py-2 text-sm font-medium transition",
-                          effectiveViewMode === "registry"
-                            ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                            : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white",
+                          "saved-urls-view-option",
+                          effectiveViewMode === "registry" ? "is-active" : "",
                         ].join(" ")}
                         title="Show dense source registry table"
                         aria-pressed={effectiveViewMode === "registry"}
                       >
-                        Registry
+                        <ListTree className="h-4 w-4" aria-hidden="true" />
+                        <span>Registry</span>
                       </button>
                     )}
 
@@ -3597,43 +3651,64 @@ const SavedUrlsPage: React.FC = () => {
                       type="button"
                       onClick={() => setViewMode("cards")}
                       className={[
-                        "rounded-lg px-3 py-2 text-sm font-medium transition",
-                        effectiveViewMode === "cards"
-                          ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                          : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white",
+                        "saved-urls-view-option",
+                        effectiveViewMode === "cards" ? "is-active" : "",
                       ].join(" ")}
                       title="Show card layout"
                       aria-pressed={effectiveViewMode === "cards"}
                     >
-                      Cards
+                      <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+                      <span>Cards</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Row 3: QUICK ADD (next row, full width) */}
-              <div className="col-span-12">
-                <label className="sr-only" htmlFor="quick-add-url">
-                  Quick add URL
-                </label>
-                <input
-                  id="quick-add-url"
-                  type="text"
-                  aria-label="Quick add URL"
-                  placeholder="Paste a URL and press Enter"
-                  className="input h-11 w-full md:w-[min(100%,30rem)] rounded-xl shadow-sm transition focus:ring-2 focus:ring-brand-primary/40 focus:outline-none"
-                  onKeyDown={async (e) => {
-                    if (e.key !== "Enter") return;
-
-                    e.preventDefault();
-                    const input = e.currentTarget;
-                    const ok = await handleQuickAdd(input.value);
-
-                    if (ok) {
-                      input.value = "";
-                    }
-                  }}
-                />
+              <div className="saved-urls-quick-add">
+                <div className="saved-urls-quick-add-copy">
+                  <span className="saved-urls-quick-add-icon" aria-hidden="true">
+                    <Link2 className="h-4 w-4" />
+                  </span>
+                  <span>
+                    <strong>Quick add</strong>
+                    <small>Save a source now; enrich and capture it later.</small>
+                  </span>
+                </div>
+                <div className="saved-urls-quick-add-form">
+                  <label className="sr-only" htmlFor="quick-add-url">
+                    Quick add URL
+                  </label>
+                  <input
+                    ref={quickAddInputRef}
+                    id="quick-add-url"
+                    type="url"
+                    inputMode="url"
+                    autoComplete="url"
+                    aria-label="Quick add URL"
+                    placeholder="https://example.org/source"
+                    className="input"
+                    value={quickAddValue}
+                    onChange={(event) => setQuickAddValue(event.target.value)}
+                    onKeyDown={async (event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      const ok = await handleQuickAdd(quickAddValue);
+                      if (ok) setQuickAddValue("");
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!quickAddValue.trim()}
+                    onClick={async () => {
+                      const ok = await handleQuickAdd(quickAddValue);
+                      if (ok) setQuickAddValue("");
+                    }}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Add URL
+                  </button>
+                </div>
               </div>
             </header>
 
@@ -3904,6 +3979,14 @@ const SavedUrlsPage: React.FC = () => {
               <SavedUrlsEmptyState
                 libraryTotalCount={libraryTotalCount}
                 isReviewQueueActive={isReviewQueueActive}
+                onAddUrl={() => {
+                  quickAddInputRef.current?.focus();
+                  quickAddInputRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
+                }}
+                onResetView={resetReviewView}
               />
             )}
 
@@ -3921,34 +4004,35 @@ const SavedUrlsPage: React.FC = () => {
             )}
 
             {/* Registry / Cards */}
-            {effectiveViewMode === "registry" ? (
-              <SourceRegistryTable
-                rows={sorted}
-                selection={selection}
-                allPageRowsSelected={allPageRowsSelected}
-                onToggleSelect={toggleSelect}
-                onSelectAllPage={selectAllPage}
-                onClearSelection={clearSelection}
-                onOpenDetail={(x) => setDetailId(x.id)}
-                onFavoriteToggle={handleFavoriteToggle}
-                onCapture={openCapturePicker}
-              />
-            ) : (
-              <StaggerList className="saved-urls-card-grid grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:gap-6">
-                {sorted.map((u) => (
-                  <StaggerItem key={u.id}>
-                    <SavedUrlCard
-                      url={u}
-                      selected={selection.has(u.id)}
-                      onSelect={() => toggleSelect(u.id)}
-                      onFavoriteToggle={handleFavoriteToggle}
-                      onOpenDetail={(x) => setDetailId(x.id)}
-                      onCapture={openCapturePicker}
-                    />
-                  </StaggerItem>
-                ))}
-              </StaggerList>
-            )}
+            {sorted.length > 0 &&
+              (effectiveViewMode === "registry" ? (
+                <SourceRegistryTable
+                  rows={sorted}
+                  selection={selection}
+                  allPageRowsSelected={allPageRowsSelected}
+                  onToggleSelect={toggleSelect}
+                  onSelectAllPage={selectAllPage}
+                  onClearSelection={clearSelection}
+                  onOpenDetail={(x) => setDetailId(x.id)}
+                  onFavoriteToggle={handleFavoriteToggle}
+                  onCapture={openCapturePicker}
+                />
+              ) : (
+                <StaggerList className="saved-urls-card-grid grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:gap-6">
+                  {sorted.map((u) => (
+                    <StaggerItem key={u.id}>
+                      <SavedUrlCard
+                        url={u}
+                        selected={selection.has(u.id)}
+                        onSelect={() => toggleSelect(u.id)}
+                        onFavoriteToggle={handleFavoriteToggle}
+                        onOpenDetail={(x) => setDetailId(x.id)}
+                        onCapture={openCapturePicker}
+                      />
+                    </StaggerItem>
+                  ))}
+                </StaggerList>
+              ))}
 
             {/* Modals */}
             <TextEntryModal

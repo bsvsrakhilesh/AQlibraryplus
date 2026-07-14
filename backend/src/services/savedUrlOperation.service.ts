@@ -108,6 +108,27 @@ export async function listSavedUrlOperations(ownerId: string, limit = 20) {
   return rows.map(serializeOperationRun);
 }
 
+export type SavedUrlOperationClearScope = "done" | "history";
+
+export async function clearSavedUrlOperations(
+  ownerId: string,
+  scope: SavedUrlOperationClearScope,
+) {
+  const statuses =
+    scope === "done"
+      ? ["success", "canceled"]
+      : ["success", "failed", "canceled"];
+
+  const result = await prisma.operationRun.deleteMany({
+    where: {
+      ownerId,
+      status: { in: statuses },
+    },
+  });
+
+  return { deletedCount: result.count };
+}
+
 export async function getSavedUrlOperation(ownerId: string, runId: string) {
   const run = await prisma.operationRun.findFirst({
     where: { id: runId, ownerId },

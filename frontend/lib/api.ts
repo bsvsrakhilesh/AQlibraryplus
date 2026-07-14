@@ -1118,6 +1118,15 @@ export async function fetchSavedUrlOperations(
   return res.data as { items: SavedUrlOperationRun[] };
 }
 
+export async function clearSavedUrlOperations(
+  scope: "done" | "history",
+): Promise<{ deletedCount: number }> {
+  const res = await api.delete("/api/saved-url-operations", {
+    params: { scope },
+  });
+  return res.data as { deletedCount: number };
+}
+
 export async function fetchSavedUrlOperation(
   id: string,
 ): Promise<SavedUrlOperationRun> {
