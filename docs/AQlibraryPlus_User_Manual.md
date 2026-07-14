@@ -20,7 +20,7 @@
 
 ## 1. What AQlibrary+ does
 
-AQlibrary+ is an evidence workspace for discovering public sources with Google Custom Search, organising saved URLs and files, preserving durable text or PDF captures, tracing governance relationships, and analysing selected evidence with OpenAI-backed Notebook and Governance workflows.
+AQlibrary+ is an evidence and research platform for discovering public sources with Google Custom Search that are availble online that preserved in text or pdf form, organising saved URLs to improve citation of online materials and documents such as orders, notices, compliance reports, meeting minutes, action-taken reports, court directions, and agency submissions from various governance bodies in the structured way with detailed metadata which improves the searchability of the them in the workspace, asking governance or policy questions against the stored evidence library , and analysing selected evidence with OpenAI-backed Notebook and Governance workflows. The platform also enables government bodies to store and organize private data securely in a structured way without exposing them to public.
 
 The normal workflow is:
 

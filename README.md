@@ -22,6 +22,8 @@ The platform brings together four connected workflows:
 
 The goal is to make air-quality governance faster to review, easier to trace, and more auditable across institutions such as CAQM and related state agencies. More broadly, AQlibrary+ is designed for any research or governance setting where documents are fragmented across websites, formats, and individual knowledge silos.
 
+When AQlibrary+ is deployed within an institution's controlled environment, government bodies can also store and organize restricted or non-public records in the same structured evidence system without publishing those records to the public. The deploying institution remains responsible for configuring access controls, infrastructure security, backups, and applicable data-governance policies.
+
 ## Statement of need
 
 Governance and policy work often depends on documents like orders, notices, compliance reports, meeting minutes, action-taken reports, court directions, and agency submissions from various governance bodies that are across institutional websites, in their respective databases or in physical copies, which is often difficult to access and requires permissions. Likewise, online newspaper articles become unavailable after a specific period. 
