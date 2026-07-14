@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { getUrlCollections } from "../../utils/collections";
 import { SearchResult } from "../../lib/types";
@@ -189,6 +190,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
   missingEvidenceRoles = [],
 }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   // local selection if parent doesn't control it
   const [localSelected, setLocalSelected] = useState<Set<string>>(selectedUrls);
   const selected =
@@ -591,6 +593,12 @@ const ResultsTable: React.FC<ResultsTableProps> = ({
         rows,
         collectorSearchId,
       );
+      await queryClient.invalidateQueries({
+        queryKey: ["saved-url-workspace"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["saved-url-reviews"],
+      });
       const statuses = { ...purposeStatus };
       response.rows.forEach((row) => {
         const source = rows.find((candidate) => candidate.url === row.url);

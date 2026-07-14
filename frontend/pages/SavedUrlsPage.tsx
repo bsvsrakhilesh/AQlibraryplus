@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { SavedUrl as UISavedUrl, Collection } from "../lib/types";
 import SearchFilterUrls, {
@@ -514,6 +515,7 @@ const SavedUrlsPage: React.FC = () => {
   const { confirm } = useConfirm();
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const purposeFromUrl =
     new URLSearchParams(location.search).get("collectorPurposeId") ?? "";
   const [collectorPurposes, setCollectorPurposes] = useState<CollectorPurpose[]>([]);
@@ -1156,6 +1158,13 @@ const SavedUrlsPage: React.FC = () => {
     },
     [notify],
   );
+
+  const invalidateSavedUrlsWorkspace = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["saved-url-workspace"] }),
+      queryClient.invalidateQueries({ queryKey: ["saved-url-reviews"] }),
+    ]);
+  }, [queryClient]);
 
   const refreshTaggingSummary = useCallback(async () => {
     try {
@@ -2792,6 +2801,7 @@ const SavedUrlsPage: React.FC = () => {
 
     try {
       const result = await apiSaveUrls([{ url: raw, title: raw, snippet: "" }]);
+      await invalidateSavedUrlsWorkspace();
       const savedRef = result.rows?.[0];
 
       if (!savedRef?.id) {
@@ -4336,6 +4346,7 @@ const SavedUrlsPage: React.FC = () => {
                   await Promise.all([
                     refreshUrlsFromServer(),
                     refreshActivePurposeSummary(),
+                    invalidateSavedUrlsWorkspace(),
                   ]);
 
                   if (openedFromDetailModal) {
@@ -4419,6 +4430,7 @@ const SavedUrlsPage: React.FC = () => {
                   refreshUrlsFromServer(),
                   refreshRowsAndFacetsAndQueue(),
                   refreshActivePurposeSummary(),
+                  invalidateSavedUrlsWorkspace(),
                 ]);
                 setDetailCaptureRefreshKey((key) => key + 1);
               }}

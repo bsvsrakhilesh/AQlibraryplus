@@ -61,6 +61,14 @@ async function installSavedUrlsApi(page: Page, items: unknown[] = []) {
       });
     }
 
+    if (/^\/api\/urls\/\d+\/snapshots$/.test(pathname)) {
+      return json(route, []);
+    }
+
+    if (/^\/api\/urls\/\d+\/revisions$/.test(pathname)) {
+      return json(route, { documentId: null, revisions: [] });
+    }
+
     return json(route, {});
   });
 }
@@ -151,6 +159,43 @@ test("saved URLs empty workspace has a clear, actionable control hierarchy", asy
   expect(hasHorizontalOverflow).toBe(false);
 
 
+});
+
+test("saved URL details remain a centered floating desktop modal", async ({
+  page,
+}) => {
+  await installSavedUrlsApi(page, [
+    {
+      id: 101,
+      url: "https://caqm.nic.in/air-quality-report",
+      title: "Delhi air quality progress report",
+      snippet: "A detailed source record used to verify the modal layout.",
+      createdAt: "2026-07-10T10:00:00.000Z",
+      updatedAt: "2026-07-12T10:00:00.000Z",
+      visitCount: 0,
+      isFavorited: false,
+      tags: ["Delhi", "Air quality"],
+      visibility: "private",
+    },
+  ]);
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto("/app/saved-urls");
+
+  await page.getByText("Delhi air quality progress report", { exact: true }).first().click();
+
+  const dialog = page.getByRole("dialog", {
+    name: "Delhi air quality progress report",
+  });
+  await expect(dialog).toBeVisible();
+
+  const box = await dialog.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThan(1100);
+  expect(Math.abs(box!.x - (1600 - box!.width) / 2)).toBeLessThan(2);
+  expect(box!.y).toBeGreaterThanOrEqual(20);
+  await expect
+    .poll(() => dialog.evaluate((node) => getComputedStyle(node).borderRadius))
+    .not.toBe("0px");
 });
 
 test("saved URLs controls remain usable on a mobile viewport", async ({ page }) => {

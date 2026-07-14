@@ -13,6 +13,7 @@ export function useSavedUrlsWorkspaceQuery(
     queryKey: ["saved-url-workspace", params],
     queryFn: ({ signal }) => fetchSavedUrlWorkspace(params, { signal }),
     enabled,
+    refetchOnMount: "always",
   });
 }
 

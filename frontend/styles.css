@@ -1004,8 +1004,8 @@ body,
 
 .saved-urls-quick-add {
   display: grid;
-  grid-template-columns: minmax(14rem, 0.55fr) minmax(22rem, 1fr);
-  gap: 20px;
+  grid-template-columns: max-content minmax(18rem, 1fr);
+  gap: 18px;
   align-items: center;
   padding: 12px 18px;
   border-top: 1px solid var(--su-border);
@@ -1159,8 +1159,7 @@ body,
 }
 
 @media (max-width: 1000px) {
-  .saved-urls-toolbar-controls,
-  .saved-urls-quick-add {
+  .saved-urls-toolbar-controls {
     grid-template-columns: 1fr;
   }
 
@@ -9037,21 +9036,31 @@ body,
   position: relative;
   top: auto;
   z-index: auto;
-  padding: 12px;
-  border-radius: 15px;
-  border-color: var(--su-border);
-  background: rgba(250, 255, 253, 0.94);
-  box-shadow: 0 8px 30px rgba(15, 68, 74, 0.09);
-  backdrop-filter: blur(18px) saturate(140%);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.saved-urls-page .saved-urls-toolbar-search {
+  padding: 0 0 16px;
+}
+
+.saved-urls-page .saved-urls-toolbar-controls {
+  padding: 16px 0;
 }
 
 .saved-urls-page .saved-urls-toolbar-section-label,
 .saved-urls-page .saved-urls-quick-add-copy small { display: none; }
 
 .saved-urls-page .saved-urls-quick-add {
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: 0;
+  padding: 16px 0 0;
   border-top: 1px solid var(--su-border);
+  border-radius: 0;
   background: transparent;
 }
 
@@ -9085,13 +9094,13 @@ body,
 
   .saved-urls-page .saved-urls-main-panel { padding: 10px; border-radius: 14px; }
   .saved-urls-page .saved-urls-toolbar {
-    padding: 9px;
-    border-radius: 12px;
+    padding: 0;
+    border-radius: 0;
     /* Fixed filter sheets must be viewport-relative, not trapped by a blurred parent. */
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  .saved-urls-page .saved-urls-toolbar-search { min-width: 0; }
+  .saved-urls-page .saved-urls-toolbar-search { min-width: 0; padding-bottom: 10px; }
   .saved-urls-page .saved-urls-filter { gap: 9px; }
   .saved-urls-page .saved-urls-search-meta { display: none; }
   .saved-urls-page .saved-urls-filter-bar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
@@ -9108,7 +9117,7 @@ body,
   .saved-urls-mobile-utility__body .saved-urls-collection-menu > summary { min-height: 40px; }
   .saved-urls-mobile-utility__body .saved-urls-toolbar-select { width: 100%; min-width: 0; }
   .saved-urls-mobile-utility__body .saved-urls-sort-direction { min-height: 40px; }
-  .saved-urls-page .saved-urls-quick-add { display: block; margin-top: 8px; padding-top: 8px; }
+  .saved-urls-page .saved-urls-quick-add { display: block; margin-top: 8px; padding-top: 10px; }
   .saved-urls-page .saved-urls-quick-add-copy { display: none; }
   .saved-urls-page .saved-urls-quick-add-form { width: 100%; grid-template-columns: minmax(0, 1fr) auto; }
 
@@ -9131,8 +9140,9 @@ body,
 
 .dark .saved-urls-page .saved-urls-scope-bar,
 .dark .saved-urls-page .saved-urls-workbench,
-.dark .saved-urls-page .saved-urls-toolbar,
 .dark .saved-urls-page .saved-url-card { background: rgba(10, 26, 33, .76); }
+
+.dark .saved-urls-page .saved-urls-toolbar { background: transparent; }
 
 /* Light environmental action system. Primary actions are luminous and tactile,
    not dark-green blocks competing with the evidence itself. */
@@ -9328,15 +9338,6 @@ body,
 
 .saved-url-detail-modal__panel {
   border-color: rgba(14, 165, 164, 0.18);
-}
-
-@media (min-width: 761px) {
-  .saved-url-detail-modal__frame { align-items: stretch; }
-  .saved-url-detail-modal__panel {
-    border-width: 0 0 0 1px;
-    border-radius: 0;
-    box-shadow: -24px 0 62px rgba(15, 68, 74, 0.18);
-  }
 }
 
 @media (max-width: 760px) {
