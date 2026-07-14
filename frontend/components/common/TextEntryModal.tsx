@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef } from "react";
+import React, { useEffect, useId, useRef, type HTMLInputTypeAttribute } from "react";
 import { createPortal } from "react-dom";
 
 interface TextEntryModalProps {
@@ -12,6 +12,8 @@ interface TextEntryModalProps {
   busy?: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void | Promise<void>;
+  inputType?: HTMLInputTypeAttribute;
+  presentation?: "dialog" | "sheet";
 }
 
 const TextEntryModal: React.FC<TextEntryModalProps> = ({
@@ -25,6 +27,8 @@ const TextEntryModal: React.FC<TextEntryModalProps> = ({
   busy = false,
   onChange,
   onSubmit,
+  inputType = "text",
+  presentation = "dialog",
 }) => {
   const titleId = useId();
   const descriptionId = useId();
@@ -48,7 +52,11 @@ const TextEntryModal: React.FC<TextEntryModalProps> = ({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+    <div
+      className={`text-entry-modal fixed inset-0 z-100 flex items-center justify-center p-4 ${
+        presentation === "sheet" ? "text-entry-modal--sheet" : ""
+      }`}
+    >
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
         onClick={busy ? undefined : onClose}
@@ -58,7 +66,7 @@ const TextEntryModal: React.FC<TextEntryModalProps> = ({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="relative z-101 w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950"
+        className="text-entry-modal__panel relative z-101 w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950"
       >
         <div className="border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
           <div className="flex items-start justify-between gap-3">
@@ -97,7 +105,7 @@ const TextEntryModal: React.FC<TextEntryModalProps> = ({
         >
           <input
             ref={inputRef}
-            type="text"
+            type={inputType}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}

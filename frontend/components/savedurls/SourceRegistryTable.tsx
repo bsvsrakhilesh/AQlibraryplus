@@ -141,7 +141,7 @@ const SourceRegistryTable: React.FC<Props> = ({
   }, [someVisibleSelected, allPageRowsSelected]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 bg-white/90 dark:bg-neutral-950/70 shadow-sm">
+    <div className="saved-url-registry-table overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 bg-white/90 dark:bg-neutral-950/70 shadow-sm">
       <div className="overflow-x-auto">
         <table className="min-w-275 w-full text-sm">
           <thead className="bg-neutral-50 dark:bg-neutral-900/90 border-b border-black/5 dark:border-white/10">
@@ -351,7 +351,7 @@ const SourceRegistryTable: React.FC<Props> = ({
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => trackSavedUrlVisit(url.id)}
-                        className="rounded-lg bg-brand-primary px-3 py-2 text-center text-xs font-medium text-white transition hover:opacity-95"
+                        className="saved-url-registry-open rounded-lg px-3 py-2 text-center text-xs font-medium transition"
                         title="Open in new tab"
                       >
                         Open

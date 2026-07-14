@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useDebounce } from "../../hooks/useDebounce";
 
@@ -139,6 +140,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   const [state, setState] = useState<UrlFilterState>(() =>
     buildFilterState(initial),
   );
+  const [isMobile, setIsMobile] = useState(false);
 
   const debouncedState = useDebounce(state, 250);
   const [advancedOpen, setAdvancedOpen] = useState(() =>
@@ -311,6 +313,14 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   }, [initial]);
 
   useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
     const nextInitial = buildFilterState(initial);
 
     if (
@@ -339,6 +349,7 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
   const chipSelected = "ring-2 ring-brand-primary/40";
 
   return (
+    <>
     <div className="saved-urls-filter space-y-4 min-w-0" data-search-filter>
       {/* Search row */}
       <div className="saved-urls-search-workbench">
@@ -451,8 +462,17 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
       <div
         id="saved-urls-advanced-filters"
         hidden={!advancedOpen}
-        className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(18rem,0.95fr)] gap-4 text-sm min-w-0"
+        className="saved-urls-advanced-filter-sheet grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(18rem,0.95fr)] gap-4 text-sm min-w-0"
       >
+        <div className="saved-urls-advanced-filter-sheet__mobile-head">
+          <div>
+            <strong>Refine sources</strong>
+            <span>Choose only the evidence you need right now.</span>
+          </div>
+          <button type="button" onClick={() => setAdvancedOpen(false)}>
+            Done
+          </button>
+        </div>
         {/* Domains */}
         <div className="saved-urls-section-card min-h-56 p-4">
           <div className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
@@ -746,6 +766,57 @@ const SearchFilterUrls: React.FC<SearchFilterUrlsProps> = ({
         </div>
       </div>
     </div>
+    {isMobile && advancedOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div className="saved-urls-mobile-filter-overlay" role="dialog" aria-modal="true" aria-label="Refine saved URLs">
+            <button
+              type="button"
+              className="saved-urls-mobile-filter-overlay__backdrop"
+              aria-label="Close filters"
+              onClick={() => setAdvancedOpen(false)}
+            />
+            <section className="saved-urls-mobile-filter-sheet">
+              <header>
+                <div>
+                  <strong>Refine sources</strong>
+                  <span>Focus the library without losing your place.</span>
+                </div>
+                <button type="button" onClick={() => setAdvancedOpen(false)}>Done</button>
+              </header>
+              <div className="saved-urls-mobile-filter-sheet__body">
+                <section>
+                  <h3>Domains</h3>
+                  <div className="saved-urls-mobile-filter-sheet__chips">
+                    {availableDomains.map((domain) => {
+                      const selected = state.domains.includes(domain);
+                      return <button key={domain} type="button" aria-pressed={selected} onClick={() => toggleDomain(domain)}>{domain}</button>;
+                    })}
+                  </div>
+                </section>
+                <section>
+                  <h3>Tags</h3>
+                  <div className="saved-urls-mobile-filter-sheet__chips">
+                    {availableTags.map((tag) => {
+                      const selected = state.tags.includes(tag);
+                      return <button key={tag} type="button" aria-pressed={selected} onClick={() => toggleTag(tag)}>{tag}</button>;
+                    })}
+                  </div>
+                </section>
+                <section className="saved-urls-mobile-filter-sheet__fields">
+                  <label><span>Snapshot</span><select value={state.snapshotStatus || "all"} onChange={(e) => setState((s) => ({ ...s, snapshotStatus: e.target.value as UrlFilterState["snapshotStatus"] }))}><option value="all">All snapshots</option><option value="missing">Missing snapshot</option><option value="stale">Stale snapshot</option><option value="fresh">Fresh snapshot</option></select></label>
+                  <label><span>AI tagging</span><select value={state.taggingStatus || "all"} onChange={(e) => setState((s) => ({ ...s, taggingStatus: e.target.value as UrlFilterState["taggingStatus"] }))}><option value="all">All statuses</option><option value="NONE">Not started</option><option value="PENDING">Queued</option><option value="RUNNING">Running</option><option value="SUCCESS">Succeeded</option><option value="FAILED">Failed</option></select></label>
+                  <label><span>Metadata</span><select value={state.metadataState || "all"} onChange={(e) => setState((s) => ({ ...s, metadataState: e.target.value as UrlFilterState["metadataState"] }))}><option value="all">All metadata</option><option value="missing">Missing key metadata</option><option value="complete">Metadata complete</option></select></label>
+                  <label><span>Access</span><select value={state.visibility} onChange={(e) => setState((s) => ({ ...s, visibility: e.target.value as UrlFilterState["visibility"] }))}><option value="all">All access levels</option><option value="private">Private only</option><option value="public">Public only</option></select></label>
+                  <label className="saved-urls-mobile-filter-sheet__check"><input type="checkbox" checked={state.favoritesOnly} onChange={(e) => setState((s) => ({ ...s, favoritesOnly: e.target.checked }))} /> Favorites only</label>
+                </section>
+              </div>
+              <footer><button type="button" onClick={clearAllFilters}>Reset filters</button><button type="button" onClick={() => setAdvancedOpen(false)}>Show results</button></footer>
+            </section>
+          </div>,
+          document.body,
+        )
+      : null}
+    </>
   );
 };
 

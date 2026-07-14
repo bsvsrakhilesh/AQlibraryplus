@@ -21,13 +21,13 @@ const SavedUrlsPagination: React.FC<Props> = ({
   onPrevious,
   onNext,
 }) => {
-  if (totalResults <= 0) return null;
+  if (totalResults <= 0 || totalPages <= 1) return null;
 
   const firstRow = visibleCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const lastRow = Math.min(page * pageSize, totalResults);
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-black/10 px-4 py-3 md:flex-row md:items-center md:justify-between dark:border-white/10">
+    <div className="saved-urls-pagination flex flex-col gap-3 rounded-xl border border-black/10 px-4 py-3 md:flex-row md:items-center md:justify-between dark:border-white/10">
       <div className="text-sm text-neutral-600 dark:text-neutral-300">
         {isReviewQueueActive ? (
           <>

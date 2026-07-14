@@ -810,14 +810,14 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
   ];
 
   return createPortal(
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/55 backdrop-blur-[2px]">
-      <div className="flex min-h-full items-start justify-center p-4 md:p-6">
+    <div className="saved-url-detail-modal fixed inset-0 z-50 overflow-y-auto bg-slate-950/28 backdrop-blur-[3px]">
+      <div className="saved-url-detail-modal__frame flex min-h-full items-start justify-center p-4 md:p-0 md:justify-end">
         <div
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby={dialogTitleId}
-          className="relative flex w-full max-w-7xl max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl dark:border-white/10 dark:bg-gray-900"
+          className="saved-url-detail-modal__panel relative flex w-full max-w-7xl max-h-[calc(100vh-2rem)] md:h-screen md:max-h-screen md:max-w-3xl flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl dark:border-white/10 dark:bg-gray-900"
         >
           {/* Header */}
           <div className="sticky top-0 z-20 border-b border-black/10 bg-white/95 px-5 py-4 backdrop-blur dark:border-white/10 dark:bg-gray-900/95 md:px-6">

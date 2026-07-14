@@ -74,10 +74,12 @@ import { openGovernanceWorkspace } from "../lib/governanceWorkspace";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
   LayoutGrid,
   Link2,
   ListTree,
   Plus,
+  ShieldCheck,
 } from "lucide-react";
 
 type SortKey = "createdAt" | "updatedAt" | "title";
@@ -108,6 +110,7 @@ const SAVED_URLS_OPERATIONS_PANEL_HIDDEN_KEY =
   "saved-urls:operations-panel-hidden";
 
 type SavedUrlsViewMode = "registry" | "cards";
+type SavedUrlsDensity = "comfortable" | "compact";
 type SavedUrlsTextDialog =
   | {
       kind: "collection";
@@ -501,8 +504,9 @@ function loadLegacySavedUrlSearchPresets(): SavedUrlSearchPreset[] {
 }
 
 function getInitialOperationsPanelHidden(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(SAVED_URLS_OPERATIONS_PANEL_HIDDEN_KEY) === "true";
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(SAVED_URLS_OPERATIONS_PANEL_HIDDEN_KEY);
+  return stored === null ? true : stored === "true";
 }
 
 const SavedUrlsPage: React.FC = () => {
@@ -882,6 +886,12 @@ const SavedUrlsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<SavedUrlsViewMode>(
     getInitialSavedUrlsViewMode,
   );
+  const [density, setDensity] = useState<SavedUrlsDensity>(() => {
+    if (typeof window === "undefined") return "comfortable";
+    return localStorage.getItem("saved-urls:density") === "compact"
+      ? "compact"
+      : "comfortable";
+  });
   const effectiveViewMode: SavedUrlsViewMode = canUseRegistryView
     ? viewMode
     : "cards";
@@ -908,6 +918,11 @@ const SavedUrlsPage: React.FC = () => {
     if (!canUseRegistryView) return;
     localStorage.setItem(SAVED_URLS_VIEW_KEY, viewMode);
   }, [canUseRegistryView, viewMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("saved-urls:density", density);
+  }, [density]);
 
   // Selection + detail
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -963,6 +978,8 @@ const SavedUrlsPage: React.FC = () => {
   const tagPollRef = useRef<number | null>(null);
   const quickAddInputRef = useRef<HTMLInputElement>(null);
   const [quickAddValue, setQuickAddValue] = useState("");
+  const [mobileQuickAddOpen, setMobileQuickAddOpen] = useState(false);
+  const [mobileQuickAddValue, setMobileQuickAddValue] = useState("");
 
   const rowsRequestSeqRef = useRef(0);
   const facetRequestSeqRef = useRef(0);
@@ -2857,6 +2874,26 @@ const SavedUrlsPage: React.FC = () => {
       if (typing) return;
       if (collPickerOpen || pickerOpen || !!detail) return;
 
+      if (key === "/") {
+        const search = document.getElementById("saved-urls-query") as HTMLInputElement | null;
+        if (search) {
+          e.preventDefault();
+          search.focus();
+        }
+        return;
+      }
+
+      if (key === "n") {
+        e.preventDefault();
+        if (window.matchMedia("(max-width: 760px)").matches) {
+          setMobileQuickAddOpen(true);
+        } else {
+          quickAddInputRef.current?.focus();
+          quickAddInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        return;
+      }
+
       if (isMeta && key === "c") {
         if (selectedItems.length) {
           e.preventDefault();
@@ -2929,45 +2966,46 @@ const SavedUrlsPage: React.FC = () => {
         : null;
 
   return (
-    <main className="saved-urls-page space-y-6 px-4 md:px-6 lg:px-8 pt-6 md:pt-8 min-w-0">
-      <header className="page-header">
+    <main className="saved-urls-page space-y-4 px-4 md:px-6 lg:px-8 pt-5 md:pt-7 min-w-0">
+      <header className="saved-urls-masthead">
         <div className="page-header-main">
-          <p className="page-header-kicker">Library</p>
+          <p className="page-header-kicker">Evidence library</p>
           <h1 className="page-header-title">Saved URLs</h1>
           <p className="page-header-subtitle">
-            Browse, filter, and organise all the links you have collected from
-            searches and uploads.
+            A calm, searchable home for the sources behind your research.
           </p>
         </div>
 
-        <div className="page-header-meta">
-          <div className="page-header-pill">
-            <span className="page-header-pill-label">Page rows</span>
-            <span className="page-header-pill-value">{sorted.length}</span>
-          </div>
+        <div className="saved-urls-masthead-actions">
           <div className="page-header-pill">
             <span className="page-header-pill-label">
-              {isReviewQueueActive ? "Review matches" : "Matches"}
+              {isReviewQueueActive ? "Review queue" : "Sources"}
             </span>
             <span className="page-header-pill-value">{totalResults}</span>
           </div>
           {selection.size > 0 && (
             <div className="page-header-pill page-header-pill--accent">
-              <span className="page-header-pill-label">Selected on page</span>
+              <span className="page-header-pill-label">Selected</span>
               <span className="page-header-pill-value">{selection.size}</span>
             </div>
           )}
+          <button
+            type="button"
+            className="saved-urls-mobile-add"
+            onClick={() => setMobileQuickAddOpen(true)}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add source
+          </button>
         </div>
       </header>
 
-      <section className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-60">
-          <label htmlFor="saved-url-purpose-filter" className="text-xs font-semibold text-gray-600">
-            Purpose intake
-          </label>
+      <section className="saved-urls-scope-bar" aria-label="Saved URLs scope">
+        <div className="saved-urls-scope-control">
+          <label htmlFor="saved-url-purpose-filter">Research purpose</label>
           <select
             id="saved-url-purpose-filter"
-            className="input mt-2 w-full max-w-sm"
+            className="saved-urls-scope-select"
             value={activePurposeId}
             onChange={(event) => {
               const nextId = event.target.value;
@@ -2987,26 +3025,21 @@ const SavedUrlsPage: React.FC = () => {
             ))}
           </select>
           {purposeLoadError && (
-            <p className="mt-2 max-w-sm text-xs text-amber-700 dark:text-amber-300">
+            <p className="saved-urls-scope-error">
               {purposeLoadError}
             </p>
           )}
         </div>
 
         {activePurpose && (
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
-            <span className="rounded-full border border-gray-200 px-3 py-2 text-xs font-medium">
-              {activePurpose.summary.savedUrlCount} saved sources
-            </span>
-            <span className="rounded-full border border-gray-200 px-3 py-2 text-xs font-medium">
-              {activePurpose.summary.capturedEvidenceCount} captured artifacts
-            </span>
-            <span className="rounded-full border border-gray-200 px-3 py-2 text-xs font-medium">
-              {activePurpose.summary.governanceReadyDocumentCount} ready documents
+          <div className="saved-urls-purpose-actions">
+            <span className="saved-urls-purpose-stat">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              {activePurpose.summary.capturedEvidenceCount} captured
             </span>
             <button
               type="button"
-              className="btn-ghost px-4 py-2"
+              className="saved-urls-purpose-action"
               onClick={() =>
                 navigate(
                   `/app/file-manager?collectorPurposeId=${encodeURIComponent(activePurpose.id)}`,
@@ -3017,7 +3050,7 @@ const SavedUrlsPage: React.FC = () => {
             </button>
             <button
               type="button"
-              className="btn-primary px-4 py-2 disabled:opacity-50"
+              className="saved-urls-purpose-action saved-urls-purpose-action--primary disabled:opacity-50"
               disabled={activePurpose.summary.governanceReadyDocumentCount === 0}
               title={
                 activePurpose.summary.governanceReadyDocumentCount === 0
@@ -3041,6 +3074,22 @@ const SavedUrlsPage: React.FC = () => {
         )}
       </section>
 
+      <details className="saved-urls-workbench">
+        <summary>
+          <span className="saved-urls-workbench-summary">
+            <span className="saved-urls-workbench-icon"><ShieldCheck className="h-4 w-4" aria-hidden="true" /></span>
+            <span>
+              <strong>Library workbench</strong>
+              <small>
+                {snapshotHealth.missingCount + snapshotHealth.staleCount > 0
+                  ? `${snapshotHealth.missingCount + snapshotHealth.staleCount} source${snapshotHealth.missingCount + snapshotHealth.staleCount === 1 ? "" : "s"} need attention`
+                  : "Review queues, operations, and saved searches"}
+              </small>
+            </span>
+          </span>
+          <ChevronDown className="saved-urls-workbench-chevron h-4 w-4" aria-hidden="true" />
+        </summary>
+        <div className="saved-urls-workbench-body">
       {(tagSummary && (tagSummary.inProgress > 0 || tagSummary.failed > 0)) ||
       snapshotHealth.missingCount > 0 ||
       snapshotHealth.staleCount > 0 ? (
@@ -3525,11 +3574,13 @@ const SavedUrlsPage: React.FC = () => {
           </div>
         )}
       </div>
+        </div>
+      </details>
 
       {/* Source registry workspace */}
       <section className="min-w-0">
         <div className="saved-urls-grid-item min-w-0">
-          <div className="saved-urls-panel saved-urls-main-panel p-4 sm:p-5 lg:p-6 space-y-5 md:space-y-6 mb-10 min-w-0">
+          <div className={`saved-urls-panel saved-urls-main-panel saved-urls-density--${density} p-4 sm:p-5 lg:p-6 space-y-5 md:space-y-6 mb-10 min-w-0`}>
             <header
               className="saved-urls-toolbar relative min-w-0"
               role="toolbar"
@@ -3627,10 +3678,11 @@ const SavedUrlsPage: React.FC = () => {
 
                 <div className="saved-urls-toolbar-view">
                   <div className="saved-urls-toolbar-section-label">View</div>
-                  <div
-                    className="saved-urls-view-toggle"
-                    aria-label="Saved URLs view mode"
-                  >
+                  <div className="saved-urls-toolbar-view-controls">
+                    <div
+                      className="saved-urls-view-toggle"
+                      aria-label="Saved URLs view mode"
+                    >
                     {canUseRegistryView && (
                       <button
                         type="button"
@@ -3660,9 +3712,76 @@ const SavedUrlsPage: React.FC = () => {
                       <LayoutGrid className="h-4 w-4" aria-hidden="true" />
                       <span>Cards</span>
                     </button>
+                    </div>
+                    {canUseRegistryView && (
+                      <div className="saved-urls-density-toggle" aria-label="Saved URLs density">
+                        <button type="button" aria-pressed={density === "comfortable"} onClick={() => setDensity("comfortable")}>Comfortable</button>
+                        <button type="button" aria-pressed={density === "compact"} onClick={() => setDensity("compact")}>Compact</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+
+              <details className="saved-urls-mobile-utility">
+                <summary>
+                  <span>Organize and sort</span>
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                </summary>
+                <div className="saved-urls-mobile-utility__body">
+                  <CollectionFilterMenu
+                    collections={collections}
+                    collectionCounts={collectionCounts}
+                    totalUrlCount={libraryTotalCount}
+                    selectedCollectionId={selectedCollectionId}
+                    onSelect={(id) => setSelectedCollectionId(id)}
+                    onCreateClick={openCollectionDialog}
+                    onRenameClick={openRenameCollectionDialog}
+                    onDeleteClick={deleteSelectedCollection}
+                  />
+                  <select
+                    className="saved-urls-toolbar-select"
+                    value={year}
+                    onChange={(event) => setYear(event.target.value)}
+                    aria-label="Filter by saved year"
+                  >
+                    {availableYears.map((value) => (
+                      <option key={value} value={value}>
+                        {value === "all" ? "All years" : value}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="saved-urls-toolbar-select"
+                    value={sortKey}
+                    onChange={(event) =>
+                      setSortKey(event.target.value as SortKey)
+                    }
+                    aria-label="Sort saved URLs"
+                  >
+                    <option value="createdAt">Saved date</option>
+                    <option value="updatedAt">Last updated</option>
+                    <option value="title">Title</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="saved-urls-sort-direction"
+                    onClick={() =>
+                      setSortOrder((current) =>
+                        current === "desc" ? "asc" : "desc",
+                      )
+                    }
+                    aria-label={`Sort direction: ${sortOrder === "desc" ? "descending" : "ascending"}`}
+                  >
+                    {sortOrder === "desc" ? (
+                      <ArrowDown className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    <span>{sortOrder === "desc" ? "Newest first" : "Oldest first"}</span>
+                  </button>
+                </div>
+              </details>
 
               <div className="saved-urls-quick-add">
                 <div className="saved-urls-quick-add-copy">
@@ -3831,7 +3950,7 @@ const SavedUrlsPage: React.FC = () => {
             )}
 
             {/* Selection controls */}
-            {sorted.length > 0 && (
+            {sorted.length > 0 && selection.size > 0 && (
               <div className="flex flex-col gap-3 text-sm text-gray-600 dark:text-gray-300 md:flex-row md:items-center md:justify-between">
                 <div>
                   <div>
@@ -3980,26 +4099,17 @@ const SavedUrlsPage: React.FC = () => {
                 libraryTotalCount={libraryTotalCount}
                 isReviewQueueActive={isReviewQueueActive}
                 onAddUrl={() => {
-                  quickAddInputRef.current?.focus();
-                  quickAddInputRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                  });
+                  if (window.matchMedia("(max-width: 760px)").matches) {
+                    setMobileQuickAddOpen(true);
+                  } else {
+                    quickAddInputRef.current?.focus();
+                    quickAddInputRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    });
+                  }
                 }}
                 onResetView={resetReviewView}
-              />
-            )}
-
-            {!loading && !error && totalResults > 0 && (
-              <SavedUrlsPagination
-                isReviewQueueActive={isReviewQueueActive}
-                page={page}
-                pageSize={PAGE_SIZE}
-                totalPages={totalPages}
-                totalResults={totalResults}
-                visibleCount={sorted.length}
-                onPrevious={() => setPage((p) => Math.max(1, p - 1))}
-                onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
               />
             )}
 
@@ -4033,6 +4143,19 @@ const SavedUrlsPage: React.FC = () => {
                   ))}
                 </StaggerList>
               ))}
+
+            {!loading && !error && totalResults > 0 && (
+              <SavedUrlsPagination
+                isReviewQueueActive={isReviewQueueActive}
+                page={page}
+                pageSize={PAGE_SIZE}
+                totalPages={totalPages}
+                totalResults={totalResults}
+                visibleCount={sorted.length}
+                onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+                onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+              />
+            )}
 
             {/* Modals */}
             <TextEntryModal
@@ -4076,6 +4199,26 @@ const SavedUrlsPage: React.FC = () => {
               busy={textDialogBusy}
               onChange={setTextDialogValue}
               onSubmit={submitTextDialog}
+            />
+
+            <TextEntryModal
+              open={mobileQuickAddOpen}
+              onClose={() => setMobileQuickAddOpen(false)}
+              title="Add a source"
+              description="Save a URL now. You can add notes, tags, and durable captures whenever you are ready."
+              value={mobileQuickAddValue}
+              placeholder="https://example.org/source"
+              submitLabel="Save source"
+              inputType="url"
+              presentation="sheet"
+              onChange={setMobileQuickAddValue}
+              onSubmit={async () => {
+                const saved = await handleQuickAdd(mobileQuickAddValue);
+                if (saved) {
+                  setMobileQuickAddValue("");
+                  setMobileQuickAddOpen(false);
+                }
+              }}
             />
 
             <TextEntryModal

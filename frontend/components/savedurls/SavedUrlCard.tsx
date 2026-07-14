@@ -236,7 +236,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
       )}
 
       {/* Header */}
-      <div className="flex items-start gap-3">
+      <div className="saved-url-card__body flex items-start gap-3">
         {url.faviconUrl ? (
           <img
             src={url.faviconUrl}
@@ -286,11 +286,11 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
             </div>
           </div>
 
-          <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+          <div className="saved-url-card__domain mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
             {url.domain}
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="saved-url-card__signals mt-3 flex flex-wrap gap-2">
             <span
               className="chip chip-slate"
               title={url.publishedAt || "No published date"}
@@ -311,13 +311,13 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
             const chip = snapshotChip(url);
             if (!chip) {
               return (
-                <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                <div className="saved-url-card__snapshot mt-2 text-xs text-gray-400 dark:text-gray-500">
                   No snapshot yet
                 </div>
               );
             }
             return (
-              <div className="mt-2">
+              <div className="saved-url-card__snapshot mt-2">
                 <span className={`chip ${chip.cls}`} title={chip.title}>
                   {chip.label}
                 </span>
@@ -326,7 +326,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
           })()}
 
           {discoveredCount > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="saved-url-card__discovery mt-2 flex flex-wrap gap-2">
               <span
                 className="chip chip-sky"
                 title="PDFs discovered under this saved source page"
@@ -337,11 +337,11 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
           )}
 
           {url.description ? (
-            <p className="mt-3 min-h-18 line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
+            <p className="saved-url-card__description mt-3 min-h-18 line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
               {url.description}
             </p>
           ) : (
-            <p className="mt-3 min-h-18 text-sm text-gray-400 dark:text-gray-500 italic">
+            <p className="saved-url-card__description mt-3 min-h-18 text-sm text-gray-400 dark:text-gray-500 italic">
               No description.
             </p>
           )}
@@ -350,7 +350,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
 
       {/* Tags */}
       {!!visibleTags.length && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="saved-url-card__tags mt-3 flex flex-wrap gap-2">
           {visibleTags.map((t) => (
             <span key={t} className={`chip ${chipClassForTag(t)}`}>
               {t}
@@ -368,7 +368,7 @@ const SavedUrlCard: React.FC<SavedUrlCardProps> = ({
       )}
 
       {/* Actions: rectangular, colored buttons */}
-      <div className="mt-auto pt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+      <div className="saved-url-card__actions mt-auto pt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
         {/* Open → brand primary (solid) */}
         <button
           onClick={() => openSavedUrlInNewTab(url)}
