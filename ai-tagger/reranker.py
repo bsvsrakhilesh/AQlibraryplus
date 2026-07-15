@@ -16,6 +16,11 @@ import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 try:
+    from llm_reliability import execute_json_completion, stable_operation_id  # type: ignore
+except ImportError:  # pragma: no cover - package import fallback
+    from .llm_reliability import execute_json_completion, stable_operation_id  # type: ignore
+
+try:
     from openai_compat import chat_completion_kwargs  # type: ignore
 except ImportError:  # pragma: no cover - package import fallback
     from .openai_compat import chat_completion_kwargs  # type: ignore
@@ -356,39 +361,61 @@ def rerank_with_llm(
 
     snippet = _coverage_snippet(context_text or "")
 
-    compact_records = candidate_records[:220]
+    batch_size = max(40, int(os.getenv("LLM_RERANK_CANDIDATE_BATCH_SIZE", "160")))
+    mapped_tags: List[str] = []
 
-    content = PROMPT.format(
-        min_tags=max(6, min(10, topk)),
-        max_tags=topk,
-        cands=json.dumps(compact_records, ensure_ascii=False, indent=2),
-    )
+    def rank_records(records: Sequence[Dict[str, Any]], lineage: str) -> List[str]:
+        content = PROMPT.format(
+            min_tags=max(1, min(10, topk)),
+            max_tags=topk,
+            cands=json.dumps(records, ensure_ascii=False, indent=2),
+        )
+        if file_name:
+            content += f"\n\nFile name:\n{file_name}\n"
+        if url:
+            content += f"\n\nSource URL:\n{url}\n"
+        if snippet:
+            content += f"\n\nContent snippet:\n{snippet}\n"
+        operation_id = stable_operation_id(
+            "normal-tag-rerank", model, lineage, [record.get("value") for record in records]
+        )
 
-    if file_name:
-        content += f"\n\nFile name:\n{file_name}\n"
+        def request() -> Any:
+            return client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "Return only valid JSON. No prose."},
+                    {"role": "user", "content": content},
+                ],
+                **chat_completion_kwargs(
+                    model=model,
+                    temperature=0.1,
+                    max_completion_tokens=700,
+                ),
+            )
 
-    if url:
-        content += f"\n\nSource URL:\n{url}\n"
+        outcome = execute_json_completion(operation_id=operation_id, request=request)
+        if outcome.payload is None:
+            return [str(record["value"]) for record in records[:topk]]
+        return _tags_from_payload(outcome.payload)
 
-    if snippet:
-        content += f"\n\nContent snippet:\n{snippet}\n"
+    for offset in range(0, len(candidate_records), batch_size):
+        records = candidate_records[offset : offset + batch_size]
+        mapped_tags.extend(rank_records(records, f"map-{offset // batch_size + 1}"))
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "Return only valid JSON. No prose."},
-            {"role": "user", "content": content},
-        ],
-        **chat_completion_kwargs(
-            model=model,
-            temperature=0.1,
-            max_completion_tokens=700,
-        ),
-    )
+    llm_tags: List[str] = []
+    seen_tags = set()
+    for tag in mapped_tags:
+        key = str(tag).casefold()
+        if key and key not in seen_tags:
+            seen_tags.add(key)
+            llm_tags.append(str(tag))
 
-    txt = (resp.choices[0].message.content or "").strip()
-    payload = _extract_json_payload(txt)
-    llm_tags = _tags_from_payload(payload)
+    if len(llm_tags) > topk:
+        by_value = {str(record["value"]).casefold(): record for record in candidate_records}
+        finalists = [by_value[tag.casefold()] for tag in llm_tags if tag.casefold() in by_value]
+        if finalists:
+            llm_tags = rank_records(finalists, "reduce")
 
     if not llm_tags:
         return fallback

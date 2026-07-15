@@ -414,12 +414,16 @@ PDF AI tagging accounts for each page independently. The tagger keeps usable nat
 
 The **Document intelligence** panel reports:
 
-- **Complete document analysis** when every page has a terminal native, OCR, or blank state and every configured AI map window succeeded.
-- **Partial document analysis** when any page or AI map window is weak or failed. Partial results remain visible but are never represented as complete.
+- **Complete document analysis** only when every page has a terminal native, OCR, or blank state, every required category-map operation succeeded, and every required automatic entailment batch succeeded.
+- **Partial document analysis** when any page, category-map operation, or entailment batch failed. Partial results remain visible but are never represented as complete.
+- **Deterministic tags only** when useful rule-based tags are available but the AI map was not requested. This is not presented as complete AI analysis.
+- **AI mapping unavailable** when model mapping was requested but could not start, including missing credentials or a disabled model path.
 - Native, OCR, blank, weak, and failed page counts.
-- AI map windows completed when LLM enhancement is enabled.
+- AI map operations, entailment batches, and automatically rejected unsupported items.
 
-Routine tagging is automatically validated. Users do not need to approve every tag. Model-derived structured items are accepted only when their evidence is found in the extracted source text. **Show evidence** remains available for audit, and sections with more than 12 items provide an explicit **Show all** control.
+Routine tagging is automatically validated. Users do not need to approve every tag. Model-derived evidence must resolve to the original source substring and is stored with page/section and character offsets. Actions, requirements, restrictions, stages, dates, and claims are additionally checked for logical support, including negation, modality, actor, proposal versus adoption, scope, and time. Contradicted or insufficient items are rejected automatically. **Exact span** and **Entailed** badges show the validation level, while **Show evidence** remains available for audit.
+
+Model work uses stable operation identifiers and bounded retries. If a dense response reaches its output limit, the source window is divided into smaller locator-preserving spans rather than dropping later entities. Structured categories and smart-tag entity arrays preserve all deduplicated items. Long UI sections initially show 12 rows for readability, display the full count, and provide an explicit **Show all** control.
 
 General AI tags are document-level topics and default to 20 results. They are generated from candidates distributed across the complete document. Structured entities are separate and may contain more items. Locations are open vocabulary at the intelligence layer, so explicitly named cities, districts, localities, facilities, and monitoring-station locations are not restricted to the supplied CAQM taxonomy.
 

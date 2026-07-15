@@ -134,7 +134,7 @@ services:
       JOB_HARD_LIMIT: 2100
       URL_CONNECT_TIMEOUT: 8
       URL_READ_TIMEOUT: 20
-      TAGGER_CACHE_NS: tagger:v2-page-complete
+      TAGGER_CACHE_NS: tagger:v3-reliable-map
       OCR_ENABLED: "true"
       TAGGER_SHARED_FILE_ROOTS: /data,/ingress
       TAGGER_INGRESS_DIR: /ingress
@@ -161,7 +161,7 @@ services:
       JOB_HARD_LIMIT: 2100
       URL_CONNECT_TIMEOUT: 8
       URL_READ_TIMEOUT: 20
-      TAGGER_CACHE_NS: tagger:v2-page-complete
+      TAGGER_CACHE_NS: tagger:v3-reliable-map
       OCR_ENABLED: "true"
       TAGGER_SHARED_FILE_ROOTS: /data,/ingress
       TAGGER_INGRESS_DIR: /ingress

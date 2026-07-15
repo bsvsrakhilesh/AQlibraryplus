@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover
 
 
 log = logging.getLogger("pipeline")
-TAGGER_VERSION = os.getenv("TAGGER_VERSION") or "0.7.0-page-complete"
+TAGGER_VERSION = os.getenv("TAGGER_VERSION") or "0.8.0-reliable-map"
 
 # Optional advanced candidate generator (KeyBERT/YAKE/spaCy).
 try:
@@ -274,7 +274,7 @@ def _extract_signal_terms(text: str, limit: int = 60000) -> List[str]:
     for m in _ACRONYM_RE.finditer(t):
         add(m.group(0))
 
-    return out[:80]
+    return out
 
 
 def _tokenize(text: str) -> List[str]:
@@ -618,7 +618,7 @@ def _normalize_governance_item(
 
 
 def _dedupe_governance_items(
-    items: Sequence[Dict[str, Any]], *, key_fields: Sequence[str], limit: int
+    items: Sequence[Dict[str, Any]], *, key_fields: Sequence[str]
 ) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     seen = set()
@@ -631,8 +631,6 @@ def _dedupe_governance_items(
             continue
         seen.add(norm_key)
         out.append(item)
-        if len(out) >= limit:
-            break
     return out
 
 
@@ -706,7 +704,7 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
     ]
     agencies = [item for item in agencies if item and item.get("name")]
     agencies = _dedupe_governance_items(
-        agencies, key_fields=["name", "jurisdiction"], limit=24
+        agencies, key_fields=["name", "jurisdiction"]
     )
 
     issues = [
@@ -726,7 +724,7 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
         for raw in (governance.get("issues") or [])
     ]
     issues = [item for item in issues if item and item.get("title")]
-    issues = _dedupe_governance_items(issues, key_fields=["title"], limit=24)
+    issues = _dedupe_governance_items(issues, key_fields=["title"])
 
     mandates = [
         _normalize_governance_item(
@@ -749,7 +747,7 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
     ]
     mandates = [item for item in mandates if item and item.get("title")]
     mandates = _dedupe_governance_items(
-        mandates, key_fields=["agencyName", "title"], limit=40
+        mandates, key_fields=["agencyName", "title"]
     )
 
     claims = [
@@ -773,7 +771,7 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
     ]
     claims = [item for item in claims if item and item.get("claimText")]
     claims = _dedupe_governance_items(
-        claims, key_fields=["subjectAgencyName", "claimText"], limit=60
+        claims, key_fields=["subjectAgencyName", "claimText"]
     )
 
     events = [
@@ -792,7 +790,7 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
     ]
     events = [item for item in events if item and item.get("title")]
     events = _dedupe_governance_items(
-        events, key_fields=["actorAgencyName", "title", "eventDateText"], limit=60
+        events, key_fields=["actorAgencyName", "title", "eventDateText"]
     )
 
     positions = [
@@ -820,7 +818,7 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
         if item and item.get("agencyName") and item.get("stanceText")
     ]
     positions = _dedupe_governance_items(
-        positions, key_fields=["agencyName", "stanceText"], limit=60
+        positions, key_fields=["agencyName", "stanceText"]
     )
 
     gaps = [
@@ -839,7 +837,7 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
         for raw in (governance.get("gaps") or [])
     ]
     gaps = [item for item in gaps if item and item.get("summary")]
-    gaps = _dedupe_governance_items(gaps, key_fields=["gapType", "summary"], limit=32)
+    gaps = _dedupe_governance_items(gaps, key_fields=["gapType", "summary"])
 
     relations = [
         _normalize_governance_item(
@@ -878,7 +876,6 @@ def _normalize_governance(governance: Any) -> Dict[str, Any]:
             "fromAgencyName",
             "toAgencyName",
         ],
-        limit=48,
     )
 
     return {
@@ -1281,7 +1278,7 @@ def _build_ai_tag_details(
             locator=structured_item.get("locator"),
         )
 
-    return out[:80]
+    return out
 
 
 _SMART_CATEGORY_TAXONOMY = "Taxonomy Tags"
@@ -1893,12 +1890,14 @@ def _coverage_candidate_windows(
     return windows
 
 
-def _round_robin_unique(groups: Sequence[Sequence[str]], limit: int) -> List[str]:
+def _round_robin_unique(
+    groups: Sequence[Sequence[str]], limit: Optional[int] = None
+) -> List[str]:
     """Interleave page-window candidates so late sections cannot be starved."""
     out: List[str] = []
     seen = set()
     index = 0
-    while len(out) < limit:
+    while limit is None or len(out) < limit:
         added = False
         for group in groups:
             if index >= len(group):
@@ -1909,7 +1908,7 @@ def _round_robin_unique(groups: Sequence[Sequence[str]], limit: int) -> List[str
                 seen.add(key)
                 out.append(value)
                 added = True
-                if len(out) >= limit:
+                if limit is not None and len(out) >= limit:
                     break
         if not added and all(index >= len(group) for group in groups):
             break
@@ -2413,18 +2412,18 @@ def _build_smart_tags(
         ),
     )
 
-    def by_category(category: str, limit: int) -> List[Dict[str, Any]]:
-        return [item for item in all_items if item.get("category") == category][:limit]
+    def by_category(category: str) -> List[Dict[str, Any]]:
+        return [item for item in all_items if item.get("category") == category]
 
     entities: Dict[str, List[Dict[str, Any]]] = {
         bucket: [] for bucket in _SMART_ENTITY_BUCKETS.values()
     }
-    for item in by_category(_SMART_CATEGORY_ENTITIES, 80):
+    for item in by_category(_SMART_CATEGORY_ENTITIES):
         bucket = _SMART_ENTITY_BUCKETS.get(str(item.get("type") or ""))
         if bucket:
             entities[bucket].append(item)
 
-    ai_discovered = by_category(_SMART_CATEGORY_DISCOVERED, 30)
+    ai_discovered = by_category(_SMART_CATEGORY_DISCOVERED)
     taxonomy_suggestions = [
         {
             **item,
@@ -2433,20 +2432,20 @@ def _build_smart_tags(
         }
         for item in ai_discovered
         if float(item.get("confidence") or 0) >= 0.7
-    ][:12]
+    ]
 
     return {
         "profile": "smart_tags",
         "version": 1,
-        "taxonomyTags": by_category(_SMART_CATEGORY_TAXONOMY, 40),
+        "taxonomyTags": by_category(_SMART_CATEGORY_TAXONOMY),
         "aiDiscoveredTags": ai_discovered,
-        "topics": by_category(_SMART_CATEGORY_TOPICS, 16),
+        "topics": by_category(_SMART_CATEGORY_TOPICS),
         "entities": entities,
-        "documentType": by_category(_SMART_CATEGORY_DOC_TYPE, 4),
-        "actionsDecisions": by_category(_SMART_CATEGORY_ACTIONS, 24),
+        "documentType": by_category(_SMART_CATEGORY_DOC_TYPE),
+        "actionsDecisions": by_category(_SMART_CATEGORY_ACTIONS),
         "userTags": [],
         "taxonomySuggestions": taxonomy_suggestions,
-        "items": all_items[:140],
+        "items": all_items,
     }
 
 
@@ -2551,7 +2550,7 @@ def extract_and_tag_sync(
     phrases = _extract_phrases(tokens, topk=200)
     candidate_windows = _coverage_candidate_windows(content, grounding_units)
     signal_groups = [_extract_signal_terms(window) for window in candidate_windows]
-    signals = _round_robin_unique(signal_groups, 160)
+    signals = _round_robin_unique(signal_groups)
 
     adv: List[str] = []
     if generate_candidates is not None:
@@ -2561,10 +2560,7 @@ def extract_and_tag_sync(
                 generate_candidates(window, topn=per_window)  # type: ignore
                 for window in candidate_windows
             ]
-            adv = _round_robin_unique(
-                advanced_groups,
-                min(240, max(80, topk * 12)),
-            )
+            adv = _round_robin_unique(advanced_groups)
         except Exception as e:
             log.debug("generate_candidates failed: %s", e)
             adv = []
@@ -2597,10 +2593,9 @@ def extract_and_tag_sync(
                     *,
                     source: str,
                     confidence: float,
-                    limit: int,
                     reason: str,
                 ) -> None:
-                    for item in list(items or [])[:limit]:
+                    for item in list(items or []):
                         raw = _clean_text(item, 120)
                         if not raw:
                             continue
@@ -2655,7 +2650,6 @@ def extract_and_tag_sync(
                         filename_signals,
                         source="filename",
                         confidence=0.76,
-                        limit=12,
                         reason="High-signal term found in the file name.",
                     )
 
@@ -2663,7 +2657,6 @@ def extract_and_tag_sync(
                     signals,
                     source="signal",
                     confidence=0.82,
-                    limit=80,
                     reason="High-signal deterministic term from acronym/entity/pattern extraction.",
                 )
 
@@ -2671,7 +2664,6 @@ def extract_and_tag_sync(
                     adv,
                     source="semantic_candidate",
                     confidence=0.74,
-                    limit=120,
                     reason="Semantic/keyphrase candidate from advanced candidate generator.",
                 )
 
@@ -2679,7 +2671,6 @@ def extract_and_tag_sync(
                     phrases,
                     source="phrase_candidate",
                     confidence=0.62,
-                    limit=120,
                     reason="Frequent phrase candidate from deterministic phrase extraction.",
                 )
 
@@ -2687,7 +2678,6 @@ def extract_and_tag_sync(
                     unigrams,
                     source="keyword_candidate",
                     confidence=0.55,
-                    limit=120,
                     reason="Frequent keyword candidate from deterministic unigram extraction.",
                 )
 

@@ -28,10 +28,10 @@ JOB_SOFT_LIMIT = int(os.getenv("JOB_SOFT_LIMIT", "1800"))  # seconds
 JOB_HARD_LIMIT = int(os.getenv("JOB_HARD_LIMIT", "2100"))  # seconds
 JOB_MAX_RETRIES = int(os.getenv("JOB_MAX_RETRIES", "3"))
 CACHE_TTL = int(os.getenv("TAGGER_CACHE_TTL", "86400"))  # seconds (24h)
-CACHE_NAMESPACE = os.getenv("TAGGER_CACHE_NS", "tagger:v2-smart-tags")
+CACHE_NAMESPACE = os.getenv("TAGGER_CACHE_NS", "tagger:v3-reliable-map")
 CACHE_ALGORITHM_VERSION = os.getenv(
     "TAGGER_CACHE_ALGORITHM_VERSION",
-    "2026-07-03-structured-evidence-gate-v2",
+    "2026-07-15-reliable-map-entailment-v3",
 )
 
 CELERY = Celery("ai_tagger", broker=BROKER_URL, backend=BACKEND_URL)
@@ -391,6 +391,31 @@ def process_job(self: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
             log.warning(
                 "skip_cache_empty_extraction",
                 extra={"url": payload.get("url"), "fingerprint": fp},
+            )
+
+        intelligence = (
+            out.get("structured_intelligence_v1")
+            or out.get("structuredIntelligenceV1")
+            or {}
+        )
+        map_coverage = (
+            intelligence.get("mapCoverage")
+            if isinstance(intelligence, dict)
+            and isinstance(intelligence.get("mapCoverage"), dict)
+            else {}
+        )
+        if bool(payload.get("use_llm")) and map_coverage.get("complete") is not True:
+            should_cache = False
+            log.warning(
+                "skip_cache_incomplete_ai_map",
+                extra={
+                    "fingerprint": fp,
+                    "mode": map_coverage.get("mode"),
+                    "failed_windows": map_coverage.get("failedWindows"),
+                    "failed_validation_batches": map_coverage.get(
+                        "validationFailedBatches"
+                    ),
+                },
             )
 
         if should_cache:

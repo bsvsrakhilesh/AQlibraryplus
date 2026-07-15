@@ -130,3 +130,88 @@ test("normalizeStructuredIntelligence preserves a complete empty map receipt", a
     complete: true,
   });
 });
+
+test("structured evidence spans and entailment receipts survive persistence", async () => {
+  const hooks = await loadHooks();
+  const quote = "The order prohibits construction in Gurugram.";
+  const out = hooks.normalizeStructuredIntelligence(
+    {
+      structured_intelligence_v1: {
+        profile: "structured_intelligence",
+        version: 1,
+        domain: "air_quality_governance",
+        mapCoverage: {
+          mode: "llm_map_merge",
+          required: true,
+          attempted: true,
+          totalWindows: 4,
+          succeededWindows: 4,
+          failedWindows: 0,
+          complete: true,
+        },
+        restrictions: [
+          {
+            id: "restriction-1",
+            label: "Construction prohibited",
+            type: "restriction",
+            category: "restrictions",
+            normalizedValue: "construction_prohibited",
+            confidence: 0.94,
+            source: "llm_validated",
+            evidence: [
+              {
+                quote,
+                page: 9,
+                charStart: 120,
+                charEnd: 120 + quote.length,
+                sourceUnitId: "page-9",
+                locator: { kind: "page", pageNumber: 9 },
+              },
+            ],
+            locator: { kind: "page", pageNumber: 9 },
+            status: "matched",
+            validation: {
+              grounding: "exact_source_span",
+              entailment: "supported",
+              validator: "llm_critic_v1",
+            },
+          },
+        ],
+        items: [],
+      },
+    },
+    null,
+    [],
+  );
+
+  assert.equal(out?.restrictions[0].evidence[0].charStart, 120);
+  assert.equal(out?.restrictions[0].evidence[0].sourceUnitId, "page-9");
+  assert.equal(out?.restrictions[0].validation?.entailment, "supported");
+});
+
+test("smart-tag persistence does not cap entity arrays", async () => {
+  const hooks = await loadHooks();
+  const locations = Array.from({ length: 150 }, (_, index) => ({
+    value: `Location ${index}`,
+    category: "Entities",
+    type: "location",
+    source: "llm_validated",
+    confidence: 0.9,
+    status: "matched",
+    evidence: [{ quote: `Location ${index} is explicitly named.` }],
+  }));
+  const out = hooks.normalizeSmartTags(
+    {
+      smart_tags: {
+        profile: "smart_tags",
+        version: 1,
+        entities: { locations },
+        items: locations,
+      },
+    },
+    [],
+  );
+
+  assert.equal(out?.entities.locations.length, 150);
+  assert.equal(out?.items.length, 150);
+});

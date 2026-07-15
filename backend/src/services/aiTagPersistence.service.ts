@@ -44,6 +44,9 @@ type NormalizedSmartTagItem = {
     page?: number;
     section?: string | null;
     locator?: Record<string, any>;
+    charStart?: number;
+    charEnd?: number;
+    sourceUnitId?: string;
   }>;
 };
 
@@ -88,6 +91,9 @@ const structuredEvidenceSchema = z
     page: z.number().int().optional(),
     section: z.string().trim().max(180).optional(),
     locator: z.record(z.any()).optional(),
+    charStart: z.number().int().min(0).optional(),
+    charEnd: z.number().int().min(0).optional(),
+    sourceUnitId: z.string().trim().max(80).optional(),
   })
   .strict();
 
@@ -103,6 +109,7 @@ const structuredIntelligenceItemSchema = z
     evidence: z.array(structuredEvidenceSchema).min(1).max(50),
     locator: z.record(z.any()).nullable().optional(),
     status: z.string().trim().min(1).max(80),
+    validation: z.record(z.any()).nullable().optional(),
   })
   .strict();
 
@@ -114,6 +121,8 @@ const structuredIntelligenceSchema = z
     mapCoverage: z
       .object({
         mode: z.string(),
+        required: z.boolean().optional(),
+        attempted: z.boolean().optional(),
         totalWindows: z.number().int().min(0),
         succeededWindows: z.number().int().min(0),
         failedWindows: z.number().int().min(0),
@@ -142,6 +151,12 @@ function cleanString(value: unknown, max = 500): string | null {
   const text = String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+  if (!text) return null;
+  return text.slice(0, max);
+}
+
+function cleanEvidenceQuote(value: unknown, max = 1200): string | null {
+  const text = String(value ?? "").trim();
   if (!text) return null;
   return text.slice(0, max);
 }
@@ -227,7 +242,7 @@ function normalizeAiTagObjects(data: any, aiTags: string[]): AiTagObject[] {
     ),
   );
 
-  return out.slice(0, 100);
+  return out;
 }
 
 function confidenceBand(value: unknown): "high" | "medium" | "low" {
@@ -243,7 +258,10 @@ function normalizeSmartTagEvidence(value: unknown): any[] {
   return arr
     .map((raw) => {
       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        const quote = cleanString((raw as any).quote ?? (raw as any).evidence, 1200);
+        const quote = cleanEvidenceQuote(
+          (raw as any).quote ?? (raw as any).evidence,
+          1200,
+        );
         if (!quote) return null;
 
         const pageRaw = Number((raw as any).page);
@@ -304,7 +322,7 @@ function normalizeSmartTagArray(value: unknown, fallbackCategory: string) {
     out.push(item);
   }
 
-  return out.slice(0, 80);
+  return out;
 }
 
 function structuredCategoryFromSmartTag(
@@ -520,7 +538,10 @@ function normalizeStructuredIntelligenceEvidence(value: unknown) {
   return arr
     .map((raw) => {
       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        const quote = cleanString((raw as any).quote ?? (raw as any).evidence, 1200);
+        const quote = cleanEvidenceQuote(
+          (raw as any).quote ?? (raw as any).evidence,
+          1200,
+        );
         if (!quote) return null;
         const pageRaw = Number((raw as any).page);
         const section = cleanString((raw as any).section, 180);
@@ -530,6 +551,17 @@ function normalizeStructuredIntelligenceEvidence(value: unknown) {
           ...(section ? { section } : {}),
           ...((raw as any).locator && typeof (raw as any).locator === "object"
             ? { locator: (raw as any).locator }
+            : {}),
+          ...(Number.isInteger(Number((raw as any).charStart)) &&
+          Number((raw as any).charStart) >= 0
+            ? { charStart: Number((raw as any).charStart) }
+            : {}),
+          ...(Number.isInteger(Number((raw as any).charEnd)) &&
+          Number((raw as any).charEnd) >= 0
+            ? { charEnd: Number((raw as any).charEnd) }
+            : {}),
+          ...(cleanString((raw as any).sourceUnitId, 80)
+            ? { sourceUnitId: cleanString((raw as any).sourceUnitId, 80)! }
             : {}),
         };
       }
@@ -575,6 +607,10 @@ function normalizeStructuredIntelligenceItem(raw: any) {
         ? raw.locator
         : null,
     status: cleanString(raw?.status, 80) ?? "matched",
+    validation:
+      raw?.validation && typeof raw.validation === "object"
+        ? raw.validation
+        : null,
   };
 
   const parsed = structuredIntelligenceItemSchema.safeParse(item);
@@ -997,5 +1033,7 @@ export async function persistAiTagSuccessForUrl(
 }
 
 export const aiTagPersistenceTestHooks = {
+  normalizeAiTagObjects,
+  normalizeSmartTags,
   normalizeStructuredIntelligence,
 };

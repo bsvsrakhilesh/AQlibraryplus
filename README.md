@@ -182,8 +182,9 @@ DEV_AUTH_ENABLED=false
 For the Docker development stack, these values are supplied by
 `docker-compose.dev.yml` and can stay blank in the copied `.env` files:
 `REDIS_URL`, `FILE_STORAGE_DIR`, `CHROMIUM_EXECUTABLE_PATH`,
-`AI_TAG_URL_QUEUE_CONCURRENCY`, `AI_TAG_FILE_QUEUE_CONCURRENCY`, and the
-`ai-tagger/.env` `PORT` and `REDIS_URL` values.
+and the `ai-tagger/.env` `PORT` and `REDIS_URL` values. Tagging queue
+concurrency is intentionally controlled by `backend/.env`, so set
+`AI_TAG_URL_QUEUE_CONCURRENCY` and `AI_TAG_FILE_QUEUE_CONCURRENCY` there.
 
 `frontend/.env` can stay blank for Docker because the development container
 starts Vite on port `3000` and proxies API requests to the backend service.
@@ -205,13 +206,33 @@ STRUCTURED_LLM_ENABLED=true
 STRUCTURED_LLM_MODEL=gpt-4o-mini
 OCR_ENABLED=true
 OCR_NATIVE_WEAK_PAGE_CHARS=80
+LLM_WINDOW_MAX_ATTEMPTS=3
+LLM_WINDOW_RETRY_BASE_SECONDS=0.5
+STRUCTURED_INTELLIGENCE_LLM_MAX_OUTPUT_TOKENS=2400
+STRUCTURED_INTELLIGENCE_CRITIC_BATCH_SIZE=20
 ```
 
 The tagger uses bounded map-merge windows rather than sending only the beginning
-of a document. `STRUCTURED_LLM_MAX_CHARS` controls the size of each map window,
-not the total amount of the document that is analyzed. General AI tags default
-to 20 document topics. Structured entities, including open-vocabulary locations,
-are extracted separately and are not limited by that topic budget.
+of a document. Each window is processed in smaller category batches under a
+stable operation identifier. Transient or invalid responses receive bounded
+retries; an output-limit failure adaptively splits the source span and retries
+the child operations. `STRUCTURED_LLM_MAX_CHARS` controls the largest map
+window, not the total amount of the document that is analyzed.
+
+Model evidence must resolve to an exact source span. Categories whose meaning
+depends on negation, modality, actor, proposal/adoption status, or time receive
+an automatic supported/contradicted/insufficient critic pass. Contradicted and
+insufficient items are rejected without asking the user to approve tags one by
+one. General AI tags default to 20 ranked document topics. Structured entities,
+including open-vocabulary locations, are extracted separately and are not
+limited by that topic budget or by a hidden first-N persistence cap.
+
+Coverage fails closed. **Complete document analysis** requires complete page
+extraction, every required category-map operation, and every required critic
+batch to succeed. Deterministic-only, unavailable, and partial outcomes remain
+usable but are labelled distinctly and are never promoted to complete AI
+analysis. Incomplete model results are not written to the tagger result cache,
+so a later retag can retry them.
 
 The containers can start with blank external credentials, which is useful for
 deterministic tests and infrastructure development. That degraded mode is not
@@ -537,7 +558,10 @@ option parsing, notebook text chunking and provenance handling, governance
 workspace query planning, document discovery, embedding vector formatting,
 tag-candidate filtering, full-document candidate coverage, page-complete OCR
 batching, late-page structured intelligence extraction, open-vocabulary grounded
-locations, and OpenAI client compatibility helpers.
+locations, fail-closed map coverage, stable operation IDs, retry behavior,
+adaptive output splitting, exact evidence offsets, automatic contradiction
+rejection, uncapped entity persistence/UI normalization, and OpenAI client
+compatibility helpers.
 
 Install dependencies before running the test suites:
 

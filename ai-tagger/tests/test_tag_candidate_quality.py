@@ -55,6 +55,13 @@ class TagCandidateQualityTests(unittest.TestCase):
         self.assertNotIn("caqm dated", signals)
         self.assertIn("ip estate", signals)
 
+    def test_signal_extraction_has_no_hidden_eighty_item_cap(self) -> None:
+        text = " ".join(f"CODE{index}" for index in range(125))
+        signals = _extract_signal_terms(text)
+
+        self.assertEqual(len(signals), 125)
+        self.assertIn("CODE124", signals)
+
 
 if __name__ == "__main__":
     unittest.main()

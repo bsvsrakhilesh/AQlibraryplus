@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Sparkles, Copy, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { deriveAiTagCoverageView } from "../../lib/aiTagCoverage";
+import { preserveUniqueByKey } from "../../lib/aiTagCollections";
 
 type LabelItem = {
   value?: string | null;
@@ -25,6 +26,9 @@ type SmartTagEvidence = {
   page?: number | null;
   section?: string | null;
   locator?: Record<string, any> | null;
+  charStart?: number | null;
+  charEnd?: number | null;
+  sourceUnitId?: string | null;
 };
 
 type SmartTag = {
@@ -37,6 +41,7 @@ type SmartTag = {
   matchedTaxonomy?: string | null;
   status?: string | null;
   evidence?: SmartTagEvidence[] | string | null;
+  validation?: Record<string, any> | null;
 };
 
 type SmartTags = {
@@ -96,6 +101,7 @@ type IntelligenceItem = {
   evidence?: SmartTagEvidence[] | string | null;
   locator?: Record<string, any> | null;
   status?: string | null;
+  validation?: Record<string, any> | null;
 };
 
 type StructuredIntelligence = {
@@ -104,10 +110,17 @@ type StructuredIntelligence = {
   domain?: string;
   mapCoverage?: {
     mode?: string;
+    required?: boolean;
+    attempted?: boolean;
     totalWindows?: number;
     succeededWindows?: number;
     failedWindows?: number;
     complete?: boolean;
+    validationTotalBatches?: number;
+    validationSucceededBatches?: number;
+    validationFailedBatches?: number;
+    rejectedItems?: number;
+    receipts?: Array<Record<string, any>>;
   };
   topics?: IntelligenceItem[];
   agencies?: IntelligenceItem[];
@@ -232,7 +245,6 @@ function smartEvidenceCount(items: SmartTag[]) {
 function cleanTagDetails(input?: AiTagDetail[] | null) {
   if (!Array.isArray(input)) return [];
 
-  const seen = new Set<string>();
   const out: AiTagDetail[] = [];
 
   for (const raw of input) {
@@ -240,10 +252,6 @@ function cleanTagDetails(input?: AiTagDetail[] | null) {
     if (!value) continue;
 
     const type = String(raw?.type ?? "keyword").trim() || "keyword";
-    const key = `${type}:${value.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
     out.push({
       ...raw,
       value,
@@ -258,7 +266,10 @@ function cleanTagDetails(input?: AiTagDetail[] | null) {
     });
   }
 
-  return out.slice(0, 30);
+  return preserveUniqueByKey(
+    out,
+    (item) => `${item.type}:${String(item.value).toLowerCase()}`,
+  );
 }
 
 function cleanSmartEvidence(input: SmartTag["evidence"]): SmartTagEvidence[] {
@@ -279,7 +290,18 @@ function cleanSmartEvidence(input: SmartTag["evidence"]): SmartTagEvidence[] {
       const section = raw.section ? String(raw.section).trim() : null;
       const locator =
         raw.locator && typeof raw.locator === "object" ? raw.locator : null;
-      return { quote, page, section, locator };
+      const charStart =
+        typeof raw.charStart === "number" && Number.isInteger(raw.charStart)
+          ? raw.charStart
+          : null;
+      const charEnd =
+        typeof raw.charEnd === "number" && Number.isInteger(raw.charEnd)
+          ? raw.charEnd
+          : null;
+      const sourceUnitId = raw.sourceUnitId
+        ? String(raw.sourceUnitId).trim()
+        : null;
+      return { quote, page, section, locator, charStart, charEnd, sourceUnitId };
     })
     .filter(Boolean) as SmartTagEvidence[];
 }
@@ -287,7 +309,6 @@ function cleanSmartEvidence(input: SmartTag["evidence"]): SmartTagEvidence[] {
 function cleanSmartTagArray(input?: SmartTag[] | null, fallbackCategory = "") {
   if (!Array.isArray(input)) return [];
   const out: SmartTag[] = [];
-  const seen = new Set<string>();
 
   for (const raw of input) {
     const value = String(raw?.value ?? "").trim();
@@ -295,10 +316,6 @@ function cleanSmartTagArray(input?: SmartTag[] | null, fallbackCategory = "") {
 
     const category = String(raw?.category ?? fallbackCategory).trim();
     const type = String(raw?.type ?? "keyword").trim() || "keyword";
-    const key = `${category}:${type}:${value.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
     out.push({
       ...raw,
       value,
@@ -320,7 +337,10 @@ function cleanSmartTagArray(input?: SmartTag[] | null, fallbackCategory = "") {
     });
   }
 
-  return out.slice(0, 80);
+  return preserveUniqueByKey(
+    out,
+    (item) => `${item.category}:${item.type}:${String(item.value).toLowerCase()}`,
+  );
 }
 
 function cleanSmartTags(input?: SmartTags | null): SmartTags | null {
@@ -367,7 +387,7 @@ function cleanSmartTags(input?: SmartTags | null): SmartTags | null {
     ...(out.userTags ?? []),
   ];
 
-  return out.items.length ? out : null;
+  return out.items.length || out.mapCoverage ? out : null;
 }
 
 const INTELLIGENCE_SECTIONS: {
@@ -392,7 +412,6 @@ const INTELLIGENCE_SECTIONS: {
 function cleanIntelligenceArray(input?: IntelligenceItem[] | null) {
   if (!Array.isArray(input)) return [];
   const out: IntelligenceItem[] = [];
-  const seen = new Set<string>();
 
   for (const raw of input) {
     const label = String(raw?.label ?? "").trim();
@@ -405,10 +424,6 @@ function cleanIntelligenceArray(input?: IntelligenceItem[] | null) {
     const normalizedValue = String(
       raw?.normalizedValue ?? label.toLowerCase(),
     ).trim();
-    const key = `${category}:${type}:${normalizedValue.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
     out.push({
       ...raw,
       label,
@@ -427,7 +442,11 @@ function cleanIntelligenceArray(input?: IntelligenceItem[] | null) {
     });
   }
 
-  return out;
+  return preserveUniqueByKey(
+    out,
+    (item) =>
+      `${item.category}:${item.type}:${String(item.normalizedValue).toLowerCase()}`,
+  );
 }
 
 function cleanStructuredIntelligence(
@@ -477,6 +496,7 @@ function intelligenceToSmartTag(item: IntelligenceItem): SmartTag {
     matchedTaxonomy: item.normalizedValue,
     status: item.status,
     evidence: item.evidence,
+    validation: item.validation,
   };
 }
 
@@ -559,6 +579,16 @@ function SmartTagRow({
               {source}
             </span>
             {evidence.length ? <span>{evidence.length} evidence</span> : null}
+            {tag.validation?.grounding === "exact_source_span" ? (
+              <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-sky-700 ring-1 ring-sky-200/70">
+                Exact span
+              </span>
+            ) : null}
+            {tag.validation?.entailment === "supported" ? (
+              <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-emerald-700 ring-1 ring-emerald-200/70">
+                Entailed
+              </span>
+            ) : null}
           </div>
         </div>
         <span
@@ -747,7 +777,7 @@ export default function StructuredTags({
       if (!a.length) return;
       out.push({
         k,
-        v: a.slice(0, 6).join(", ") + (a.length > 6 ? " ..." : ""),
+        v: a.join(", "),
       });
     };
     push("Direction no.", entities.directionNumbers);
@@ -918,13 +948,17 @@ export default function StructuredTags({
         {headerRight}
       </div>
 
-      {coverageView.hasPageCoverage ? (
+      {coverageView.hasCoverage ? (
         <div
           className={cn(
             "mt-3 rounded-xl border px-3 py-3",
-            coverageView.complete
+            coverageView.status === "complete"
               ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-              : "border-amber-200 bg-amber-50 text-amber-950",
+              : coverageView.status === "deterministic_only"
+                ? "border-sky-200 bg-sky-50 text-sky-950"
+                : coverageView.status === "unavailable"
+                  ? "border-rose-200 bg-rose-50 text-rose-950"
+                  : "border-amber-200 bg-amber-50 text-amber-950",
           )}
           role="status"
         >
@@ -933,7 +967,9 @@ export default function StructuredTags({
               {coverageView.statusLabel}
             </div>
             <div className="text-[11px] font-semibold">
-              {coverageView.analyzedPages} of {coverageView.totalPages} pages analyzed
+              {coverageView.hasPageCoverage
+                ? `${coverageView.analyzedPages} of ${coverageView.totalPages} pages analyzed`
+                : "Whole source mapped"}
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] opacity-80">
@@ -949,6 +985,15 @@ export default function StructuredTags({
                 AI map {Number(modelCoverage.succeededWindows ?? 0)}/
                 {modelCoverage.totalWindows} windows
               </span>
+            ) : null}
+            {Number(modelCoverage?.validationTotalBatches ?? 0) > 0 ? (
+              <span>
+                Entailment {Number(modelCoverage?.validationSucceededBatches ?? 0)}/
+                {Number(modelCoverage?.validationTotalBatches ?? 0)} batches
+              </span>
+            ) : null}
+            {Number(modelCoverage?.rejectedItems ?? 0) > 0 ? (
+              <span>{Number(modelCoverage?.rejectedItems)} unsupported rejected</span>
             ) : null}
           </div>
         </div>
@@ -1160,7 +1205,7 @@ export default function StructuredTags({
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
-                {safeTagDetails.slice(0, compact ? 8 : 16).map((tag, idx) => (
+                {safeTagDetails.map((tag, idx) => (
                   <TagDetailRow
                     key={`${tag.type ?? "tag"}-${tag.value ?? idx}-${idx}`}
                     tag={tag}

@@ -19,6 +19,7 @@
     "utils/collectorAuthorityCoverage.ts",
     "utils/urlCollector.ts",
     "utils/urlCanonical.ts",
-    "lib/types.ts"
+    "lib/types.ts",
+    "lib/aiTagCollections.ts"
   ]
 }

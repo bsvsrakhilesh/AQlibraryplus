@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Optional, Sequence
 
 try:
     from openai_compat import chat_completion_kwargs  # type: ignore
+    from llm_reliability import execute_json_completion, stable_operation_id  # type: ignore
 except ImportError:  # pragma: no cover - package import fallback
     from .openai_compat import chat_completion_kwargs  # type: ignore
+    from .llm_reliability import execute_json_completion, stable_operation_id  # type: ignore
 
 log = logging.getLogger("structured_openai")
 
@@ -631,6 +633,91 @@ Rules:
 """
 
 
+def _adaptive_mapped_completion(
+    *,
+    client: Any,
+    model: str,
+    window: Dict[str, Any],
+    schema: Dict[str, Any],
+    schema_name: str,
+    system_prompt: str,
+    prompt_prefix: str,
+    max_completion_tokens: int,
+    lineage: str,
+    depth: int = 0,
+) -> List[Dict[str, Any]]:
+    window_text = str(window.get("text") or "")
+    operation_id = stable_operation_id(
+        "legacy-map", model, schema_name, lineage, window_text
+    )
+    user_prompt = f"{prompt_prefix}\n\nDocument text with locators:\n{window_text}"
+
+    def request() -> Any:
+        return client.chat.completions.create(
+            model=model,
+            **chat_completion_kwargs(
+                model=model,
+                temperature=0,
+                max_completion_tokens=max_completion_tokens,
+            ),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name,
+                    "schema": schema,
+                    "strict": True,
+                },
+            },
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            timeout=STRUCTURED_LLM_TIMEOUT_S,
+        )
+
+    outcome = execute_json_completion(operation_id=operation_id, request=request)
+    if outcome.payload is not None:
+        return [outcome.payload]
+    error_code = outcome.receipt.get("errorCode")
+    if (
+        depth < 5
+        and len(window_text) >= 1400
+        and error_code in {"output_incomplete", "invalid_response", "empty_response"}
+    ):
+        child_limit = max(700, len(window_text) // 2)
+        children = _map_windows(
+            window_text,
+            window.get("units") or [],
+            max_chars=child_limit,
+        )
+        if len(children) > 1:
+            payloads: List[Dict[str, Any]] = []
+            for index, child in enumerate(children, start=1):
+                payloads.extend(
+                    _adaptive_mapped_completion(
+                        client=client,
+                        model=model,
+                        window=child,
+                        schema=schema,
+                        schema_name=schema_name,
+                        system_prompt=system_prompt,
+                        prompt_prefix=prompt_prefix,
+                        max_completion_tokens=max_completion_tokens,
+                        lineage=f"{lineage}.{index}",
+                        depth=depth + 1,
+                    )
+                )
+            return payloads
+    log.warning(
+        "%s operation %s failed after %s attempt(s): %s",
+        schema_name,
+        operation_id,
+        outcome.receipt.get("attempts"),
+        error_code,
+    )
+    return []
+
+
 def extract_structured_with_llm(
     *,
     content: str,
@@ -641,16 +728,15 @@ def extract_structured_with_llm(
 ) -> Optional[Dict[str, Any]]:
     if not has_structured_llm():
         return None
-
     body = (content or "").strip()
     if not body:
         return None
 
     client = _client()
     model = get_structured_model()
-
-    tag_text = ", ".join([str(t).strip() for t in (tags or []) if str(t).strip()][:20])
-
+    tag_text = ", ".join(
+        [str(tag).strip() for tag in (tags or []) if str(tag).strip()][:20]
+    )
     extraction_meta = extraction or {}
     extraction_summary = {
         "kind": extraction_meta.get("kind"),
@@ -659,16 +745,12 @@ def extract_structured_with_llm(
         "unitCount": extraction_meta.get("unitCount"),
         "charCount": extraction_meta.get("charCount"),
     }
-
     windows = _map_windows(
-        body,
-        grounding_units or [],
-        max_chars=STRUCTURED_LLM_MAX_CHARS,
+        body, grounding_units or [], max_chars=STRUCTURED_LLM_MAX_CHARS
     )
     merged: Optional[Dict[str, Any]] = None
     for window_index, window in enumerate(windows, start=1):
-        unit_preview = _unit_preview(window.get("units") or [])
-        user_prompt = f"""File name:
+        prompt_prefix = f"""File name:
 {file_name or "unknown"}
 
 Map window:
@@ -681,48 +763,22 @@ Extraction summary:
 {json.dumps(extraction_summary, ensure_ascii=False)}
 
 Grounding previews:
-{unit_preview or "(none)"}
-
-Document text with locators:
-{window.get('text') or ''}
-"""
-
-        try:
-            resp = client.chat.completions.create(
+{_unit_preview(window.get("units") or []) or "(none)"}"""
+        payloads = _adaptive_mapped_completion(
+            client=client,
             model=model,
-            **chat_completion_kwargs(
-                model=model,
-                temperature=0,
-                max_completion_tokens=1400,
-            ),
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "caqm_structured",
-                    "schema": _SCHEMA,
-                    "strict": True,
-                },
-            },
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            timeout=STRUCTURED_LLM_TIMEOUT_S,
+            window=window,
+            schema=_SCHEMA,
+            schema_name="caqm_structured",
+            system_prompt=_SYSTEM_PROMPT,
+            prompt_prefix=prompt_prefix,
+            max_completion_tokens=1400,
+            lineage=f"w{window_index}",
         )
-
-            raw = (resp.choices[0].message.content or "").strip()
-            parsed = json.loads(raw) if raw else None
-            if isinstance(parsed, dict):
-                parsed["profile"] = "caqm"
-                parsed["version"] = 1
-                merged = merge_structured(parsed, merged)
-        except Exception as e:
-            log.warning(
-                "structured llm map window %s/%s failed: %s",
-                window_index,
-                len(windows),
-                e,
-            )
+        for parsed in payloads:
+            parsed["profile"] = "caqm"
+            parsed["version"] = 1
+            merged = merge_structured(parsed, merged)
     return merged
 
 
@@ -782,42 +838,22 @@ Document text with locators:
 {window.get('text') or ''}
 """
 
-        try:
-            resp = client.chat.completions.create(
+        prompt_prefix = user_prompt.rsplit("\n\nDocument text with locators:", 1)[0]
+        payloads = _adaptive_mapped_completion(
+            client=client,
             model=model,
-            **chat_completion_kwargs(
-                model=model,
-                temperature=0,
-                max_completion_tokens=2400,
-            ),
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "governance_structured",
-                    "schema": _GOVERNANCE_SCHEMA,
-                    "strict": True,
-                },
-            },
-            messages=[
-                {"role": "system", "content": _GOVERNANCE_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            timeout=STRUCTURED_LLM_TIMEOUT_S,
+            window=window,
+            schema=_GOVERNANCE_SCHEMA,
+            schema_name="governance_structured",
+            system_prompt=_GOVERNANCE_SYSTEM_PROMPT,
+            prompt_prefix=prompt_prefix,
+            max_completion_tokens=2400,
+            lineage=f"w{window_index}",
         )
-
-            raw = (resp.choices[0].message.content or "").strip()
-            parsed = json.loads(raw) if raw else None
-            if isinstance(parsed, dict):
-                parsed["profile"] = "governance"
-                parsed["version"] = 1
-                mapped.append(parsed)
-        except Exception as e:
-            log.warning(
-                "governance llm map window %s/%s failed: %s",
-                window_index,
-                len(windows),
-                e,
-            )
+        for parsed in payloads:
+            parsed["profile"] = "governance"
+            parsed["version"] = 1
+            mapped.append(parsed)
     return _merge_governance_maps(mapped) if mapped else None
 
 
@@ -903,8 +939,6 @@ def _clean_item(item: Any) -> Optional[Dict[str, Any]]:
 def _merge_items(
     preferred: Any,
     fallback: Any,
-    *,
-    limit: int,
 ) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     seen = set()
@@ -923,8 +957,6 @@ def _merge_items(
                 continue
             seen.add(key)
             out.append(item)
-            if len(out) >= limit:
-                return out
 
     return out
 
@@ -936,7 +968,6 @@ def _merge_grap_stages(
     stages = _merge_items(
         preferred.get("stages"),
         fallback.get("stages"),
-        limit=8,
     )
     single_stage = preferred.get("stage") or fallback.get("stage")
     if not single_stage:
@@ -1012,27 +1043,22 @@ def merge_structured(
         "sectors": _merge_items(
             p_labels.get("sectors"),
             f_labels.get("sectors"),
-            limit=6,
         ),
         "agencies": _merge_items(
             p_labels.get("agencies"),
             f_labels.get("agencies"),
-            limit=8,
         ),
         "geography": _merge_items(
             p_labels.get("geography"),
             f_labels.get("geography"),
-            limit=6,
         ),
         "programs": _merge_items(
             p_labels.get("programs"),
             f_labels.get("programs"),
-            limit=4,
         ),
         "pollutants": _merge_items(
             p_labels.get("pollutants"),
             f_labels.get("pollutants"),
-            limit=6,
         ),
     }
 

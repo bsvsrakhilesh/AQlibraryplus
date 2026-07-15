@@ -11,8 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from openai_compat import chat_completion_kwargs  # type: ignore
+    from llm_reliability import (  # type: ignore
+        execute_json_completion,
+        stable_operation_id,
+    )
 except ImportError:  # pragma: no cover - package import fallback
     from .openai_compat import chat_completion_kwargs  # type: ignore
+    from .llm_reliability import execute_json_completion, stable_operation_id  # type: ignore
 
 log = logging.getLogger("structured_intelligence")
 
@@ -35,6 +40,15 @@ STRUCTURED_INTELLIGENCE_LLM_TIMEOUT_S = float(
 )
 STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS = int(
     os.getenv("STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS", "6000")
+)
+STRUCTURED_INTELLIGENCE_LLM_MIN_SPLIT_CHARS = int(
+    os.getenv("STRUCTURED_INTELLIGENCE_LLM_MIN_SPLIT_CHARS", "700")
+)
+STRUCTURED_INTELLIGENCE_LLM_MAX_OUTPUT_TOKENS = int(
+    os.getenv("STRUCTURED_INTELLIGENCE_LLM_MAX_OUTPUT_TOKENS", "2400")
+)
+STRUCTURED_INTELLIGENCE_CRITIC_BATCH_SIZE = max(
+    1, int(os.getenv("STRUCTURED_INTELLIGENCE_CRITIC_BATCH_SIZE", "20"))
 )
 
 PROFILE = "structured_intelligence"
@@ -63,6 +77,9 @@ class EvidenceAnchor(BaseModel):
     page: Optional[int] = None
     section: Optional[str] = Field(default=None, max_length=180)
     locator: Optional[Dict[str, Any]] = None
+    charStart: Optional[int] = Field(default=None, ge=0)
+    charEnd: Optional[int] = Field(default=None, ge=0)
+    sourceUnitId: Optional[str] = Field(default=None, max_length=80)
 
 
 class IntelligenceItem(BaseModel):
@@ -78,6 +95,7 @@ class IntelligenceItem(BaseModel):
     evidence: List[EvidenceAnchor] = Field(default_factory=list, max_length=50)
     locator: Optional[Dict[str, Any]] = None
     status: str = Field(default="matched", max_length=80)
+    validation: Optional[Dict[str, Any]] = None
 
 
 class StructuredIntelligenceV1(BaseModel):
@@ -159,13 +177,23 @@ def _candidate_units(
         base = [{"text": content, "locator": {"kind": "document"}}]
 
     out: List[Dict[str, Any]] = []
-    for unit in base:
+    for unit_index, unit in enumerate(base):
         text = str(unit.get("text") or "").strip()
         if not text:
             continue
         locator = _dict_copy(unit.get("locator"))
+        source_unit_id = str(
+            unit.get("sourceUnitId")
+            or stable_operation_id("source-unit", unit_index, locator, text)
+        )
         if len(text) <= max_chars:
-            out.append({"text": text, "locator": _dict_copy(locator)})
+            loc = _dict_copy(locator)
+            loc.setdefault("charStart", 0)
+            loc.setdefault("charEnd", len(text))
+            loc.setdefault("sourceUnitId", source_unit_id)
+            out.append(
+                {"text": text, "locator": loc, "sourceUnitId": source_unit_id}
+            )
             continue
 
         start = 0
@@ -178,9 +206,16 @@ def _candidate_units(
                     end = split_at
             chunk = text[start:end].strip()
             if chunk:
+                leading = len(text[start:end]) - len(text[start:end].lstrip())
+                absolute_start = start + leading
                 loc = _dict_copy(locator)
                 loc["chunk"] = chunk_idx
-                out.append({"text": chunk, "locator": loc})
+                loc["charStart"] = absolute_start
+                loc["charEnd"] = absolute_start + len(chunk)
+                loc["sourceUnitId"] = source_unit_id
+                out.append(
+                    {"text": chunk, "locator": loc, "sourceUnitId": source_unit_id}
+                )
             if end >= len(text):
                 break
             start = max(end - overlap, start + 1)
@@ -204,7 +239,14 @@ def _locator_prefix(locator: Optional[Dict[str, Any]]) -> str:
 
 
 def _evidence(text: str, start: int, end: int, locator: Dict[str, Any]) -> Dict[str, Any]:
-    quote = _snippet(text, start, end)
+    span_start = max(0, start - 140)
+    span_end = min(len(text), end + 140)
+    raw_quote = text[span_start:span_end]
+    leading = len(raw_quote) - len(raw_quote.lstrip())
+    trailing = len(raw_quote) - len(raw_quote.rstrip())
+    span_start += leading
+    span_end -= trailing
+    quote = text[span_start:span_end]
     item: Dict[str, Any] = {"quote": quote}
     page = _page_from_locator(locator)
     if page is not None:
@@ -214,6 +256,12 @@ def _evidence(text: str, start: int, end: int, locator: Dict[str, Any]) -> Dict[
         item["section"] = _clean_text(section, 180)
     if locator:
         item["locator"] = locator
+    base_start = int(locator.get("charStart") or 0)
+    item["charStart"] = base_start + span_start
+    item["charEnd"] = base_start + span_end
+    source_unit_id = locator.get("sourceUnitId")
+    if source_unit_id:
+        item["sourceUnitId"] = str(source_unit_id)
     return item
 
 
@@ -536,6 +584,12 @@ def _items_from_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> 
         return []
     out: List[Dict[str, Any]] = []
 
+    def exact_anchor(evidence_text: str, locator: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return _exact_source_anchor(
+            {"quote": evidence_text, **({"locator": locator} if locator else {})},
+            units,
+        )
+
     def add_from_label(raw: Any, category: str, item_type: str, confidence: float) -> None:
         if not isinstance(raw, dict):
             return
@@ -543,6 +597,9 @@ def _items_from_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> 
         evidence_text = _clean_text(raw.get("evidence"), 500)
         locator = _dict_copy(raw.get("locator"))
         if not value or not evidence_text:
+            return
+        evidence = exact_anchor(evidence_text, locator)
+        if not evidence:
             return
         out.append(
             _make_item(
@@ -552,7 +609,7 @@ def _items_from_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> 
                 normalized=_norm(value),
                 confidence=_confidence(raw.get("score"), confidence),
                 source="taxonomy",
-                evidence={"quote": evidence_text, **({"locator": locator} if locator else {})},
+                evidence=evidence,
             )
         )
 
@@ -590,6 +647,9 @@ def _items_from_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> 
             if not stage:
                 continue
             if evidence_text:
+                evidence = exact_anchor(evidence_text, locator)
+                if not evidence:
+                    continue
                 out.append(
                     _make_item(
                         label=f"GRAP Stage {stage}",
@@ -598,12 +658,15 @@ def _items_from_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> 
                         normalized=f"grap_stage_{stage.casefold()}",
                         confidence=confidence,
                         source="taxonomy",
-                        evidence={"quote": evidence_text, **({"locator": locator} if locator else {})},
+                        evidence=evidence,
                     )
                 )
     elif grap.get("stage") and grap.get("evidence"):
         stage = _roman_stage(str(grap.get("stage")))
         if stage:
+            evidence = exact_anchor(_clean_text(grap.get("evidence"), 500) or "", {})
+            if not evidence:
+                return out
             out.append(
                 _make_item(
                     label=f"GRAP Stage {stage}",
@@ -612,7 +675,7 @@ def _items_from_structured(structured: Any, units: Sequence[Dict[str, Any]]) -> 
                     normalized=f"grap_stage_{stage.casefold()}",
                     confidence=0.8,
                     source="taxonomy",
-                    evidence={"quote": _clean_text(grap.get("evidence"), 500) or ""},
+                    evidence=evidence,
                 )
             )
 
@@ -633,7 +696,8 @@ def _normalize_item(raw: Any) -> Optional[Dict[str, Any]]:
     evidence: List[Dict[str, Any]] = []
     for ev in ev_arr:
         if isinstance(ev, dict):
-            quote = _clean_text(ev.get("quote") or ev.get("evidence"), 1200)
+            quote = str(ev.get("quote") or ev.get("evidence") or "").strip()
+            quote = quote[:1200]
             if not quote:
                 continue
             item: Dict[str, Any] = {"quote": quote}
@@ -650,9 +714,18 @@ def _normalize_item(raw: Any) -> Optional[Dict[str, Any]]:
                 item["section"] = section
             if isinstance(ev.get("locator"), dict):
                 item["locator"] = ev.get("locator")
+            for key in ("charStart", "charEnd"):
+                try:
+                    if ev.get(key) is not None:
+                        item[key] = max(0, int(ev.get(key)))
+                except (TypeError, ValueError):
+                    pass
+            source_unit_id = _clean_text(ev.get("sourceUnitId"), 80)
+            if source_unit_id:
+                item["sourceUnitId"] = source_unit_id
             evidence.append(item)
         else:
-            quote = _clean_text(ev, 1200)
+            quote = str(ev or "").strip()[:1200]
             if quote:
                 evidence.append({"quote": quote})
 
@@ -673,6 +746,9 @@ def _normalize_item(raw: Any) -> Optional[Dict[str, Any]]:
         "evidence": evidence[:50],
         "locator": locator if isinstance(locator, dict) else None,
         "status": _clean_text(raw.get("status"), 80) or "matched",
+        "validation": raw.get("validation")
+        if isinstance(raw.get("validation"), dict)
+        else None,
     }
 
 
@@ -711,29 +787,95 @@ _CLOSED_INTELLIGENCE_CATEGORIES = {
 }
 
 
-def _evidence_supported_by_content(quote: Any, content: str) -> bool:
-    """Conservatively verify that an LLM evidence quote comes from the source."""
-    raw_quote = str(quote or "")
-    raw_quote = re.sub(r"^\s*\[[^]]+\]\s*", "", raw_quote)
-    quote_words = re.findall(r"[a-z0-9]+", raw_quote.casefold())
-    content_words = re.findall(r"[a-z0-9]+", (content or "").casefold())
-    if len(quote_words) < 4 or not content_words:
-        return False
-    quote_norm = " ".join(quote_words)
-    content_norm = " ".join(content_words)
-    if quote_norm in content_norm:
-        return True
-    content_set = set(content_words)
-    meaningful = [word for word in quote_words if len(word) >= 3]
-    if len(meaningful) < 4:
-        return False
-    overlap = sum(1 for word in meaningful if word in content_set) / len(meaningful)
-    return overlap >= 0.85
+def _collapsed_with_offsets(value: str) -> Tuple[str, List[int]]:
+    collapsed: List[str] = []
+    offsets: List[int] = []
+    in_space = False
+    for index, char in enumerate(value):
+        if char.isspace():
+            if collapsed and not in_space:
+                collapsed.append(" ")
+                offsets.append(index)
+            in_space = True
+            continue
+        folded = char.casefold()
+        for folded_char in folded:
+            collapsed.append(folded_char)
+            offsets.append(index)
+        in_space = False
+    if collapsed and collapsed[-1] == " ":
+        collapsed.pop()
+        offsets.pop()
+    return "".join(collapsed), offsets
+
+
+def _exact_source_anchor(
+    evidence: Dict[str, Any],
+    units: Sequence[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    requested_quote = re.sub(
+        r"^\s*\[[^]]+\]\s*", "", str(evidence.get("quote") or "")
+    ).strip()
+    if not requested_quote:
+        return None
+    requested_page = _page_from_locator(
+        evidence.get("locator") if isinstance(evidence.get("locator"), dict) else None
+    )
+    try:
+        if evidence.get("page") is not None:
+            requested_page = int(evidence.get("page"))
+    except (TypeError, ValueError):
+        pass
+
+    ordered_units = sorted(
+        list(units),
+        key=lambda unit: 0
+        if requested_page is not None
+        and _page_from_locator(_dict_copy(unit.get("locator"))) == requested_page
+        else 1,
+    )
+    quote_collapsed, _ = _collapsed_with_offsets(requested_quote)
+    if len(quote_collapsed) < 4:
+        return None
+
+    for unit in ordered_units:
+        source = str(unit.get("text") or "")
+        if not source:
+            continue
+        source_collapsed, offsets = _collapsed_with_offsets(source)
+        found = source_collapsed.find(quote_collapsed)
+        if found < 0 or not offsets:
+            continue
+        local_start = offsets[found]
+        final_position = min(found + len(quote_collapsed) - 1, len(offsets) - 1)
+        local_end = offsets[final_position] + 1
+        original_quote = source[local_start:local_end]
+        locator = _dict_copy(unit.get("locator"))
+        base_start = int(locator.get("charStart") or 0)
+        page = _page_from_locator(locator)
+        anchor: Dict[str, Any] = {
+            "quote": original_quote,
+            "locator": locator,
+            "charStart": base_start + local_start,
+            "charEnd": base_start + local_end,
+            "sourceUnitId": str(
+                unit.get("sourceUnitId")
+                or locator.get("sourceUnitId")
+                or stable_operation_id("source-unit", locator, source)
+            ),
+        }
+        if page is not None:
+            anchor["page"] = page
+        section = _clean_text(locator.get("section") or locator.get("heading"), 180)
+        if section:
+            anchor["section"] = section
+        return anchor
+    return None
 
 
 def _validated_llm_items(
     llm_payload: Any,
-    content: str,
+    grounding_units: Sequence[Dict[str, Any]],
     deterministic: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
     deterministic_keys = {
@@ -746,10 +888,10 @@ def _validated_llm_items(
             continue
         evidence = item.get("evidence") if isinstance(item.get("evidence"), list) else []
         supported_evidence = [
-            ev
+            anchor
             for ev in evidence
             if isinstance(ev, dict)
-            and _evidence_supported_by_content(ev.get("quote"), content)
+            if (anchor := _exact_source_anchor(ev, grounding_units)) is not None
         ]
         if not supported_evidence:
             continue
@@ -777,6 +919,14 @@ def _validated_llm_items(
             continue
         item["evidence"] = supported_evidence[:50]
         item["source"] = "llm_validated"
+        item["locator"] = supported_evidence[0].get("locator")
+        prior_validation = _dict_copy(item.get("validation"))
+        item["validation"] = {
+            **prior_validation,
+            "grounding": "exact_source_span",
+            "entailment": prior_validation.get("entailment") or "pending",
+            "validator": prior_validation.get("validator") or "source_span_v1",
+        }
         accepted.append(item)
     return accepted
 
@@ -811,6 +961,8 @@ def _make_payload(
                 existing.setdefault("evidence", []).append(ev)
                 seen_quotes.add(quote_key)
         existing["evidence"] = existing.get("evidence", [])[:50]
+        if item.get("validation") and not existing.get("validation"):
+            existing["validation"] = item.get("validation")
 
     ordered = sorted(
         merged.values(),
@@ -828,11 +980,17 @@ def _make_payload(
         "domain": DOMAIN,
         "mapCoverage": map_coverage
         or {
-            "mode": "deterministic",
+            "mode": "deterministic_only",
+            "required": False,
+            "attempted": False,
             "totalWindows": 0,
             "succeededWindows": 0,
             "failedWindows": 0,
-            "complete": True,
+            "validationTotalBatches": 0,
+            "validationSucceededBatches": 0,
+            "validationFailedBatches": 0,
+            "complete": False,
+            "receipts": [],
         },
     }
     for key in CATEGORY_KEYS:
@@ -855,7 +1013,24 @@ def _client():
     return OpenAI(api_key=key, base_url=base) if base else OpenAI(api_key=key)
 
 
-def _llm_schema() -> Dict[str, Any]:
+_CATEGORY_BATCHES: Tuple[Tuple[str, ...], ...] = (
+    ("topics", "agencies", "programs", "programStages"),
+    ("legalReferences", "actionsDecisions", "requirements", "restrictions"),
+    ("locations", "sectors", "pollutantsMeasurements", "datesDeadlines"),
+    ("claims",),
+)
+
+_ENTAILMENT_REQUIRED_CATEGORIES = {
+    "actionsDecisions",
+    "requirements",
+    "restrictions",
+    "programStages",
+    "datesDeadlines",
+    "claims",
+}
+
+
+def _llm_schema(categories: Sequence[str]) -> Dict[str, Any]:
     evidence_schema = {
         "type": "object",
         "additionalProperties": False,
@@ -884,7 +1059,7 @@ def _llm_schema() -> Dict[str, Any]:
             "id": {"type": "string"},
             "label": {"type": "string"},
             "type": {"type": "string"},
-            "category": {"type": "string", "enum": CATEGORY_KEYS},
+            "category": {"type": "string", "enum": list(categories)},
             "normalizedValue": {"type": "string"},
             "confidence": {
                 "anyOf": [
@@ -926,14 +1101,227 @@ def _llm_schema() -> Dict[str, Any]:
         "domain": {"type": "string", "enum": [DOMAIN]},
         "items": {"type": "array", "items": item_schema},
     }
-    for key in CATEGORY_KEYS:
-        properties[key] = {"type": "array", "items": item_schema}
     return {
         "type": "object",
         "additionalProperties": False,
         "properties": properties,
-        "required": ["profile", "version", "domain", *CATEGORY_KEYS, "items"],
+        "required": ["profile", "version", "domain", "items"],
     }
+
+
+def _critic_schema() -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "id": {"type": "string"},
+                        "verdict": {
+                            "type": "string",
+                            "enum": ["supported", "contradicted", "insufficient"],
+                        },
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["id", "verdict", "reason"],
+                },
+            }
+        },
+        "required": ["items"],
+    }
+
+
+def _window_text(window: Sequence[Dict[str, Any]]) -> str:
+    return "\n\n".join(
+        f"{_locator_prefix(unit.get('locator') or {}).strip()}\n{str(unit.get('text') or '').strip()}"
+        for unit in window
+        if str(unit.get("text") or "").strip()
+    )
+
+
+def _split_window(
+    window: Sequence[Dict[str, Any]],
+) -> Optional[Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]]:
+    units = list(window)
+    if len(units) > 1:
+        midpoint = max(1, len(units) // 2)
+        return units[:midpoint], units[midpoint:]
+    if not units:
+        return None
+    unit = units[0]
+    text = str(unit.get("text") or "")
+    minimum = max(200, STRUCTURED_INTELLIGENCE_LLM_MIN_SPLIT_CHARS)
+    if len(text) < minimum * 2:
+        return None
+    midpoint = len(text) // 2
+    candidates = [
+        text.rfind("\n", minimum, midpoint + 1),
+        text.rfind(". ", minimum, midpoint + 1),
+        text.find("\n", midpoint, len(text) - minimum),
+        text.find(". ", midpoint, len(text) - minimum),
+    ]
+    valid = [point for point in candidates if minimum <= point <= len(text) - minimum]
+    split_at = min(valid, key=lambda point: abs(point - midpoint)) if valid else midpoint
+    if text[split_at : split_at + 2] == ". ":
+        split_at += 2
+
+    locator = _dict_copy(unit.get("locator"))
+    source_unit_id = str(
+        unit.get("sourceUnitId")
+        or locator.get("sourceUnitId")
+        or stable_operation_id("source-unit", locator, text)
+    )
+    base_start = int(locator.get("charStart") or 0)
+
+    def part(raw: str, local_start: int, index: int) -> Dict[str, Any]:
+        leading = len(raw) - len(raw.lstrip())
+        value = raw.strip()
+        start = base_start + local_start + leading
+        loc = _dict_copy(locator)
+        loc["adaptivePart"] = index
+        loc["charStart"] = start
+        loc["charEnd"] = start + len(value)
+        loc["sourceUnitId"] = source_unit_id
+        return {"text": value, "locator": loc, "sourceUnitId": source_unit_id}
+
+    left = part(text[:split_at], 0, 1)
+    right = part(text[split_at:], split_at, 2)
+    if not left["text"] or not right["text"]:
+        return None
+    return [left], [right]
+
+
+def _validate_category_payload(
+    payload: Dict[str, Any], categories: Sequence[str]
+) -> Dict[str, Any]:
+    items = payload.get("items")
+    if not isinstance(items, list):
+        raise ValueError("Structured map response omitted items.")
+    allowed = set(categories)
+    if any(not isinstance(item, dict) or item.get("category") not in allowed for item in items):
+        raise ValueError("Structured map response used an unrequested category.")
+    return payload
+
+
+def _run_entailment_critic(
+    *,
+    client: Any,
+    items: Sequence[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int, int, int]:
+    accepted: List[Dict[str, Any]] = []
+    semantic: List[Dict[str, Any]] = []
+    for item in items:
+        if item.get("category") not in _ENTAILMENT_REQUIRED_CATEGORIES:
+            item["validation"] = {
+                **_dict_copy(item.get("validation")),
+                "entailment": "exact_mention",
+                "validator": "exact_mention_v1",
+            }
+            accepted.append(item)
+        else:
+            semantic.append(item)
+
+    receipts: List[Dict[str, Any]] = []
+    succeeded = 0
+    failed = 0
+    rejected = 0
+    size = STRUCTURED_INTELLIGENCE_CRITIC_BATCH_SIZE
+    for offset in range(0, len(semantic), size):
+        batch = semantic[offset : offset + size]
+        expected_ids = {str(item.get("id")) for item in batch}
+        critic_input = [
+            {
+                "id": item.get("id"),
+                "category": item.get("category"),
+                "type": item.get("type"),
+                "claim": item.get("label"),
+                "evidence": [ev.get("quote") for ev in item.get("evidence", [])],
+            }
+            for item in batch
+        ]
+        operation_id = stable_operation_id(
+            "entailment",
+            STRUCTURED_INTELLIGENCE_LLM_MODEL,
+            sorted(expected_ids),
+            critic_input,
+        )
+
+        def request() -> Any:
+            return client.chat.completions.create(
+                model=STRUCTURED_INTELLIGENCE_LLM_MODEL,
+                **chat_completion_kwargs(
+                    model=STRUCTURED_INTELLIGENCE_LLM_MODEL,
+                    temperature=0,
+                    max_completion_tokens=max(800, len(batch) * 90),
+                ),
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "intelligence_entailment_v1",
+                        "strict": True,
+                        "schema": _critic_schema(),
+                    },
+                },
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Judge whether each claim is logically entailed by its exact source evidence. "
+                            "Check negation, modality, proposal versus adoption, actor, scope, and time. "
+                            "Use supported only when the evidence proves the claim; otherwise use "
+                            "contradicted or insufficient. Return every supplied id exactly once."
+                        ),
+                    },
+                    {"role": "user", "content": json.dumps(critic_input, ensure_ascii=False)},
+                ],
+                timeout=STRUCTURED_INTELLIGENCE_LLM_TIMEOUT_S,
+            )
+
+        def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
+            decisions = payload.get("items")
+            if not isinstance(decisions, list):
+                raise ValueError("Critic response omitted items.")
+            returned = [str(item.get("id")) for item in decisions if isinstance(item, dict)]
+            if len(returned) != len(set(returned)) or set(returned) != expected_ids:
+                raise ValueError("Critic response did not cover every requested item exactly once.")
+            return payload
+
+        outcome = execute_json_completion(
+            operation_id=operation_id,
+            request=request,
+            validate=validate,
+        )
+        receipt = {**outcome.receipt, "operationType": "entailment"}
+        receipts.append(receipt)
+        if outcome.payload is None:
+            failed += 1
+            rejected += len(batch)
+            continue
+        succeeded += 1
+        decisions = {
+            str(decision.get("id")): decision
+            for decision in outcome.payload.get("items") or []
+            if isinstance(decision, dict)
+        }
+        for item in batch:
+            decision = decisions.get(str(item.get("id"))) or {}
+            verdict = str(decision.get("verdict") or "insufficient")
+            if verdict != "supported":
+                rejected += 1
+                continue
+            item["validation"] = {
+                **_dict_copy(item.get("validation")),
+                "entailment": "supported",
+                "validator": "llm_critic_v1",
+                "model": STRUCTURED_INTELLIGENCE_LLM_MODEL,
+                "reason": _clean_text(decision.get("reason"), 300),
+            }
+            accepted.append(item)
+    return accepted, receipts, succeeded, failed, rejected
 
 
 def _extract_llm(
@@ -942,19 +1330,49 @@ def _extract_llm(
     file_name: Optional[str],
     deterministic: Dict[str, Any],
     grounding_units: Sequence[Dict[str, Any]] = (),
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
     if not STRUCTURED_INTELLIGENCE_LLM_ENABLED or not _has_llm_key():
-        return None
+        return _make_payload(
+            [],
+            map_coverage={
+                "mode": "unavailable",
+                "required": True,
+                "attempted": False,
+                "totalWindows": 0,
+                "succeededWindows": 0,
+                "failedWindows": 0,
+                "validationTotalBatches": 0,
+                "validationSucceededBatches": 0,
+                "validationFailedBatches": 0,
+                "complete": False,
+                "receipts": [],
+            },
+        )
     body = (content or "").strip()
     if not body:
-        return None
+        return _make_payload(
+            [],
+            map_coverage={
+                "mode": "empty_source",
+                "required": True,
+                "attempted": False,
+                "totalWindows": 0,
+                "succeededWindows": 0,
+                "failedWindows": 0,
+                "validationTotalBatches": 0,
+                "validationSucceededBatches": 0,
+                "validationFailedBatches": 0,
+                "complete": False,
+                "receipts": [],
+            },
+        )
 
     system_prompt = """Extract air-quality governance intelligence into the provided schema.
 Rules:
-- Return only schema-valid JSON.
+- Return only schema-valid JSON containing the requested category batch.
 - Every item must have direct document evidence.
 - Extract plural facts; never collapse multiple GRAP stages, agencies, orders, dates, restrictions, or requirements into one item.
-- Use the category keys exactly as defined by the schema.
+- Emit each supported item once in the items array.
 - Do not invent facts not supported by the text.
 - For agencies, programmes, stages, locations, sectors, and pollutants, the
   emitted label must be explicitly named in its evidence. Semantic association
@@ -966,16 +1384,12 @@ Rules:
   city, town, village, locality, road, facility, and monitoring-station location,
   even when it is not present in the supplied policy taxonomy.
 """
-    det_preview = json.dumps(
-        {
-            "programStages": deterministic.get("programStages", [])[:8],
-            "legalReferences": deterministic.get("legalReferences", [])[:8],
-            "requirements": deterministic.get("requirements", [])[:8],
-            "restrictions": deterministic.get("restrictions", [])[:8],
-        },
-        ensure_ascii=False,
+    source_units = _candidate_units(
+        body,
+        grounding_units,
+        max_chars=max(1000, STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS),
+        overlap=0,
     )
-    source_units = _candidate_units(body, grounding_units)
     windows: List[List[Dict[str, Any]]] = []
     current: List[Dict[str, Any]] = []
     current_chars = 0
@@ -993,39 +1407,46 @@ Rules:
 
     client = _client()
     mapped_items: List[Dict[str, Any]] = []
-    succeeded_windows = 0
-    for window_index, window in enumerate(windows, start=1):
-        document_text = "\n\n".join(
-            f"{_locator_prefix(unit.get('locator') or {}).strip()}\n{str(unit.get('text') or '').strip()}"
-            for unit in window
-            if str(unit.get("text") or "").strip()
+    receipts: List[Dict[str, Any]] = []
+
+    def map_leaf(
+        window: Sequence[Dict[str, Any]],
+        categories: Sequence[str],
+        lineage: str,
+    ) -> None:
+        document_text = _window_text(window)
+        operation_id = stable_operation_id(
+            "extract",
+            STRUCTURED_INTELLIGENCE_LLM_MODEL,
+            list(categories),
+            lineage,
+            [unit.get("sourceUnitId") for unit in window],
+            document_text,
         )
         user_prompt = f"""File name:
 {file_name or "unknown"}
 
-Map window:
-{window_index} of {len(windows)}
-
-Deterministic extraction preview:
-{det_preview}
+Requested categories:
+{", ".join(categories)}
 
 Document text with source locators:
 {document_text}
 """
-        try:
-            resp = client.chat.completions.create(
+
+        def request() -> Any:
+            return client.chat.completions.create(
                 model=STRUCTURED_INTELLIGENCE_LLM_MODEL,
                 **chat_completion_kwargs(
                     model=STRUCTURED_INTELLIGENCE_LLM_MODEL,
                     temperature=0,
-                    max_completion_tokens=2600,
+                    max_completion_tokens=STRUCTURED_INTELLIGENCE_LLM_MAX_OUTPUT_TOKENS,
                 ),
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
-                        "name": "structured_intelligence_v1",
+                        "name": "structured_intelligence_map_v2",
                         "strict": True,
-                        "schema": _llm_schema(),
+                        "schema": _llm_schema(categories),
                     },
                 },
                 messages=[
@@ -1034,29 +1455,81 @@ Document text with source locators:
                 ],
                 timeout=STRUCTURED_INTELLIGENCE_LLM_TIMEOUT_S,
             )
-            raw = (resp.choices[0].message.content or "").strip()
-            parsed = json.loads(raw) if raw else None
-            if isinstance(parsed, dict):
-                mapped_items.extend(_payload_items(parsed))
-                succeeded_windows += 1
-        except Exception as exc:
-            log.warning(
-                "structured intelligence llm map window %s/%s failed: %s",
-                window_index,
-                len(windows),
-                exc,
-            )
 
-    if not mapped_items and succeeded_windows == 0:
-        return None
+        outcome = execute_json_completion(
+            operation_id=operation_id,
+            request=request,
+            validate=lambda payload: _validate_category_payload(payload, categories),
+        )
+        receipt = {
+            **outcome.receipt,
+            "operationType": "extract",
+            "categories": list(categories),
+            "lineage": lineage,
+        }
+        if outcome.payload is not None:
+            receipts.append(receipt)
+            mapped_items.extend(_payload_items(outcome.payload))
+            return
+
+        split = _split_window(window)
+        if (
+            split is not None
+            and outcome.receipt.get("errorCode")
+            in {"output_incomplete", "invalid_response", "empty_response"}
+        ):
+            receipts.append({**receipt, "status": "split"})
+            map_leaf(split[0], categories, lineage + ".1")
+            map_leaf(split[1], categories, lineage + ".2")
+            return
+        receipts.append(receipt)
+
+    for window_index, window in enumerate(windows, start=1):
+        for batch_index, categories in enumerate(_CATEGORY_BATCHES, start=1):
+            map_leaf(window, categories, f"w{window_index}.b{batch_index}")
+
+    grounded = _validated_llm_items(
+        _make_payload(mapped_items),
+        source_units,
+        deterministic,
+    )
+    (
+        validated,
+        critic_receipts,
+        critic_succeeded,
+        critic_failed,
+        rejected_items,
+    ) = _run_entailment_critic(client=client, items=grounded)
+    receipts.extend(critic_receipts)
+    leaf_map_receipts = [
+        receipt
+        for receipt in receipts
+        if receipt.get("operationType") == "extract"
+        and receipt.get("status") != "split"
+    ]
+    map_succeeded = sum(
+        1 for receipt in leaf_map_receipts if receipt.get("status") == "succeeded"
+    )
+    map_failed = sum(
+        1 for receipt in leaf_map_receipts if receipt.get("status") == "failed"
+    )
+    validation_total = critic_succeeded + critic_failed
+    complete = bool(leaf_map_receipts) and map_failed == 0 and critic_failed == 0
     return _make_payload(
-        mapped_items,
+        validated,
         map_coverage={
             "mode": "llm_map_merge",
-            "totalWindows": len(windows),
-            "succeededWindows": succeeded_windows,
-            "failedWindows": len(windows) - succeeded_windows,
-            "complete": succeeded_windows == len(windows),
+            "required": True,
+            "attempted": True,
+            "totalWindows": len(leaf_map_receipts),
+            "succeededWindows": map_succeeded,
+            "failedWindows": map_failed,
+            "validationTotalBatches": validation_total,
+            "validationSucceededBatches": critic_succeeded,
+            "validationFailedBatches": critic_failed,
+            "rejectedItems": rejected_items,
+            "complete": complete,
+            "receipts": receipts,
         },
     )
 
@@ -1092,7 +1565,22 @@ def build_structured_intelligence(
     allow_llm: bool = False,
 ) -> Dict[str, Any]:
     if not STRUCTURED_INTELLIGENCE_ENABLED:
-        return _make_payload([])
+        return _make_payload(
+            [],
+            map_coverage={
+                "mode": "disabled",
+                "required": bool(allow_llm),
+                "attempted": False,
+                "totalWindows": 0,
+                "succeededWindows": 0,
+                "failedWindows": 0,
+                "validationTotalBatches": 0,
+                "validationSucceededBatches": 0,
+                "validationFailedBatches": 0,
+                "complete": False,
+                "receipts": [],
+            },
+        )
 
     deterministic = extract_structured_intelligence_deterministic(
         content=content,
@@ -1108,13 +1596,22 @@ def build_structured_intelligence(
         deterministic=deterministic,
         grounding_units=grounding_units,
     )
-    if not llm_payload:
-        return deterministic
-
+    source_units = _candidate_units(content, grounding_units)
+    validated_llm_items = _validated_llm_items(
+        llm_payload,
+        source_units,
+        deterministic,
+    )
+    validated_llm_items = [
+        item
+        for item in validated_llm_items
+        if item.get("category") not in _ENTAILMENT_REQUIRED_CATEGORIES
+        or _dict_copy(item.get("validation")).get("entailment") == "supported"
+    ]
     return _make_payload(
         [
             *_payload_items(deterministic),
-            *_validated_llm_items(llm_payload, content, deterministic),
+            *validated_llm_items,
         ],
         map_coverage=(
             llm_payload.get("mapCoverage")
