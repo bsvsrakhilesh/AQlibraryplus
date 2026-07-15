@@ -38,7 +38,7 @@ function canUseSharedFilePointer(filePath: string) {
   return SHARED_FILE_ROOTS.some((root) => isPathWithinRoot(filePath, root));
 }
 
-export async function createJobFromUrl(url: string, topk = 10, useLLM = true) {
+export async function createJobFromUrl(url: string, topk = 20, useLLM = true) {
   const form = new URLSearchParams();
   form.append("url", url);
   form.append("topk", String(topk));
@@ -54,7 +54,7 @@ export async function createJobFromUrl(url: string, topk = 10, useLLM = true) {
 
 export async function createJobFromFile(
   filePath: string,
-  topk = 10,
+  topk = 20,
   useLLM = true,
 ) {
   const fileName = path.basename(filePath) || "upload.bin";

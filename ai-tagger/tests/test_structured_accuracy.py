@@ -174,6 +174,38 @@ class StructuredAccuracyTests(unittest.TestCase):
         self.assertIn("who", agencies)
         self.assertNotIn("cpcb", agencies)
 
+    def test_open_vocabulary_location_is_accepted_when_explicitly_grounded(self) -> None:
+        text = "The inspection team visited Gurugram on 12 February 2024."
+        llm_payload = {
+            "locations": [
+                {
+                    "id": "location-gurugram",
+                    "label": "Gurugram",
+                    "type": "location",
+                    "category": "locations",
+                    "normalizedValue": "gurugram",
+                    "confidence": 0.96,
+                    "source": "llm",
+                    "evidence": [{"quote": text, "page": 1}],
+                    "locator": {"kind": "page", "pageNumber": 1},
+                    "status": "matched",
+                }
+            ],
+            "items": [],
+        }
+        with patch("structured_intelligence._extract_llm", return_value=llm_payload):
+            payload = build_structured_intelligence(
+                content=text,
+                grounding_units=[
+                    {"text": text, "locator": {"kind": "page", "pageNumber": 1}}
+                ],
+                allow_llm=True,
+            )
+        self.assertIn(
+            "gurugram",
+            {item["normalizedValue"] for item in payload["locations"]},
+        )
+
     def test_combined_pipeline_filters_llm_before_merge(self) -> None:
         llm_structured = {
             "docType": {"value": "minutes", "score": 0.95, "evidence": "Winter Session"},

@@ -46,7 +46,7 @@ Therefore, the approach is to develop an LLM-backed tool that allows you to extr
 
 - **URL Collector with Deduplication** - Searches, inspects, and captures web pages as text or PDF; automatic deduplication prevents redundant records during source collection.
 - **Flexible Multi-Format Support** - Handles web pages, PDFs, and text uploads with unified storage and searchable archive workflows.
-- **Intelligent Metadata & Tagging** - Provides deterministic tagging with a customizable taxonomy system, structured metadata extraction, optional LLM-enhanced reranking, and full-text search across documents and metadata.
+- **Page-Complete Metadata & Tagging** - Inventories every PDF page, automatically routes weak or image-only pages through bounded OCR batches, runs deterministic and optional LLM extraction across the full document, validates model evidence against source text, and exposes partial coverage instead of silently presenting incomplete results as complete.
 - **Governance Workspace** - Maps connections across agencies, decisions, timelines, and issues; tracks authorship and policy dependencies; creates audit trails for governance decisions.
 
 ### Technical Architecture
@@ -203,7 +203,15 @@ OPENAI_API_KEY=your-openai-api-key
 LLM_MODEL=gpt-4o-mini
 STRUCTURED_LLM_ENABLED=true
 STRUCTURED_LLM_MODEL=gpt-4o-mini
+OCR_ENABLED=true
+OCR_NATIVE_WEAK_PAGE_CHARS=80
 ```
+
+The tagger uses bounded map-merge windows rather than sending only the beginning
+of a document. `STRUCTURED_LLM_MAX_CHARS` controls the size of each map window,
+not the total amount of the document that is analyzed. General AI tags default
+to 20 document topics. Structured entities, including open-vocabulary locations,
+are extracted separately and are not limited by that topic budget.
 
 The containers can start with blank external credentials, which is useful for
 deterministic tests and infrastructure development. That degraded mode is not
@@ -527,8 +535,9 @@ verify the core research-software behavior that supports reproducible evidence
 collection: URL normalization, search input validation, queue identifiers, OCR
 option parsing, notebook text chunking and provenance handling, governance
 workspace query planning, document discovery, embedding vector formatting,
-tag-candidate filtering, structured intelligence extraction, and OpenAI client
-compatibility helpers.
+tag-candidate filtering, full-document candidate coverage, page-complete OCR
+batching, late-page structured intelligence extraction, open-vocabulary grounded
+locations, and OpenAI client compatibility helpers.
 
 Install dependencies before running the test suites:
 
@@ -608,7 +617,9 @@ A reviewer can then perform this manual smoke test:
    or more relevant results to the active research purpose.
 4. Upload a small PDF or plain-text file in the File Manager.
 5. Run AI tagging on a saved URL or uploaded file. This baseline tagging path
-   works without an OpenAI key in the AI tagger.
+   works without an OpenAI key in the AI tagger. For a PDF, inspect the automatic
+   coverage status and confirm that every page is accounted for; partial results
+   remain explicitly marked partial and do not require per-tag user approval.
 6. Confirm that the saved source appears with title, URL or file name, capture
    metadata, tags, and provenance information.
 7. Attach the saved source to a Notebook and ask a question that requires a

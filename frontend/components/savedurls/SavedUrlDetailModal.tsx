@@ -697,6 +697,8 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
     (url as any)?.tagsMetaRaw?.tagger?.structuredIntelligenceV1 ??
     (url as any)?.tagsMetaRaw?.aiTagger?.structuredIntelligenceV1 ??
     null;
+  const evidenceExtraction =
+    (url as any)?.tagsMetaRaw?.tagger?.extraction ?? null;
 
   const evidenceIntelligenceRows = [
     { label: "Domain", value: sourceHost },
@@ -1285,6 +1287,7 @@ const SavedUrlDetailModal: React.FC<SavedUrlDetailModalProps> = ({
                     tagDetails={evidenceTagDetails}
                     smartTags={evidenceSmartTags}
                     structuredIntelligence={evidenceStructuredIntelligence}
+                    extraction={evidenceExtraction}
                     intelligenceRows={evidenceIntelligenceRows}
                     provenanceRows={evidenceProvenanceRows}
                   />

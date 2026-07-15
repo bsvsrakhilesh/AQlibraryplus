@@ -79,8 +79,6 @@ services:
       REDIS_URL: redis://redis:6379/0
       DEV_AUTH_ENABLED: "false"
       INGESTION_QUEUE_CONCURRENCY: 2
-      AI_TAG_URL_QUEUE_CONCURRENCY: 1
-      AI_TAG_FILE_QUEUE_CONCURRENCY: 2
     volumes:
       - backend_storage:/data
     depends_on:
@@ -119,11 +117,12 @@ services:
     environment:
       PORT: 7071
       REDIS_URL: redis://redis:6379/0
-      JOB_SOFT_LIMIT: 240
-      JOB_HARD_LIMIT: 300
+      JOB_SOFT_LIMIT: 1800
+      JOB_HARD_LIMIT: 2100
       URL_CONNECT_TIMEOUT: 8
       URL_READ_TIMEOUT: 20
-      TAGGER_CACHE_NS: tagger:v1
+      TAGGER_CACHE_NS: tagger:v2-page-complete
+      OCR_ENABLED: "true"
       TAGGER_SHARED_FILE_ROOTS: /data,/ingress
       TAGGER_INGRESS_DIR: /ingress
       AI_TAGGER_WORKER_CONCURRENCY: 2
@@ -148,11 +147,12 @@ services:
     init: true
     environment:
       REDIS_URL: redis://redis:6379/0
-      JOB_SOFT_LIMIT: 240
-      JOB_HARD_LIMIT: 300
+      JOB_SOFT_LIMIT: 1800
+      JOB_HARD_LIMIT: 2100
       URL_CONNECT_TIMEOUT: 8
       URL_READ_TIMEOUT: 20
-      TAGGER_CACHE_NS: tagger:v1
+      TAGGER_CACHE_NS: tagger:v2-page-complete
+      OCR_ENABLED: "true"
       TAGGER_SHARED_FILE_ROOTS: /data,/ingress
       TAGGER_INGRESS_DIR: /ingress
     env_file:

@@ -7,7 +7,7 @@ import { finalizeAiTagJobForUrl } from "./aiTagJobFinalize.service";
 import { persistAiTagFailureForUrl } from "./aiTagPersistence.service";
 import { chooseUrlTaggingSource } from "./aiTagUrlSource.util";
 
-const TOPK = Number(process.env.TAGS_TOPK || 10);
+const TOPK = Number(process.env.TAGS_TOPK || 20);
 const USE_LLM = (process.env.TAGS_USE_LLM || "true").toLowerCase() === "true";
 
 /**

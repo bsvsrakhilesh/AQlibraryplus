@@ -22,7 +22,7 @@ STRUCTURED_LLM_MODEL = (
     os.getenv("STRUCTURED_LLM_MODEL") or os.getenv("LLM_MODEL") or "gpt-4o-mini"
 )
 STRUCTURED_LLM_TIMEOUT_S = float(os.getenv("STRUCTURED_LLM_TIMEOUT_S", "45"))
-STRUCTURED_LLM_MAX_CHARS = int(os.getenv("STRUCTURED_LLM_MAX_CHARS", "14000"))
+STRUCTURED_LLM_MAX_CHARS = int(os.getenv("STRUCTURED_LLM_MAX_CHARS", "6000"))
 STRUCTURED_LLM_MAX_UNITS = int(os.getenv("STRUCTURED_LLM_MAX_UNITS", "12"))
 
 _DOC_TYPES = [
@@ -518,6 +518,85 @@ def _unit_preview(units: Sequence[Dict[str, Any]]) -> str:
     return "\n".join(f"- {x}" for x in out)
 
 
+def _map_windows(
+    content: str,
+    units: Sequence[Dict[str, Any]],
+    *,
+    max_chars: int,
+) -> List[Dict[str, Any]]:
+    """Return bounded windows that account for the entire extracted document."""
+    source = list(units or [])
+    if not source and (content or "").strip():
+        source = [{"text": content, "locator": {"kind": "document"}}]
+
+    atomic: List[Dict[str, Any]] = []
+    unit_limit = max(1000, int(max_chars))
+    for unit in source:
+        text = str(unit.get("text") or "").strip()
+        if not text:
+            continue
+        locator = unit.get("locator") if isinstance(unit.get("locator"), dict) else {}
+        start = 0
+        chunk = 1
+        while start < len(text):
+            end = min(len(text), start + unit_limit)
+            if end < len(text):
+                split_at = text.rfind("\n", start + int(unit_limit * 0.55), end)
+                if split_at > start:
+                    end = split_at
+            loc = dict(locator or {})
+            if len(text) > unit_limit:
+                loc["chunk"] = chunk
+            atomic.append({"text": text[start:end].strip(), "locator": loc})
+            if end >= len(text):
+                break
+            start = end
+            chunk += 1
+
+    windows: List[Dict[str, Any]] = []
+    current: List[Dict[str, Any]] = []
+    current_chars = 0
+    for unit in atomic:
+        length = len(str(unit.get("text") or ""))
+        if current and current_chars + length > unit_limit:
+            windows.append(
+                {
+                    "units": current,
+                    "text": "\n\n".join(
+                        f"{_short_locator(item.get('locator') or {})}\n{item.get('text') or ''}"
+                        for item in current
+                    ),
+                }
+            )
+            current = []
+            current_chars = 0
+        current.append(unit)
+        current_chars += length
+    if current:
+        windows.append(
+            {
+                "units": current,
+                "text": "\n\n".join(
+                    f"{_short_locator(item.get('locator') or {})}\n{item.get('text') or ''}"
+                    for item in current
+                ),
+            }
+        )
+    return windows
+
+
+def _merge_governance_maps(payloads: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    out = _empty_governance()
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for key in ("agencies", "issues", "mandates", "claims", "events", "positions", "gaps", "relations"):
+            values = payload.get(key)
+            if isinstance(values, list):
+                out[key].extend(values)
+    return out
+
+
 _SYSTEM_PROMPT = """You classify CAQM / NCR air-quality policy documents into a strict existing schema.
 
 Rules:
@@ -570,8 +649,6 @@ def extract_structured_with_llm(
     client = _client()
     model = get_structured_model()
 
-    excerpt = _clip(body, STRUCTURED_LLM_MAX_CHARS)
-    unit_preview = _unit_preview(grounding_units or [])
     tag_text = ", ".join([str(t).strip() for t in (tags or []) if str(t).strip()][:20])
 
     extraction_meta = extraction or {}
@@ -583,8 +660,19 @@ def extract_structured_with_llm(
         "charCount": extraction_meta.get("charCount"),
     }
 
-    user_prompt = f"""File name:
+    windows = _map_windows(
+        body,
+        grounding_units or [],
+        max_chars=STRUCTURED_LLM_MAX_CHARS,
+    )
+    merged: Optional[Dict[str, Any]] = None
+    for window_index, window in enumerate(windows, start=1):
+        unit_preview = _unit_preview(window.get("units") or [])
+        user_prompt = f"""File name:
 {file_name or "unknown"}
+
+Map window:
+{window_index} of {len(windows)}
 
 Existing tags:
 {tag_text or "none"}
@@ -595,12 +683,12 @@ Extraction summary:
 Grounding previews:
 {unit_preview or "(none)"}
 
-Document text:
-{excerpt}
+Document text with locators:
+{window.get('text') or ''}
 """
 
-    try:
-        resp = client.chat.completions.create(
+        try:
+            resp = client.chat.completions.create(
             model=model,
             **chat_completion_kwargs(
                 model=model,
@@ -622,20 +710,20 @@ Document text:
             timeout=STRUCTURED_LLM_TIMEOUT_S,
         )
 
-        raw = (resp.choices[0].message.content or "").strip()
-        if not raw:
-            return None
-
-        parsed = json.loads(raw)
-        if not isinstance(parsed, dict):
-            return None
-
-        parsed["profile"] = "caqm"
-        parsed["version"] = 1
-        return parsed
-    except Exception as e:
-        log.warning("structured llm extraction failed: %s", e)
-        return None
+            raw = (resp.choices[0].message.content or "").strip()
+            parsed = json.loads(raw) if raw else None
+            if isinstance(parsed, dict):
+                parsed["profile"] = "caqm"
+                parsed["version"] = 1
+                merged = merge_structured(parsed, merged)
+        except Exception as e:
+            log.warning(
+                "structured llm map window %s/%s failed: %s",
+                window_index,
+                len(windows),
+                e,
+            )
+    return merged
 
 
 def extract_governance_with_llm(
@@ -656,8 +744,6 @@ def extract_governance_with_llm(
     client = _client()
     model = get_structured_model()
 
-    excerpt = _clip(body, STRUCTURED_LLM_MAX_CHARS)
-    unit_preview = _unit_preview(grounding_units or [])
     tag_text = ", ".join([str(t).strip() for t in (tags or []) if str(t).strip()][:20])
 
     extraction_meta = extraction or {}
@@ -669,8 +755,19 @@ def extract_governance_with_llm(
         "charCount": extraction_meta.get("charCount"),
     }
 
-    user_prompt = f"""File name:
+    windows = _map_windows(
+        body,
+        grounding_units or [],
+        max_chars=STRUCTURED_LLM_MAX_CHARS,
+    )
+    mapped: List[Dict[str, Any]] = []
+    for window_index, window in enumerate(windows, start=1):
+        unit_preview = _unit_preview(window.get("units") or [])
+        user_prompt = f"""File name:
 {file_name or "unknown"}
+
+Map window:
+{window_index} of {len(windows)}
 
 Existing tags:
 {tag_text or "none"}
@@ -681,12 +778,12 @@ Extraction summary:
 Grounding previews:
 {unit_preview or "(none)"}
 
-Document text:
-{excerpt}
+Document text with locators:
+{window.get('text') or ''}
 """
 
-    try:
-        resp = client.chat.completions.create(
+        try:
+            resp = client.chat.completions.create(
             model=model,
             **chat_completion_kwargs(
                 model=model,
@@ -708,20 +805,20 @@ Document text:
             timeout=STRUCTURED_LLM_TIMEOUT_S,
         )
 
-        raw = (resp.choices[0].message.content or "").strip()
-        if not raw:
-            return None
-
-        parsed = json.loads(raw)
-        if not isinstance(parsed, dict):
-            return None
-
-        parsed["profile"] = "governance"
-        parsed["version"] = 1
-        return parsed
-    except Exception as e:
-        log.warning("governance llm extraction failed: %s", e)
-        return None
+            raw = (resp.choices[0].message.content or "").strip()
+            parsed = json.loads(raw) if raw else None
+            if isinstance(parsed, dict):
+                parsed["profile"] = "governance"
+                parsed["version"] = 1
+                mapped.append(parsed)
+        except Exception as e:
+            log.warning(
+                "governance llm map window %s/%s failed: %s",
+                window_index,
+                len(windows),
+                e,
+            )
+    return _merge_governance_maps(mapped) if mapped else None
 
 
 def _empty_governance() -> Dict[str, Any]:

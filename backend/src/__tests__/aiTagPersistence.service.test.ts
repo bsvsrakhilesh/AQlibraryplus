@@ -66,3 +66,67 @@ test("normalizeStructuredIntelligence falls back to ai tag objects when structur
   assert.equal(out?.programs?.[0]?.label, "GRAP");
   assert.equal(out?.pollutantsMeasurements?.[0]?.label, "PM2.5");
 });
+
+test("normalizeStructuredIntelligence preserves more than eighty grounded locations", async () => {
+  const hooks = await loadHooks();
+  const locations = Array.from({ length: 100 }, (_, index) => ({
+    id: `location-${index}`,
+    label: `Location ${index}`,
+    type: "location",
+    category: "locations",
+    normalizedValue: `location_${index}`,
+    confidence: 0.9,
+    source: "llm_validated",
+    evidence: [{ quote: `Location ${index} is explicitly named.` }],
+    locator: null,
+    status: "matched",
+  }));
+  const out = hooks.normalizeStructuredIntelligence(
+    {
+      structured_intelligence_v1: {
+        profile: "structured_intelligence",
+        version: 1,
+        domain: "air_quality_governance",
+        locations,
+        items: locations,
+      },
+    },
+    null,
+    [],
+  );
+
+  assert.equal(out?.locations.length, 100);
+  assert.equal(out?.items.length, 100);
+});
+
+test("normalizeStructuredIntelligence preserves a complete empty map receipt", async () => {
+  const hooks = await loadHooks();
+  const out = hooks.normalizeStructuredIntelligence(
+    {
+      structured_intelligence_v1: {
+        profile: "structured_intelligence",
+        version: 1,
+        domain: "air_quality_governance",
+        mapCoverage: {
+          mode: "map_merge",
+          totalWindows: 4,
+          succeededWindows: 4,
+          failedWindows: 0,
+          complete: true,
+        },
+        items: [],
+      },
+    },
+    null,
+    [],
+  );
+
+  assert.equal(out?.items.length, 0);
+  assert.deepEqual(out?.mapCoverage, {
+    mode: "map_merge",
+    totalWindows: 4,
+    succeededWindows: 4,
+    failedWindows: 0,
+    complete: true,
+  });
+});

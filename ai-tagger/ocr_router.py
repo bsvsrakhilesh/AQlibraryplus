@@ -58,7 +58,7 @@ def normalize_ocr_options(overrides: Optional[Dict[str, Any]] = None) -> Dict[st
     enabled = (
         _bool_value(enabled_override, False)
         if enabled_override is not None
-        else (_env_bool("OCR_ENABLED", False) or explicit)
+        else (_env_bool("OCR_ENABLED", True) or explicit)
     )
 
     engine = str(
@@ -91,6 +91,7 @@ def normalize_ocr_options(overrides: Optional[Dict[str, Any]] = None) -> Dict[st
         "dpi": _int_env("OCR_PDF_DPI", 200, 72),
         "maxPages": _int_env("OCR_MAX_PAGES", 20, 1),
         "pdfMinChars": _int_env("OCR_PDF_MIN_CHARS", 120, 0),
+        "nativeWeakPageChars": _int_env("OCR_NATIVE_WEAK_PAGE_CHARS", 80, 0),
         "imageMaxSide": _int_env("OCR_IMAGE_MAX_SIDE", 2200, 640),
         "imageMinChars": _int_env("OCR_IMAGE_MIN_CHARS", 20, 0),
         "timeoutSeconds": _int_env("OCR_TIMEOUT_SECONDS", 180, 10),
@@ -271,10 +272,21 @@ def _ocr_with_ocrmypdf(
                 rendered_count=max(1, len(parts)),
             )
 
-        pages = [
-            make_page_result(page_number, parts[index] if index < len(parts) else "", "ocrmypdf")
-            for index, page_number in enumerate(selected)
-        ]
+        # OCRmyPDF sidecars may retain form-feed slots for every source page even
+        # when --pages selects a sparse subset. Map by original page number when
+        # that full-document shape is present; otherwise map the compact sidecar
+        # in selected-page order.
+        full_document_sidecar = bool(page_count and len(parts) >= int(page_count))
+        pages = []
+        for index, page_number in enumerate(selected):
+            part_index = page_number - 1 if full_document_sidecar else index
+            pages.append(
+                make_page_result(
+                    page_number,
+                    parts[part_index] if part_index < len(parts) else "",
+                    "ocrmypdf",
+                )
+            )
 
     return {
         "engine": "ocrmypdf",

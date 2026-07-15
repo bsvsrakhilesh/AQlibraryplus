@@ -83,9 +83,8 @@ _RE_DATE_MDY = re.compile(
 )
 
 
-def _clean_text_for_scan(text: str, limit: int = 140000) -> str:
-    t = (text or "")[:limit]
-    return _WS.sub(" ", t)
+def _clean_text_for_scan(text: str) -> str:
+    return _WS.sub(" ", text or "")
 
 
 def _snippet(hay: str, start: int, end: int, window: int = 90) -> str:

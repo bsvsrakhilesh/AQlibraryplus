@@ -238,6 +238,20 @@ def _completion_token_kwargs(limit: int) -> Dict[str, int]:
     return {"max_completion_tokens": limit}
 
 
+def _coverage_snippet(text: str, limit: int = 7000, segments: int = 7) -> str:
+    """Sample the full document uniformly instead of taking only its beginning."""
+    body = (text or "").strip()
+    if len(body) <= limit:
+        return body
+    count = max(2, int(segments))
+    width = max(300, limit // count)
+    max_start = max(0, len(body) - width)
+    starts = [round(max_start * index / (count - 1)) for index in range(count)]
+    return "\n\n[document coverage sample]\n\n".join(
+        body[start : start + width].strip() for start in starts
+    )[:limit]
+
+
 PROMPT = """You are a senior metadata architect for a research-grade AI tagging system.
 Your task is to choose FINAL tags from deterministic candidate terms.
 
@@ -340,9 +354,7 @@ def rerank_with_llm(
 
     client, model = _openai_client()
 
-    snippet = (context_text or "").strip()
-    if len(snippet) > 7000:
-        snippet = snippet[:7000] + "..."
+    snippet = _coverage_snippet(context_text or "")
 
     compact_records = candidate_records[:220]
 

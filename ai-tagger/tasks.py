@@ -24,8 +24,8 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 _r = redis.Redis.from_url(REDIS_URL)
 
 # ---- New: task runtime controls (tunable via env) ----
-JOB_SOFT_LIMIT = int(os.getenv("JOB_SOFT_LIMIT", "30"))  # seconds
-JOB_HARD_LIMIT = int(os.getenv("JOB_HARD_LIMIT", "60"))  # seconds
+JOB_SOFT_LIMIT = int(os.getenv("JOB_SOFT_LIMIT", "1800"))  # seconds
+JOB_HARD_LIMIT = int(os.getenv("JOB_HARD_LIMIT", "2100"))  # seconds
 JOB_MAX_RETRIES = int(os.getenv("JOB_MAX_RETRIES", "3"))
 CACHE_TTL = int(os.getenv("TAGGER_CACHE_TTL", "86400"))  # seconds (24h)
 CACHE_NAMESPACE = os.getenv("TAGGER_CACHE_NS", "tagger:v2-smart-tags")
@@ -246,7 +246,7 @@ def process_job(self: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
             extract_text = None
 
         input_type = payload.get("input_type")
-        topk = int(payload.get("topk", 10))
+        topk = int(payload.get("topk", 20))
         use_llm = bool(payload.get("use_llm", False))
         ocr_options = payload.get("ocr_options") or None
 

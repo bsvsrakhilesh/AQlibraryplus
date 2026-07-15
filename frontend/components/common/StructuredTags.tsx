@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Sparkles, Copy, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { deriveAiTagCoverageView } from "../../lib/aiTagCoverage";
 
 type LabelItem = {
   value?: string | null;
@@ -101,6 +102,13 @@ type StructuredIntelligence = {
   profile?: string;
   version?: number;
   domain?: string;
+  mapCoverage?: {
+    mode?: string;
+    totalWindows?: number;
+    succeededWindows?: number;
+    failedWindows?: number;
+    complete?: boolean;
+  };
   topics?: IntelligenceItem[];
   agencies?: IntelligenceItem[];
   programs?: IntelligenceItem[];
@@ -137,8 +145,31 @@ type Props = {
   tagDetails?: AiTagDetail[] | null;
   smartTags?: SmartTags | null;
   structuredIntelligence?: StructuredIntelligence | null;
+  extraction?: Extraction | null;
   compact?: boolean;
   className?: string;
+};
+
+type ExtractionCoverage = {
+  status?: string | null;
+  complete?: boolean | null;
+  totalPages?: number | null;
+  analyzedPages?: number | null;
+  nativePages?: number | null;
+  ocrPages?: number | null;
+  blankPages?: number | null;
+  weakPages?: number | null;
+  failedPages?: number | null;
+};
+
+type Extraction = {
+  kind?: string | null;
+  mode?: string | null;
+  ocrUsed?: boolean | null;
+  unitCount?: number | null;
+  charCount?: number | null;
+  pageCount?: number | null;
+  coverage?: ExtractionCoverage | null;
 };
 
 async function copyToClipboard(text: string) {
@@ -396,7 +427,7 @@ function cleanIntelligenceArray(input?: IntelligenceItem[] | null) {
     });
   }
 
-  return out.slice(0, 80);
+  return out;
 }
 
 function cleanStructuredIntelligence(
@@ -407,6 +438,10 @@ function cleanStructuredIntelligence(
     profile: input.profile ?? "structured_intelligence",
     version: input.version ?? 1,
     domain: input.domain ?? "air_quality_governance",
+    mapCoverage:
+      input.mapCoverage && typeof input.mapCoverage === "object"
+        ? input.mapCoverage
+        : undefined,
   };
 
   for (const section of INTELLIGENCE_SECTIONS) {
@@ -419,7 +454,7 @@ function cleanStructuredIntelligence(
     (section) => (out[section.key] as IntelligenceItem[] | undefined) ?? [],
   );
   const fromItems = cleanIntelligenceArray(input.items);
-  out.items = (fromItems.length ? fromItems : flattened).slice(0, 240);
+  out.items = fromItems.length ? fromItems : flattened;
 
   return out.items.length ? out : null;
 }
@@ -562,8 +597,10 @@ function SmartTagSection({
   items: SmartTag[];
   showEvidence: boolean;
 }) {
+  const [showAll, setShowAll] = useState(false);
   if (!items.length) return null;
   const evidenceCount = smartEvidenceCount(items);
+  const visibleItems = showAll ? items : items.slice(0, 12);
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
@@ -581,7 +618,7 @@ function SmartTagSection({
         </div>
       </div>
       <div className="mt-3 grid grid-cols-1 gap-2">
-        {items.slice(0, 12).map((tag, idx) => (
+        {visibleItems.map((tag, idx) => (
           <SmartTagRow
             key={`${title}-${tag.value ?? idx}-${idx}`}
             tag={tag}
@@ -589,6 +626,15 @@ function SmartTagSection({
           />
         ))}
       </div>
+      {items.length > 12 ? (
+        <button
+          type="button"
+          className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+          onClick={() => setShowAll((value) => !value)}
+        >
+          {showAll ? "Show first 12" : `Show all ${items.length}`}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -665,6 +711,7 @@ export default function StructuredTags({
   tagDetails,
   smartTags,
   structuredIntelligence,
+  extraction,
   compact = false,
   className,
 }: Props) {
@@ -753,6 +800,8 @@ export default function StructuredTags({
     : safeSmartTags
     ? smartEvidenceCount(safeSmartTags.items ?? [])
     : safeTagDetails.filter((tag) => tag.evidence).length;
+  const modelCoverage = safeStructuredIntelligence?.mapCoverage;
+  const coverageView = deriveAiTagCoverageView(extraction, modelCoverage);
 
   const headerRight = (
     <div className="flex items-center gap-2">
@@ -869,6 +918,42 @@ export default function StructuredTags({
         {headerRight}
       </div>
 
+      {coverageView.hasPageCoverage ? (
+        <div
+          className={cn(
+            "mt-3 rounded-xl border px-3 py-3",
+            coverageView.complete
+              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+              : "border-amber-200 bg-amber-50 text-amber-950",
+          )}
+          role="status"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[12px] font-semibold">
+              {coverageView.statusLabel}
+            </div>
+            <div className="text-[11px] font-semibold">
+              {coverageView.analyzedPages} of {coverageView.totalPages} pages analyzed
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] opacity-80">
+            <span>{coverageView.nativePages} native</span>
+            <span>{coverageView.ocrPages} OCR</span>
+            <span>{coverageView.blankPages} blank</span>
+            <span>{coverageView.weakPages} weak</span>
+            <span>{coverageView.failedPages} failed</span>
+            <span>Evidence validation automatic</span>
+            {typeof modelCoverage?.totalWindows === "number" &&
+            modelCoverage.totalWindows > 0 ? (
+              <span>
+                AI map {Number(modelCoverage.succeededWindows ?? 0)}/
+                {modelCoverage.totalWindows} windows
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {!hasRenderableContent ? (
         <div className="px-1 pb-3 text-[12px] text-[hsl(var(--muted-foreground))]">
           No structured tags yet. Run the tagger (or re-tag) to populate CAQM
@@ -891,7 +976,7 @@ export default function StructuredTags({
           {!compact ? (
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="text-[12px] leading-5 text-slate-500">
-                Reviewable tags are grouped by purpose and backed by evidence when available.
+                Tags are automatically evidence-validated and grouped by purpose. Evidence remains available for audit.
               </div>
               <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] shadow-sm hover:bg-slate-50">
                 <input
@@ -964,7 +1049,7 @@ export default function StructuredTags({
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    Review tags
+                    Document tags
                   </div>
                   <div className="mt-1 text-lg font-semibold text-slate-950">
                     {primarySmartTags.length}

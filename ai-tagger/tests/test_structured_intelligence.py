@@ -9,7 +9,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from structured_intelligence import extract_structured_intelligence_deterministic  # noqa: E402
+from structured_intelligence import (  # noqa: E402
+    _make_payload,
+    extract_structured_intelligence_deterministic,
+)
 
 
 class StructuredIntelligenceTests(unittest.TestCase):
@@ -62,6 +65,41 @@ class StructuredIntelligenceTests(unittest.TestCase):
         self.assertTrue(payload["agencies"])
         self.assertTrue(payload["locations"])
         self.assertTrue(all(item["evidence"] for item in payload["items"]))
+
+    def test_does_not_drop_location_after_page_ninety(self) -> None:
+        units = [
+            {
+                "text": "Routine policy text" if page != 95 else "A meeting was held in Punjab.",
+                "locator": {"kind": "page", "pageNumber": page},
+            }
+            for page in range(1, 101)
+        ]
+        payload = extract_structured_intelligence_deterministic(
+            content="\n".join(unit["text"] for unit in units),
+            grounding_units=units,
+        )
+        locations = {item["normalizedValue"] for item in payload["locations"]}
+        self.assertIn("punjab", locations)
+        punjab = next(item for item in payload["locations"] if item["normalizedValue"] == "punjab")
+        self.assertEqual(punjab["evidence"][0]["page"], 95)
+
+    def test_structured_categories_are_not_silently_capped_at_eighty(self) -> None:
+        payload = _make_payload(
+            {
+                "id": f"location-{index}",
+                "label": f"Location {index}",
+                "type": "location",
+                "category": "locations",
+                "normalizedValue": f"location_{index}",
+                "confidence": 0.9,
+                "source": "test",
+                "evidence": [{"quote": f"Location {index} is explicitly named."}],
+                "status": "matched",
+            }
+            for index in range(100)
+        )
+        self.assertEqual(len(payload["locations"]), 100)
+        self.assertEqual(len(payload["items"]), 100)
 
 
 if __name__ == "__main__":

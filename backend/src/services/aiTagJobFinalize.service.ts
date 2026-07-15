@@ -6,7 +6,7 @@ import {
   persistAiTagSuccessForUrl,
 } from "./aiTagPersistence.service";
 
-const MAX_WAIT_MS = Number(process.env.TAGS_JOB_MAX_WAIT_MS || 4 * 60 * 1000);
+const MAX_WAIT_MS = Number(process.env.TAGS_JOB_MAX_WAIT_MS || 30 * 60 * 1000);
 const INITIAL_DELAY_MS = Number(process.env.TAGS_JOB_POLL_INITIAL_MS || 1000);
 const MAX_DELAY_MS = Number(process.env.TAGS_JOB_POLL_MAX_MS || 8000);
 

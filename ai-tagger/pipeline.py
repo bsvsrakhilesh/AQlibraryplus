@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover
 
 
 log = logging.getLogger("pipeline")
-TAGGER_VERSION = os.getenv("TAGGER_VERSION") or "0.6.0"
+TAGGER_VERSION = os.getenv("TAGGER_VERSION") or "0.7.0-page-complete"
 
 # Optional advanced candidate generator (KeyBERT/YAKE/spaCy).
 try:
@@ -1864,7 +1864,57 @@ def _smart_candidate_units(
                 break
             start = max(end - overlap, start + 1)
 
-    return out[:160]
+    return out
+
+
+def _coverage_candidate_windows(
+    content: str,
+    grounding_units: Sequence[Dict[str, Any]],
+    *,
+    max_chars: int = 7000,
+) -> List[str]:
+    """Build bounded candidate windows while preserving every source unit."""
+    units = _smart_candidate_units(content, grounding_units, max_chars=max_chars, overlap=0)
+    windows: List[str] = []
+    current: List[str] = []
+    current_chars = 0
+    for unit in units:
+        text = str(unit.get("text") or "").strip()
+        if not text:
+            continue
+        if current and current_chars + len(text) > max_chars:
+            windows.append("\n\n".join(current))
+            current = []
+            current_chars = 0
+        current.append(text)
+        current_chars += len(text)
+    if current:
+        windows.append("\n\n".join(current))
+    return windows
+
+
+def _round_robin_unique(groups: Sequence[Sequence[str]], limit: int) -> List[str]:
+    """Interleave page-window candidates so late sections cannot be starved."""
+    out: List[str] = []
+    seen = set()
+    index = 0
+    while len(out) < limit:
+        added = False
+        for group in groups:
+            if index >= len(group):
+                continue
+            value = str(group[index] or "").strip()
+            key = value.casefold()
+            if value and key not in seen:
+                seen.add(key)
+                out.append(value)
+                added = True
+                if len(out) >= limit:
+                    break
+        if not added and all(index >= len(group) for group in groups):
+            break
+        index += 1
+    return out
 
 
 def _first_rule_match(
@@ -2499,12 +2549,22 @@ def extract_and_tag_sync(
 
     unigrams = _extract_unigrams(tokens, topk=200)
     phrases = _extract_phrases(tokens, topk=200)
-    signals = _extract_signal_terms(content)
+    candidate_windows = _coverage_candidate_windows(content, grounding_units)
+    signal_groups = [_extract_signal_terms(window) for window in candidate_windows]
+    signals = _round_robin_unique(signal_groups, 160)
 
     adv: List[str] = []
     if generate_candidates is not None:
         try:
-            adv = generate_candidates(content, topn=min(180, max(40, topk * 10)))  # type: ignore
+            per_window = max(20, min(60, topk * 3))
+            advanced_groups = [
+                generate_candidates(window, topn=per_window)  # type: ignore
+                for window in candidate_windows
+            ]
+            adv = _round_robin_unique(
+                advanced_groups,
+                min(240, max(80, topk * 12)),
+            )
         except Exception as e:
             log.debug("generate_candidates failed: %s", e)
             adv = []
@@ -2559,12 +2619,26 @@ def extract_and_tag_sync(
                             continue
 
                         seen_candidate_keys.add(key)
+                        evidence, locator = _snippet_for_term(
+                            value,
+                            content,
+                            grounding_units,
+                        )
+                        page = None
+                        if isinstance(locator, dict):
+                            try:
+                                page = int(locator.get("pageNumber"))
+                            except (TypeError, ValueError):
+                                page = None
                         rich_candidates.append(
                             {
                                 "value": value,
                                 "source": source,
                                 "confidence": confidence,
-                                "reason": reason,
+                                "reason": (
+                                    f"{reason} Evidence: {evidence}"
+                                    + (f" (page {page})" if page else "")
+                                )[:420],
                             }
                         )
 

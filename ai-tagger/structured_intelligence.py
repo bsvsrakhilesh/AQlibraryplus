@@ -34,7 +34,7 @@ STRUCTURED_INTELLIGENCE_LLM_TIMEOUT_S = float(
     os.getenv("STRUCTURED_INTELLIGENCE_LLM_TIMEOUT_S", "45")
 )
 STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS = int(
-    os.getenv("STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS", "18000")
+    os.getenv("STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS", "6000")
 )
 
 PROFILE = "structured_intelligence"
@@ -75,7 +75,7 @@ class IntelligenceItem(BaseModel):
     normalizedValue: str = Field(min_length=1, max_length=180)
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     source: str = Field(min_length=1, max_length=80)
-    evidence: List[EvidenceAnchor] = Field(default_factory=list, max_length=5)
+    evidence: List[EvidenceAnchor] = Field(default_factory=list, max_length=50)
     locator: Optional[Dict[str, Any]] = None
     status: str = Field(default="matched", max_length=80)
 
@@ -86,6 +86,7 @@ class StructuredIntelligenceV1(BaseModel):
     profile: str = PROFILE
     version: int = 1
     domain: str = DOMAIN
+    mapCoverage: Dict[str, Any] = Field(default_factory=dict)
     topics: List[IntelligenceItem] = Field(default_factory=list)
     agencies: List[IntelligenceItem] = Field(default_factory=list)
     programs: List[IntelligenceItem] = Field(default_factory=list)
@@ -185,7 +186,21 @@ def _candidate_units(
             start = max(end - overlap, start + 1)
             chunk_idx += 1
 
-    return out[:90]
+    # Page completeness is a product invariant. Callers may batch expensive
+    # model work, but deterministic extraction must never silently drop a late
+    # page or chunk.
+    return out
+
+
+def _locator_prefix(locator: Optional[Dict[str, Any]]) -> str:
+    loc = locator or {}
+    page = _page_from_locator(loc)
+    if page is not None:
+        return f"[page {page}]"
+    section = _clean_text(loc.get("section") or loc.get("heading"), 180)
+    if section:
+        return f"[section {section}]"
+    return "[document]"
 
 
 def _evidence(text: str, start: int, end: int, locator: Dict[str, Any]) -> Dict[str, Any]:
@@ -655,7 +670,7 @@ def _normalize_item(raw: Any) -> Optional[Dict[str, Any]]:
         "normalizedValue": normalized,
         "confidence": round(_confidence(raw.get("confidence"), 0.6), 3),
         "source": _clean_text(raw.get("source"), 80) or "llm",
-        "evidence": evidence[:5],
+        "evidence": evidence[:50],
         "locator": locator if isinstance(locator, dict) else None,
         "status": _clean_text(raw.get("status"), 80) or "matched",
     }
@@ -760,13 +775,17 @@ def _validated_llm_items(
             and not label_is_explicit
         ):
             continue
-        item["evidence"] = supported_evidence[:5]
+        item["evidence"] = supported_evidence[:50]
         item["source"] = "llm_validated"
         accepted.append(item)
     return accepted
 
 
-def _make_payload(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+def _make_payload(
+    items: Iterable[Dict[str, Any]],
+    *,
+    map_coverage: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     merged: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     for raw in items:
         item = _normalize_item(raw)
@@ -791,7 +810,7 @@ def _make_payload(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
             if quote_key and quote_key not in seen_quotes:
                 existing.setdefault("evidence", []).append(ev)
                 seen_quotes.add(quote_key)
-        existing["evidence"] = existing.get("evidence", [])[:5]
+        existing["evidence"] = existing.get("evidence", [])[:50]
 
     ordered = sorted(
         merged.values(),
@@ -807,10 +826,18 @@ def _make_payload(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         "profile": PROFILE,
         "version": 1,
         "domain": DOMAIN,
+        "mapCoverage": map_coverage
+        or {
+            "mode": "deterministic",
+            "totalWindows": 0,
+            "succeededWindows": 0,
+            "failedWindows": 0,
+            "complete": True,
+        },
     }
     for key in CATEGORY_KEYS:
-        payload[key] = [item for item in ordered if item.get("category") == key][:80]
-    payload["items"] = ordered[:240]
+        payload[key] = [item for item in ordered if item.get("category") == key]
+    payload["items"] = ordered
     return StructuredIntelligenceV1(**payload).model_dump(exclude_none=True)
 
 
@@ -914,6 +941,7 @@ def _extract_llm(
     content: str,
     file_name: Optional[str],
     deterministic: Dict[str, Any],
+    grounding_units: Sequence[Dict[str, Any]] = (),
 ) -> Optional[Dict[str, Any]]:
     if not STRUCTURED_INTELLIGENCE_LLM_ENABLED or not _has_llm_key():
         return None
@@ -934,8 +962,10 @@ Rules:
   NCR, odd-even is not GRAP, and generic pollution names no pollutant.
 - Prefer full official names while retaining a stated acronym in the label when
   useful.
+- Locations are open vocabulary. Extract every explicitly named state, district,
+  city, town, village, locality, road, facility, and monitoring-station location,
+  even when it is not present in the supplied policy taxonomy.
 """
-    excerpt = body[:STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS]
     det_preview = json.dumps(
         {
             "programStages": deterministic.get("programStages", [])[:8],
@@ -945,43 +975,90 @@ Rules:
         },
         ensure_ascii=False,
     )
-    user_prompt = f"""File name:
+    source_units = _candidate_units(body, grounding_units)
+    windows: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    current_chars = 0
+    max_chars = max(1000, STRUCTURED_INTELLIGENCE_LLM_MAX_CHARS)
+    for unit in source_units:
+        unit_chars = len(str(unit.get("text") or ""))
+        if current and current_chars + unit_chars > max_chars:
+            windows.append(current)
+            current = []
+            current_chars = 0
+        current.append(unit)
+        current_chars += unit_chars
+    if current:
+        windows.append(current)
+
+    client = _client()
+    mapped_items: List[Dict[str, Any]] = []
+    succeeded_windows = 0
+    for window_index, window in enumerate(windows, start=1):
+        document_text = "\n\n".join(
+            f"{_locator_prefix(unit.get('locator') or {}).strip()}\n{str(unit.get('text') or '').strip()}"
+            for unit in window
+            if str(unit.get("text") or "").strip()
+        )
+        user_prompt = f"""File name:
 {file_name or "unknown"}
+
+Map window:
+{window_index} of {len(windows)}
 
 Deterministic extraction preview:
 {det_preview}
 
-Document text:
-{excerpt}
+Document text with source locators:
+{document_text}
 """
-    try:
-        resp = _client().chat.completions.create(
-            model=STRUCTURED_INTELLIGENCE_LLM_MODEL,
-            **chat_completion_kwargs(
+        try:
+            resp = client.chat.completions.create(
                 model=STRUCTURED_INTELLIGENCE_LLM_MODEL,
-                temperature=0,
-                max_completion_tokens=2600,
-            ),
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "structured_intelligence_v1",
-                    "strict": True,
-                    "schema": _llm_schema(),
+                **chat_completion_kwargs(
+                    model=STRUCTURED_INTELLIGENCE_LLM_MODEL,
+                    temperature=0,
+                    max_completion_tokens=2600,
+                ),
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "structured_intelligence_v1",
+                        "strict": True,
+                        "schema": _llm_schema(),
+                    },
                 },
-            },
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            timeout=STRUCTURED_INTELLIGENCE_LLM_TIMEOUT_S,
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        parsed = json.loads(raw) if raw else None
-        return parsed if isinstance(parsed, dict) else None
-    except Exception as exc:
-        log.warning("structured intelligence llm failed: %s", exc)
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                timeout=STRUCTURED_INTELLIGENCE_LLM_TIMEOUT_S,
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            parsed = json.loads(raw) if raw else None
+            if isinstance(parsed, dict):
+                mapped_items.extend(_payload_items(parsed))
+                succeeded_windows += 1
+        except Exception as exc:
+            log.warning(
+                "structured intelligence llm map window %s/%s failed: %s",
+                window_index,
+                len(windows),
+                exc,
+            )
+
+    if not mapped_items and succeeded_windows == 0:
         return None
+    return _make_payload(
+        mapped_items,
+        map_coverage={
+            "mode": "llm_map_merge",
+            "totalWindows": len(windows),
+            "succeededWindows": succeeded_windows,
+            "failedWindows": len(windows) - succeeded_windows,
+            "complete": succeeded_windows == len(windows),
+        },
+    )
 
 
 def extract_structured_intelligence_deterministic(
@@ -1029,6 +1106,7 @@ def build_structured_intelligence(
         content=content,
         file_name=file_name,
         deterministic=deterministic,
+        grounding_units=grounding_units,
     )
     if not llm_payload:
         return deterministic
@@ -1037,7 +1115,12 @@ def build_structured_intelligence(
         [
             *_payload_items(deterministic),
             *_validated_llm_items(llm_payload, content, deterministic),
-        ]
+        ],
+        map_coverage=(
+            llm_payload.get("mapCoverage")
+            if isinstance(llm_payload.get("mapCoverage"), dict)
+            else None
+        ),
     )
 
 

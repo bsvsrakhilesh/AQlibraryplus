@@ -16,7 +16,7 @@ import {
   publishedAtEvidenceFromSearchSnippet,
 } from "./extract.service";
 
-const TOPK = Number(process.env.TAGS_TOPK || 10);
+const TOPK = Number(process.env.TAGS_TOPK || 20);
 const USE_LLM = (process.env.TAGS_USE_LLM || "true").toLowerCase() === "true";
 
 type AiTagObject = {
@@ -100,7 +100,7 @@ const structuredIntelligenceItemSchema = z
     normalizedValue: z.string().trim().min(1).max(180),
     confidence: z.number().min(0).max(1).nullable(),
     source: z.string().trim().min(1).max(80),
-    evidence: z.array(structuredEvidenceSchema).min(1).max(5),
+    evidence: z.array(structuredEvidenceSchema).min(1).max(50),
     locator: z.record(z.any()).nullable().optional(),
     status: z.string().trim().min(1).max(80),
   })
@@ -111,6 +111,16 @@ const structuredIntelligenceSchema = z
     profile: z.literal("structured_intelligence"),
     version: z.literal(1),
     domain: z.literal("air_quality_governance"),
+    mapCoverage: z
+      .object({
+        mode: z.string(),
+        totalWindows: z.number().int().min(0),
+        succeededWindows: z.number().int().min(0),
+        failedWindows: z.number().int().min(0),
+        complete: z.boolean(),
+      })
+      .passthrough()
+      .optional(),
     topics: z.array(structuredIntelligenceItemSchema).default([]),
     agencies: z.array(structuredIntelligenceItemSchema).default([]),
     programs: z.array(structuredIntelligenceItemSchema).default([]),
@@ -500,7 +510,7 @@ function normalizeSmartTags(data: any, userTags: string[]) {
     ...out.userTags,
   ];
 
-  out.items = (fromItems.length ? fromItems : flattened).slice(0, 160);
+  out.items = fromItems.length ? fromItems : flattened;
   return out;
 }
 
@@ -528,7 +538,7 @@ function normalizeStructuredIntelligenceEvidence(value: unknown) {
       return quote ? { quote } : null;
     })
     .filter(Boolean)
-    .slice(0, 5);
+    .slice(0, 50);
 }
 
 function normalizeStructuredIntelligenceItem(raw: any) {
@@ -620,14 +630,20 @@ function normalizeStructuredIntelligence(
   }
 
   const items = STRUCTURED_INTELLIGENCE_CATEGORY_KEYS.flatMap((key) => grouped[key]);
-  if (items.length === 0) return null;
+  const hasMapCoverage = Boolean(
+    raw?.mapCoverage && typeof raw.mapCoverage === "object",
+  );
+  if (items.length === 0 && !hasMapCoverage) return null;
 
   const payload = {
     profile: "structured_intelligence" as const,
     version: 1 as const,
     domain: "air_quality_governance" as const,
+    ...(hasMapCoverage
+      ? { mapCoverage: raw.mapCoverage }
+      : {}),
     ...grouped,
-    items: items.slice(0, 240),
+    items,
   };
 
   const parsed = structuredIntelligenceSchema.safeParse(payload);

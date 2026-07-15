@@ -104,6 +104,27 @@ class OcrRouterTests(unittest.TestCase):
         self.assertTrue(result["fallbackUsed"])
         self.assertIn("missing ocrmypdf", result["errors"][0])
 
+    def test_sparse_ocrmypdf_sidecar_keeps_original_page_numbers(self) -> None:
+        sidecar = "page one\fOCR page two\fpage three\fpage four\fOCR page five"
+
+        def fake_run(command, *, timeout):
+            sidecar_path = pathlib.Path(command[command.index("--sidecar") + 1])
+            sidecar_path.write_text(sidecar, encoding="utf-8")
+
+        with mock.patch.object(ocr_router, "_run_command", side_effect=fake_run):
+            result = ocr_router._ocr_with_ocrmypdf(
+                b"%PDF-test",
+                options=ocr_router.normalize_ocr_options(
+                    {"enabled": True, "pages": "2,5", "maxPages": 20}
+                ),
+                page_count=5,
+            )
+
+        self.assertEqual(
+            [(page["pageNumber"], page["text"]) for page in result["pages"]],
+            [(2, "OCR page two"), (5, "OCR page five")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

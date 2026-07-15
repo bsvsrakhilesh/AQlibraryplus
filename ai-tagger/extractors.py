@@ -21,6 +21,7 @@ from ocr_router import (
     normalize_ocr_options,
     ocr_pdf_bytes,
     ocr_pil_image_to_page,
+    parse_page_range,
 )
 
 URL_CONNECT_TIMEOUT = float(os.getenv("URL_CONNECT_TIMEOUT", "8"))
@@ -301,8 +302,11 @@ def _ocr_pil_image(
         return None
 
 
-def _extract_pdf_native(data: bytes) -> Tuple[List[Dict[str, Any]], Optional[int]]:
+def _extract_pdf_native(
+    data: bytes,
+) -> Tuple[List[Dict[str, Any]], Optional[int], List[Dict[str, Any]]]:
     units: List[Dict[str, Any]] = []
+    pages: List[Dict[str, Any]] = []
     page_count: Optional[int] = None
     try:
         from pdfminer.layout import LTTextContainer  # type: ignore
@@ -314,8 +318,16 @@ def _extract_pdf_native(data: bytes) -> Tuple[List[Dict[str, Any]], Optional[int
                 if isinstance(element, LTTextContainer):
                     parts.append(element.get_text())
 
+            raw_text = _normalize_text("\n".join(parts))
+            pages.append(
+                {
+                    "pageNumber": page_idx,
+                    "text": raw_text,
+                    "charCount": len(raw_text),
+                }
+            )
             unit = _unit(
-                "\n".join(parts),
+                raw_text,
                 _locator(kind="page", pageNumber=page_idx),
                 source="pdfminer",
                 ocr_used=False,
@@ -324,14 +336,51 @@ def _extract_pdf_native(data: bytes) -> Tuple[List[Dict[str, Any]], Optional[int
                 units.append(unit)
     except Exception:
         units = []
+        pages = []
         page_count = None
 
-    return units, page_count
+    return units, page_count, pages
 
 
 def _extract_pdf_native_units(data: bytes) -> List[Dict[str, Any]]:
-    units, _page_count = _extract_pdf_native(data)
+    units, _page_count, _pages = _extract_pdf_native(data)
     return units
+
+
+def _page_number(unit: Dict[str, Any]) -> Optional[int]:
+    locator = unit.get("locator") if isinstance(unit.get("locator"), dict) else {}
+    try:
+        value = int((locator or {}).get("pageNumber"))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _batches(values: List[int], size: int) -> List[List[int]]:
+    batch_size = max(1, int(size))
+    return [values[i : i + batch_size] for i in range(0, len(values), batch_size)]
+
+
+def _coverage_summary(page_records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    statuses = [str(page.get("status") or "failed") for page in page_records]
+    terminal_good = {"native", "ocr", "blank"}
+    analyzed = sum(1 for status in statuses if status in terminal_good)
+    weak = statuses.count("weak")
+    failed = statuses.count("failed")
+    total = len(page_records)
+    complete = total > 0 and analyzed == total and weak == 0 and failed == 0
+    return {
+        "status": "complete" if complete else "partial",
+        "complete": complete,
+        "totalPages": total,
+        "analyzedPages": analyzed,
+        "nativePages": statuses.count("native"),
+        "ocrPages": statuses.count("ocr"),
+        "blankPages": statuses.count("blank"),
+        "weakPages": weak,
+        "failedPages": failed,
+        "pages": page_records,
+    }
 
 
 def _pdf_ocr_units(result: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -361,7 +410,7 @@ def _from_pdf_bytes_bundle(
     ocr_options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     opts = normalize_ocr_options(ocr_options)
-    native_units, page_count = _extract_pdf_native(data)
+    native_units, page_count, native_pages = _extract_pdf_native(data)
     native_text = _join_units(native_units)
 
     try:
@@ -386,54 +435,155 @@ def _from_pdf_bytes_bundle(
         "pageCount": page_count,
     }
 
-    if native_text and len(native_text) >= int(opts["pdfMinChars"]):
+    # If page inventory failed, retain the legacy document extraction but mark
+    # coverage unknown instead of claiming that the PDF was completely analyzed.
+    if not page_count or not native_pages:
+        base_extra["coverage"] = {
+            "status": "partial",
+            "complete": False,
+            "totalPages": int(page_count or 0),
+            "analyzedPages": len(native_units),
+            "nativePages": len(native_units),
+            "ocrPages": 0,
+            "blankPages": 0,
+            "weakPages": 0,
+            "failedPages": int(page_count or 0),
+            "pages": [],
+        }
         return _finalize_bundle(
             "pdf",
-            "native",
+            "native" if native_units else "empty",
             native_units,
             ocr_used=False,
             extra=base_extra,
         )
 
-    if opts["enabled"]:
-        ocr_errors: List[str] = []
-        try:
-            ocr_result = ocr_pdf_bytes(
-                data,
-                options=opts,
-                page_count=page_count,
-            )
-            ocr_units = _pdf_ocr_units(ocr_result)
-            ocr_errors = list(ocr_result.get("errors") or [])
+    weak_threshold = int(opts.get("nativeWeakPageChars") or opts["pdfMinChars"])
+    requested_pages = parse_page_range(opts.get("pages"), page_count)
+    weak_pages = [
+        int(page["pageNumber"])
+        for page in native_pages
+        if int(page.get("charCount") or 0) < weak_threshold
+    ]
+    pages_to_ocr = requested_pages if requested_pages is not None else weak_pages
 
-            if ocr_units:
-                return _finalize_bundle(
-                    "pdf",
-                    "ocr" if not native_units else "hybrid",
-                    ocr_units,
-                    ocr_used=True,
-                    extra={
-                        **base_extra,
-                        "ocrEngine": ocr_result.get("engine"),
-                        "ocrFallbackUsed": bool(ocr_result.get("fallbackUsed")),
-                        "ocrLangs": (ocr_result.get("options") or {}).get("langs"),
-                        "ocrPageRange": (ocr_result.get("options") or {}).get("pages"),
-                        "ocrQuality": ocr_result.get("quality") or {},
-                        "ocrErrors": ocr_errors,
-                    },
+    ocr_pages_by_number: Dict[int, Dict[str, Any]] = {}
+    ocr_errors: List[str] = []
+    ocr_engines: List[str] = []
+    ocr_fallback_used = False
+
+    if opts["enabled"] and pages_to_ocr:
+        for batch in _batches(pages_to_ocr, int(opts["maxPages"])):
+            batch_options = {**opts, "pages": ",".join(str(page) for page in batch)}
+            try:
+                ocr_result = ocr_pdf_bytes(
+                    data,
+                    options=batch_options,
+                    page_count=page_count,
                 )
-        except (OcrRuntimeError, ValueError) as exc:
-            ocr_errors.append(str(exc))
-        except Exception as exc:
-            ocr_errors.append(f"OCR failed: {exc}")
-        base_extra["ocrErrors"] = ocr_errors
+                engine = str(ocr_result.get("engine") or "ocr")
+                if engine not in ocr_engines:
+                    ocr_engines.append(engine)
+                ocr_fallback_used = ocr_fallback_used or bool(
+                    ocr_result.get("fallbackUsed")
+                )
+                ocr_errors.extend(str(err) for err in (ocr_result.get("errors") or []))
+                for page in ocr_result.get("pages") or []:
+                    try:
+                        number = int(page.get("pageNumber"))
+                    except (TypeError, ValueError):
+                        continue
+                    ocr_pages_by_number[number] = page
+            except (OcrRuntimeError, ValueError) as exc:
+                ocr_errors.append(str(exc))
+            except Exception as exc:
+                ocr_errors.append(f"OCR failed: {exc}")
+
+    native_units_by_page = {
+        number: unit
+        for unit in native_units
+        if (number := _page_number(unit)) is not None
+    }
+    merged_units: List[Dict[str, Any]] = []
+    page_records: List[Dict[str, Any]] = []
+    selected = set(pages_to_ocr)
+
+    for native_page in native_pages:
+        number = int(native_page["pageNumber"])
+        native_value = str(native_page.get("text") or "").strip()
+        native_count = len(native_value)
+        native_unit = native_units_by_page.get(number)
+        ocr_page = ocr_pages_by_number.get(number)
+        ocr_value = _normalize_text(str((ocr_page or {}).get("text") or ""))
+        ocr_count = len(ocr_value)
+        attempted = number in selected and bool(opts["enabled"])
+
+        chosen: Optional[Dict[str, Any]] = None
+        status = "failed"
+        source = None
+        if number not in selected and native_count >= weak_threshold:
+            chosen = native_unit
+            status = "native"
+            source = "pdfminer"
+        elif ocr_value and ocr_count >= native_count:
+            chosen = _unit(
+                ocr_value,
+                _locator(kind="page", pageNumber=number),
+                source=str((ocr_page or {}).get("engine") or "ocr"),
+                ocr_used=True,
+                extra={
+                    "ocrEngine": (ocr_page or {}).get("engine"),
+                    "isBlank": False,
+                    "isWeak": bool((ocr_page or {}).get("isWeak")),
+                },
+            )
+            status = "weak" if bool((ocr_page or {}).get("isWeak")) else "ocr"
+            source = str((ocr_page or {}).get("engine") or "ocr")
+        elif native_unit:
+            chosen = native_unit
+            status = "weak" if native_count < weak_threshold else "native"
+            source = "pdfminer"
+        elif attempted and ocr_page and bool(ocr_page.get("isBlank")):
+            status = "blank"
+            source = str(ocr_page.get("engine") or "ocr")
+        elif not attempted and native_count == 0:
+            status = "weak"
+
+        if chosen:
+            merged_units.append(chosen)
+
+        page_records.append(
+            {
+                "pageNumber": number,
+                "status": status,
+                "source": source,
+                "nativeCharCount": native_count,
+                "charCount": int((chosen or {}).get("charCount") or 0),
+                "ocrAttempted": attempted,
+                "ocrUsed": bool((chosen or {}).get("ocrUsed")),
+            }
+        )
+
+    coverage = _coverage_summary(page_records)
+    used_ocr = any(bool(unit.get("ocrUsed")) for unit in merged_units)
+    used_native = any(not bool(unit.get("ocrUsed")) for unit in merged_units)
+    mode = "hybrid" if used_ocr and used_native else "ocr" if used_ocr else "native"
 
     return _finalize_bundle(
         "pdf",
-        "native" if native_units else "empty",
-        native_units,
-        ocr_used=False,
-        extra=base_extra,
+        mode,
+        merged_units,
+        ocr_used=used_ocr,
+        extra={
+            **base_extra,
+            "pageCount": page_count,
+            "coverage": coverage,
+            "ocrEngine": ",".join(ocr_engines) or None,
+            "ocrFallbackUsed": ocr_fallback_used,
+            "ocrLangs": opts.get("langs"),
+            "ocrPageRange": opts.get("pages"),
+            "ocrErrors": ocr_errors,
+        },
     )
 
 

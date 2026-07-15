@@ -21,7 +21,7 @@ import {
 
 const r = Router();
 
-const TOPK = Number(process.env.TAGS_TOPK || 10);
+const TOPK = Number(process.env.TAGS_TOPK || 20);
 const USE_LLM = (process.env.TAGS_USE_LLM || "true").toLowerCase() === "true";
 
 /** Quick health proxy (optional) */

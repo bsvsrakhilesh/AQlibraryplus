@@ -406,7 +406,22 @@ File Manager is the durable evidence archive for uploads, captured web evidence,
 
 *Figure 6. Archive filters, review queues, and Analyst Views.*
 
-The Evidence Inspector shows origin, capture method, SHA-256 state, revisions, AI tags, metadata, and notebook readiness.
+The Evidence Inspector shows origin, capture method, SHA-256 state, revisions, AI tags, metadata, notebook readiness, and PDF analysis coverage.
+
+### 7.1 Automatic PDF intelligence coverage
+
+PDF AI tagging accounts for each page independently. The tagger keeps usable native text and automatically sends blank or weak pages through OCR in bounded batches. A native-text page never prevents OCR of a different scanned page. Structured extraction then maps every page window and merges evidence-backed results across the document.
+
+The **Document intelligence** panel reports:
+
+- **Complete document analysis** when every page has a terminal native, OCR, or blank state and every configured AI map window succeeded.
+- **Partial document analysis** when any page or AI map window is weak or failed. Partial results remain visible but are never represented as complete.
+- Native, OCR, blank, weak, and failed page counts.
+- AI map windows completed when LLM enhancement is enabled.
+
+Routine tagging is automatically validated. Users do not need to approve every tag. Model-derived structured items are accepted only when their evidence is found in the extracted source text. **Show evidence** remains available for audit, and sections with more than 12 items provide an explicit **Show all** control.
+
+General AI tags are document-level topics and default to 20 results. They are generated from candidates distributed across the complete document. Structured entities are separate and may contain more items. Locations are open vocabulary at the intelligence layer, so explicitly named cities, districts, localities, facilities, and monitoring-station locations are not restricted to the supplied CAQM taxonomy.
 
 ![File list and Evidence Inspector](assets/manual/file-manager-evidence.png)
 
@@ -452,7 +467,8 @@ The Evidence Inspector shows origin, capture method, SHA-256 state, revisions, A
 - **Search or filters hide files:** clear the folder search, Archive filters, Review queue, Analyst View, favourites/trash scope, and collection scope. The visible count reflects the active scope.
 - **Preview fails but download works:** very large files and browser-unsupported formats may not render inline. Download the authorised file and open it with an appropriate local application.
 - **Integrity shows pending or unavailable:** hashing or metadata processing may still be running or may have failed. Refresh the item, inspect Properties/Evidence Inspector, and review service logs if it does not progress.
-- **AI tags are pending or failed:** verify AI-tagger and queue health, then use the available retry action. An AI-tagger OpenAI key is optional and is not required for deterministic tagging.
+- **AI tags are pending or failed:** verify AI-tagger and queue health, then use the available retry action. Long PDFs can take longer because all pages are processed. An AI-tagger OpenAI key is optional and is not required for deterministic tagging.
+- **Document analysis is partial:** inspect the page and map-window counts in Document intelligence and retry the automatic tagging job after correcting the OCR or model-service failure. Individual tag approval is not required.
 - **A Notebook source is not ready:** open the file’s Evidence Inspector or Notebook diagnostics to distinguish extraction, OCR, ingestion, and embedding failures.
 - **Move, paste, or folder actions are disabled:** some operations are blocked in Trash, Favourites, archive/ZIP browsing, or for incompatible mixed selections. Return to Drive and reduce the selection.
 - **An item was moved to Trash accidentally:** use the immediate **Undo** action when visible, or open Trash and choose **Restore**. Do not permanently delete evidence unless authorised.
@@ -662,6 +678,7 @@ Use `down -v` only when a complete local reset is intentional. A normal `down` p
 | Backend container fails during startup | `POSTGRES_PASSWORD`, `DATABASE_URL`, and backend logs | Use the same password in both settings and use host `db`, not `localhost`, in the Docker URL. |
 | Frontend opens but API operations fail | <http://localhost:4000/health> and `CORS_ORIGINS` | Add the exact frontend origin, recreate the backend container, and inspect backend logs. |
 | AI tagger is unavailable | <http://localhost:7071/health> and tagger logs | Inspect both tagger services and rebuild if dependency installation failed. |
+| PDF intelligence remains partial | Document intelligence page counts, AI map count, and tagger-worker logs | Correct OCR/model availability and retry the tagging job. Do not interpret a partial result as proof that a term is absent. |
 | URL search fails | Google key, search-engine ID, quota, and backend logs | Correct `GOOGLE_CSE_KEY` or `GOOGLE_CSE_CX`, quota, or engine restrictions; recreate backend. |
 | Notebook source never reaches Ready | Source diagnostics, backend OpenAI settings, worker logs, and source accessibility | Enable valid backend OpenAI credentials, confirm workers are running, retry permitted content, or upload an accessible copy. |
 | Grounded chat or Governance answer is disabled | `OPENAI_ENABLED` and `OPENAI_API_KEY` | Set valid backend values and recreate backend and worker containers. |
